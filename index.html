@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政府預算收支填報與匯整系統 (v3.0)</title>
+    <title>政府預算收支填報與匯整系統 (v3.1 增強版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -11,21 +11,73 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
         
-        /* 導覽列樣式 */
+        /* --- Tooltip 樣式 (新增) --- */
+        .btn-tooltip {
+            position: relative;
+        }
+        /* Tooltip 本體 */
+        .btn-tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: 125%; /* 顯示在按鈕下方 */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #1e293b; /* Slate-800 */
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease-in-out;
+            pointer-events: none;
+            z-index: 50;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            font-weight: normal;
+        }
+        /* Tooltip 小箭頭 */
+        .btn-tooltip::before {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 6px;
+            border-style: solid;
+            border-color: transparent transparent #1e293b transparent; /* 指向上方 */
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease-in-out;
+            pointer-events: none;
+            z-index: 50;
+            margin-top: 1px; /* 微調位置 */
+            transform: translateX(-50%) rotate(180deg); /* 轉向讓箭頭朝上接按鈕 */
+        }
+        /* Hover 時顯示 */
+        .btn-tooltip:hover::after,
+        .btn-tooltip:hover::before {
+            opacity: 1;
+            visibility: visible;
+            top: 115%; /* 微幅上浮動畫 */
+        }
+        .btn-tooltip:hover::before {
+            top: 105%;
+        }
+
+        /* --- 導覽列與一般樣式 --- */
         .nav-container { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border-bottom: 1px solid #e2e8f0; }
         .tab-pill-container { background-color: #f1f5f9; padding: 4px; border-radius: 9999px; display: inline-flex; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
         .tab-btn { padding: 8px 24px; border-radius: 9999px; font-weight: 600; font-size: 0.95rem; color: #64748b; transition: all 0.2s ease-in-out; display: flex; align-items: center; gap: 8px; }
         .tab-btn:hover { color: #334155; }
         .tab-btn.active { background-color: white; color: #0f172a; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); }
 
-        /* 管理端表格 */
         .budget-table th { background-color: #e2e8f0; padding: 8px; font-size: 0.85rem; border: 1px solid #cbd5e1; white-space: nowrap; }
         .budget-table td { padding: 4px; border: 1px solid #cbd5e1; min-width: 100px; }
         .budget-table input { width: 100%; padding: 4px; border: 1px solid transparent; text-align: right; background: transparent; font-size: 0.9rem; }
         .budget-table input:focus { outline: none; border-color: #3b82f6; background: white; }
         .budget-table input[readonly] { font-weight: bold; color: #2563eb; background-color: #f8fafc; }
         
-        /* 匯整端樣式 */
         .drop-zone { border: 3px dashed #475569; transition: all 0.3s; background-color: #1e293b; position: relative; }
         .drop-zone.active { border-color: #38bdf8; background-color: #334155; transform: scale(1.01); }
         .agg-table th { background-color: #334155; color: #94a3b8; padding: 12px; font-size: 0.85rem; text-align: left; }
@@ -50,7 +102,7 @@
             <div class="bg-blue-600 text-white p-2 rounded-lg font-bold text-xl">🇹🇼</div>
             <div>
                 <h1 class="font-bold text-lg text-slate-800 leading-tight">政府預算資料查填平臺</h1>
-                <p class="text-xs text-slate-500">v3.0 (含資本計畫基金)</p>
+                <p class="text-xs text-slate-500">v3.1 (含資本計畫 & 提示功能)</p>
             </div>
         </div>
 
@@ -99,14 +151,14 @@
     <div class="bg-white p-4 rounded-xl shadow mb-6 flex flex-wrap justify-between items-center gap-4 border border-slate-200">
         <div><h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">📝 填報工作站 <span id="mgr-status" class="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded-full">🟢 自動儲存</span></h2></div>
         <div class="flex gap-2">
-            <button onclick="document.getElementById('mgr-import').click()" class="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border text-sm font-bold">📂 匯入舊檔</button>
+            <button onclick="document.getElementById('mgr-import').click()" class="btn-tooltip bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border text-sm font-bold" data-tooltip="支援格式：.json (資料) 或 .html (備份)">📂 匯入舊檔</button>
             <input type="file" id="mgr-import" class="hidden" accept=".json,.html" onchange="mgr_importFile(this)">
             <div class="border-l pl-2 flex gap-2">
-                <button onclick="mgr_exportHTML()" class="bg-teal-600 text-white px-4 py-2 rounded hover:bg-teal-700 shadow text-sm font-bold flex items-center gap-1">🌍 備份 HTML</button>
-                <button onclick="mgr_exportJSON()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 shadow text-sm font-bold flex items-center gap-1">💾 資料 JSON</button>
-                <button onclick="mgr_exportXLSX()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 shadow text-sm font-bold flex items-center gap-1">📊 報表 Excel</button>
+                <button onclick="mgr_exportHTML()" class="btn-tooltip bg-teal-600 text-white px-4 py-2 rounded hover:bg-teal-700 shadow text-sm font-bold flex items-center gap-1" data-tooltip="儲存完整網頁與資料，可離線檢視">🌍 備份 HTML</button>
+                <button onclick="mgr_exportJSON()" class="btn-tooltip bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 shadow text-sm font-bold flex items-center gap-1" data-tooltip="儲存純結構化資料，適合系統交換">💾 資料 JSON</button>
+                <button onclick="mgr_exportXLSX()" class="btn-tooltip bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 shadow text-sm font-bold flex items-center gap-1" data-tooltip="產出 A-11309 正式報表格式">📊 報表 Excel</button>
             </div>
-            <button onclick="mgr_clearAll()" class="ml-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition">🗑️</button>
+            <button onclick="mgr_clearAll()" class="btn-tooltip ml-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition" data-tooltip="⚠️ 清空所有欄位 (無法復原)">🗑️</button>
         </div>
     </div>
 
@@ -150,10 +202,10 @@
     <div class="flex flex-wrap justify-between items-end mb-8 gap-4 border-b border-slate-700 pb-6">
         <div><h1 class="text-3xl font-bold text-white mb-1">📊 匯整儀表板</h1><p class="text-slate-400 text-sm">適用：Level 2 最終匯整</p></div>
         <div class="flex gap-2">
-            <button onclick="document.getElementById('agg-input').click()" class="bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg hover:bg-slate-600 text-sm font-bold flex items-center gap-2">📂 匯入檔案</button>
+            <button onclick="document.getElementById('agg-input').click()" class="btn-tooltip bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg hover:bg-slate-600 text-sm font-bold flex items-center gap-2" data-tooltip="支援多個 .json 或 .html 檔案">📂 匯入檔案</button>
             <input type="file" id="agg-input" multiple accept=".json,.html" class="hidden" onchange="agg_handleFiles(this.files)">
-            <button onclick="agg_exportWorkspace()" class="bg-teal-600 px-4 py-2 rounded-lg hover:bg-teal-500 text-sm font-bold shadow flex items-center gap-2">🌍 儲存工作區</button>
-            <button onclick="agg_clearAll()" class="bg-red-900/50 text-red-200 border border-red-900 px-4 py-2 rounded-lg hover:bg-red-900 text-sm">🗑️</button>
+            <button onclick="agg_exportWorkspace()" class="btn-tooltip bg-teal-600 px-4 py-2 rounded-lg hover:bg-teal-500 text-sm font-bold shadow flex items-center gap-2" data-tooltip="儲存目前的匯整狀態">🌍 儲存工作區</button>
+            <button onclick="agg_clearAll()" class="btn-tooltip bg-red-900/50 text-red-200 border border-red-900 px-4 py-2 rounded-lg hover:bg-red-900 text-sm" data-tooltip="清空所有資料">🗑️</button>
         </div>
     </div>
 
@@ -201,7 +253,7 @@
         <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="font-bold text-lg text-slate-200">🏛️ 各單位匯整概況</h3>
-                <button onclick="agg_exportExcel()" class="bg-green-600 px-4 py-2 rounded hover:bg-green-500 text-sm font-bold shadow flex items-center gap-2"><span>📊</span> 匯出 Excel</button>
+                <button onclick="agg_exportExcel()" class="btn-tooltip bg-green-600 px-4 py-2 rounded hover:bg-green-500 text-sm font-bold shadow flex items-center gap-2" data-tooltip="匯出總表 .xlsx"><span>📊</span> 匯出 Excel</button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full agg-table text-left text-sm">
