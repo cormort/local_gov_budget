@@ -3,184 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政府預算收支填報與匯整系統 (All-in-One)</title>
+    <title>政府預算收支填報與匯整系統 (最終版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f1f5f9; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
         
-        /* Tabs Styles */
-        .tab-btn { @apply px-6 py-3 font-bold text-gray-500 border-b-4 border-transparent hover:text-blue-500 transition-all; }
-        .tab-btn.active { @apply text-blue-600 border-blue-600; }
+        /* --- 優化後的導覽列樣式 --- */
+        .nav-container {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #e2e8f0;
+        }
         
-        /* Manager Styles */
+        .tab-pill-container {
+            background-color: #f1f5f9;
+            padding: 4px;
+            border-radius: 9999px; /* Pill shape */
+            display: inline-flex;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+
+        .tab-btn {
+            padding: 8px 24px;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #64748b;
+            transition: all 0.2s ease-in-out;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-btn:hover {
+            color: #334155;
+        }
+
+        /* 選中狀態：白色背景、浮起陰影、深色文字 */
+        .tab-btn.active {
+            background-color: white;
+            color: #0f172a; /* Slate-900 */
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+
+        /* --- 其他樣式維持不變 --- */
         .budget-table th { background-color: #e2e8f0; padding: 8px; font-size: 0.85rem; border: 1px solid #cbd5e1; white-space: nowrap; }
         .budget-table td { padding: 4px; border: 1px solid #cbd5e1; min-width: 100px; }
         .budget-table input { width: 100%; padding: 4px; border: 1px solid transparent; text-align: right; background: transparent; font-size: 0.9rem; }
         .budget-table input:focus { outline: none; border-color: #3b82f6; background: white; }
         .budget-table input[readonly] { font-weight: bold; color: #2563eb; background-color: #f8fafc; }
         
-        /* Aggregator Styles */
         .drop-zone { border: 3px dashed #475569; transition: all 0.3s; background-color: #1e293b; position: relative; }
         .drop-zone.active { border-color: #38bdf8; background-color: #334155; transform: scale(1.01); }
         .agg-table th { background-color: #334155; color: #94a3b8; padding: 12px; font-size: 0.85rem; text-align: left; }
         .agg-table td { padding: 12px; border-bottom: 1px solid #334155; font-size: 0.9rem; color: #e2e8f0; }
         
-        /* Sorting */
         th.sortable { cursor: pointer; user-select: none; }
         th.sortable:hover { background-color: #475569; color: white; }
         th.sortable::after { content: ' ↕'; opacity: 0.3; float: right; }
         th.sortable.asc::after { content: ' ↑'; opacity: 1; color: #38bdf8; }
         th.sortable.desc::after { content: ' ↓'; opacity: 1; color: #38bdf8; }
+        
+        .stat-card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+        .stat-label { font-size: 0.875rem; color: #94a3b8; margin-bottom: 0.5rem; }
+        .stat-value { font-size: 2rem; font-weight: 700; color: white; }
     </style>
 </head>
 <body>
 
-<nav class="bg-white shadow sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4">
-        <div class="flex justify-between items-center h-16">
-            <div class="flex-shrink-0 font-bold text-xl text-slate-700">🇹🇼 政府預算系統</div>
-            <div class="flex space-x-1">
-                <button onclick="switchTab('guide')" id="btn-guide" class="tab-btn active">📖 使用指南</button>
-                <button onclick="switchTab('manager')" id="btn-manager" class="tab-btn">📝 預算填報工作站</button>
-                <button onclick="switchTab('aggregator')" id="btn-aggregator" class="tab-btn">📊 預算匯整儀表板</button>
+<nav class="nav-container sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 text-white p-2 rounded-lg font-bold text-xl">🇹🇼</div>
+            <div>
+                <h1 class="font-bold text-lg text-slate-800 leading-tight">政府預算系統</h1>
+                <p class="text-xs text-slate-500">填報與匯整決策中心</p>
             </div>
+        </div>
+
+        <div class="absolute left-1/2 transform -translate-x-1/2 hidden md:block">
+            <div class="tab-pill-container">
+                <button onclick="switchTab('guide')" id="btn-guide" class="tab-btn active">
+                    <span>📖</span> 使用指南
+                </button>
+                <button onclick="switchTab('manager')" id="btn-manager" class="tab-btn">
+                    <span>📝</span> 填報工作站
+                </button>
+                <button onclick="switchTab('aggregator')" id="btn-aggregator" class="tab-btn">
+                    <span>📊</span> 匯整儀表板
+                </button>
+            </div>
+        </div>
+
+        <div class="md:hidden text-sm text-gray-500">
+            (請使用電腦版以獲得最佳體驗)
         </div>
     </div>
 </nav>
 
-<div id="tab-guide" class="max-w-5xl mx-auto p-8 block">
-    <div class="bg-white rounded-2xl shadow-lg p-10">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">歡迎使用預算收支填報與匯整系統</h1>
+<div id="tab-guide" class="max-w-5xl mx-auto p-8 block fade-in">
+    <div class="bg-white rounded-3xl shadow-xl p-12 border border-slate-100">
+        <h2 class="text-3xl font-extrabold text-slate-800 mb-8 text-center">歡迎使用預算收支系統</h2>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
-            <div class="bg-blue-50 p-8 rounded-xl border border-blue-100">
-                <div class="flex items-center gap-3 mb-4">
-                    <span class="text-3xl">📝</span>
-                    <h2 class="text-xl font-bold text-blue-800">我是填報單位</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div onclick="switchTab('manager')" class="group cursor-pointer bg-blue-50 p-8 rounded-2xl border-2 border-transparent hover:border-blue-300 transition-all hover:shadow-lg">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="bg-blue-100 p-3 rounded-full text-2xl group-hover:scale-110 transition-transform">📝</div>
+                    <h3 class="text-xl font-bold text-blue-900">我是填報單位</h3>
                 </div>
-                <p class="text-gray-600 mb-4 font-bold">適用對象：鄉鎮市公所、附屬機關、各特種基金單位。</p>
-                <ul class="list-disc list-inside space-y-2 text-gray-700 text-sm">
-                    <li>請點擊上方 <strong>「預算填報工作站」</strong> 頁籤。</li>
-                    <li>依序填寫營業、作業、特別收入等基金的預算數據。</li>
-                    <li>系統會自動計算毛利、淨利與賸餘。</li>
-                    <li>完成後，請點擊 <strong>「匯出備份 (HTML)」</strong> 或 <strong>「匯出 JSON」</strong>。</li>
-                    <li>將下載的檔案傳送給上級匯整單位。</li>
+                <p class="text-slate-600 mb-6 font-medium">適用：鄉鎮市公所、各基金管理單位</p>
+                <ul class="space-y-3 text-slate-600 text-sm">
+                    <li class="flex gap-2"><span>1️⃣</span> <span>點擊進入 <strong>「填報工作站」</strong></span></li>
+                    <li class="flex gap-2"><span>2️⃣</span> <span>依序填寫營業、作業、特收等預算</span></li>
+                    <li class="flex gap-2"><span>3️⃣</span> <span>系統自動計算毛利與淨利</span></li>
+                    <li class="flex gap-2"><span>4️⃣</span> <span>匯出 <strong>.json</strong> 或 <strong>.html</strong> 傳給上級</span></li>
                 </ul>
+                <div class="mt-6 text-blue-600 font-bold text-sm flex items-center group-hover:translate-x-2 transition-transform">
+                    前往填報 &rarr;
+                </div>
             </div>
 
-            <div class="bg-indigo-50 p-8 rounded-xl border border-indigo-100">
-                <div class="flex items-center gap-3 mb-4">
-                    <span class="text-3xl">📊</span>
-                    <h2 class="text-xl font-bold text-indigo-800">我是匯整單位</h2>
+            <div onclick="switchTab('aggregator')" class="group cursor-pointer bg-indigo-50 p-8 rounded-2xl border-2 border-transparent hover:border-indigo-300 transition-all hover:shadow-lg">
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="bg-indigo-100 p-3 rounded-full text-2xl group-hover:scale-110 transition-transform">📊</div>
+                    <h3 class="text-xl font-bold text-indigo-900">我是匯整單位</h3>
                 </div>
-                <p class="text-gray-600 mb-4 font-bold">適用對象：縣市政府主計處、直轄市府匯整人員。</p>
-                <ul class="list-disc list-inside space-y-2 text-gray-700 text-sm">
-                    <li>請點擊上方 <strong>「預算匯整儀表板」</strong> 頁籤。</li>
-                    <li>收集轄下各單位傳來的檔案 (HTML 或 JSON 皆可)。</li>
-                    <li>將這些檔案 <strong>一次拖入</strong> 虛線框內。</li>
-                    <li>系統將自動加總並產生分析報表。</li>
-                    <li>確認無誤後，點擊 <strong>「匯出 Excel」</strong> 產生正式總表。</li>
+                <p class="text-slate-600 mb-6 font-medium">適用：直轄市府、縣市政府主計處</p>
+                <ul class="space-y-3 text-slate-600 text-sm">
+                    <li class="flex gap-2"><span>1️⃣</span> <span>點擊進入 <strong>「匯整儀表板」</strong></span></li>
+                    <li class="flex gap-2"><span>2️⃣</span> <span>收集轄下單位的檔案</span></li>
+                    <li class="flex gap-2"><span>3️⃣</span> <span>將檔案 <strong>拖曳</strong> 至分析區</span></li>
+                    <li class="flex gap-2"><span>4️⃣</span> <span>檢視統計並匯出 <strong>總表 Excel</strong></span></li>
                 </ul>
+                <div class="mt-6 text-indigo-600 font-bold text-sm flex items-center group-hover:translate-x-2 transition-transform">
+                    前往匯整 &rarr;
+                </div>
             </div>
         </div>
         
-        <div class="mt-8 text-center text-gray-400 text-sm">
-            系統版本：v2.0 (整合版) | 資料處理：本機端運算 (Local Processing)，資料不會上傳雲端，請安心使用。
+        <div class="mt-10 pt-6 border-t border-slate-100 text-center text-slate-400 text-xs">
+            系統版本：v2.1 (All-in-One) | 資料處理：本機端運算 (Local Processing)，資料安全無虞
         </div>
     </div>
 </div>
 
-<div id="tab-manager" class="max-w-[98%] mx-auto p-4 hidden">
-    <div class="bg-white p-4 rounded-xl shadow mb-6 flex flex-wrap justify-between items-center gap-4">
+<div id="tab-manager" class="max-w-[98%] mx-auto p-4 hidden mt-4">
+    <div class="bg-white p-4 rounded-xl shadow mb-6 flex flex-wrap justify-between items-center gap-4 border border-slate-200">
         <div>
-            <h2 class="text-2xl font-bold text-gray-800">📝 填報工作站</h2>
-            <span id="mgr-status" class="text-xs text-gray-500">🟢 自動儲存就緒</span>
+            <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">📝 填報工作站 <span id="mgr-status" class="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-1 rounded-full">🟢 自動儲存</span></h2>
         </div>
         <div class="flex gap-2">
-            <button onclick="document.getElementById('mgr-import').click()" class="bg-gray-100 px-4 py-2 rounded hover:bg-gray-200">📂 匯入舊檔</button>
+            <button onclick="document.getElementById('mgr-import').click()" class="bg-gray-100 text-gray-600 px-4 py-2 rounded hover:bg-gray-200 border text-sm font-bold">📂 匯入舊檔</button>
             <input type="file" id="mgr-import" class="hidden" accept=".json,.html" onchange="mgr_importFile(this)">
             
-            <button onclick="mgr_exportJSON()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 shadow">💾 匯出 JSON</button>
-            <button onclick="mgr_exportHTML()" class="bg-teal-600 text-white px-4 py-2 rounded hover:bg-teal-700 shadow">🌍 匯出備份 (HTML)</button>
-            <button onclick="mgr_exportXLSX()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 shadow">📊 匯出 Excel</button>
-            <button onclick="mgr_clearAll()" class="bg-red-100 text-red-600 px-4 py-2 rounded hover:bg-red-200">🗑️ 清空</button>
+            <div class="border-l pl-2 flex gap-2">
+                <button onclick="mgr_exportHTML()" class="bg-teal-600 text-white px-4 py-2 rounded hover:bg-teal-700 shadow text-sm font-bold flex items-center gap-1">🌍 備份 HTML</button>
+                <button onclick="mgr_exportJSON()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 shadow text-sm font-bold flex items-center gap-1">💾 資料 JSON</button>
+                <button onclick="mgr_exportXLSX()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 shadow text-sm font-bold flex items-center gap-1">📊 報表 Excel</button>
+            </div>
+            
+            <button onclick="mgr_clearAll()" class="ml-2 px-3 py-2 text-red-500 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition">🗑️</button>
         </div>
     </div>
 
     <div class="space-y-6">
-        <div class="bg-white p-6 rounded-lg shadow border border-gray-200">
-            <div class="grid grid-cols-3 gap-6">
-                <div><label class="block text-sm font-bold text-gray-700">單位名稱</label><input type="text" id="mgr-org" class="w-full border-b-2 py-1" placeholder="例如：板橋區公所" oninput="mgr_autoSave()"></div>
-                <div><label class="block text-sm font-bold text-gray-700">年度</label><input type="number" id="mgr-year" value="114" class="w-full border-b-2 py-1" oninput="mgr_autoSave()"></div>
-                <div><label class="block text-sm font-bold text-gray-700">填表人</label><input type="text" id="mgr-user" class="w-full border-b-2 py-1" oninput="mgr_autoSave()"></div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">單位名稱</label><input type="text" id="mgr-org" class="w-full border-b-2 border-slate-200 focus:border-blue-500 outline-none py-2 text-lg font-bold text-slate-700" placeholder="例如：板橋區公所" oninput="mgr_autoSave()"></div>
+                <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">年度</label><input type="number" id="mgr-year" value="114" class="w-full border-b-2 border-slate-200 focus:border-blue-500 outline-none py-2 text-lg text-slate-700" oninput="mgr_autoSave()"></div>
+                <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">填表人</label><input type="text" id="mgr-user" class="w-full border-b-2 border-slate-200 focus:border-blue-500 outline-none py-2 text-lg text-slate-700" oninput="mgr_autoSave()"></div>
             </div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-            <div class="flex justify-between mb-4"><h3 class="font-bold text-blue-800">🏢 營業基金</h3><button onclick="mgr_addOpRow()" class="bg-blue-50 text-blue-600 px-2 rounded text-sm">+ 新增</button></div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-blue-500">
+            <div class="flex justify-between mb-4"><h3 class="font-bold text-blue-800 text-lg">🏢 營業基金</h3><button onclick="mgr_addOpRow()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-blue-100">+ 新增一行</button></div>
             <div class="overflow-x-auto"><table class="w-full budget-table"><thead><tr><th class="w-8"></th><th>基金名稱</th><th>營業收入</th><th>營業成本</th><th>營業毛利</th><th>營業費用</th><th>營業利益</th><th>業外收入</th><th>業外費用</th><th>業外利益</th><th>稅前淨利</th><th>所得稅</th><th>本期淨利</th></tr></thead><tbody id="mgr-tbody-op"></tbody></table></div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-            <div class="flex justify-between mb-4"><h3 class="font-bold text-green-800">🏗️ 作業基金</h3><button onclick="mgr_addWkRow()" class="bg-green-50 text-green-600 px-2 rounded text-sm">+ 新增</button></div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-green-500">
+            <div class="flex justify-between mb-4"><h3 class="font-bold text-green-800 text-lg">🏗️ 作業基金</h3><button onclick="mgr_addWkRow()" class="bg-green-50 text-green-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-green-100">+ 新增一行</button></div>
             <div class="overflow-x-auto"><table class="w-full budget-table"><thead><tr><th class="w-8"></th><th>基金名稱</th><th>業務收入</th><th>成本費用</th><th>業務賸餘</th><th>業外收入</th><th>業外費用</th><th>業外賸餘</th><th>本期賸餘</th></tr></thead><tbody id="mgr-tbody-wk"></tbody></table></div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-purple-500">
-            <div class="flex justify-between mb-4"><h3 class="font-bold text-purple-800">💰 特別收入基金</h3><button onclick="mgr_addSpRow()" class="bg-purple-50 text-purple-600 px-2 rounded text-sm">+ 新增</button></div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-purple-500">
+            <div class="flex justify-between mb-4"><h3 class="font-bold text-purple-800 text-lg">💰 特別收入基金</h3><button onclick="mgr_addSpRow()" class="bg-purple-50 text-purple-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-purple-100">+ 新增一行</button></div>
             <div class="overflow-x-auto"><table class="w-full budget-table"><thead><tr><th class="w-8"></th><th>基金名稱</th><th>基金來源</th><th>基金用途</th><th>本期賸餘</th><th>期初累積</th><th>解繳公庫</th><th>期末累積</th></tr></thead><tbody id="mgr-tbody-sp"></tbody></table></div>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow border-l-4 border-orange-500">
-            <div class="flex justify-between mb-4"><h3 class="font-bold text-orange-800">📉 債務基金</h3><button onclick="mgr_addDebtRow()" class="bg-orange-50 text-orange-600 px-2 rounded text-sm">+ 新增</button></div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border-l-4 border-orange-500">
+            <div class="flex justify-between mb-4"><h3 class="font-bold text-orange-800 text-lg">📉 債務基金</h3><button onclick="mgr_addDebtRow()" class="bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-sm font-bold hover:bg-orange-100">+ 新增一行</button></div>
             <div class="overflow-x-auto"><table class="w-full budget-table"><thead><tr><th class="w-8"></th><th>基金名稱</th><th>基金來源</th><th>基金用途</th><th>本期賸餘</th><th>期初累積</th><th>期末累積</th></tr></thead><tbody id="mgr-tbody-debt"></tbody></table></div>
         </div>
     </div>
 </div>
 
-<div id="tab-aggregator" class="max-w-[98%] mx-auto p-4 hidden bg-[#0f172a] min-h-screen text-white rounded-xl mt-4">
-    <div class="flex flex-wrap justify-between items-end mb-8 gap-4">
+<div id="tab-aggregator" class="max-w-[98%] mx-auto p-6 hidden bg-[#0f172a] min-h-screen text-white rounded-xl mt-4 shadow-2xl">
+    <div class="flex flex-wrap justify-between items-end mb-8 gap-4 border-b border-slate-700 pb-6">
         <div>
-            <h1 class="text-3xl font-bold text-white">📊 匯整儀表板</h1>
-            <p class="text-slate-400 text-sm">支援拖曳匯入多個 .json 或 .html 檔案</p>
+            <h1 class="text-3xl font-bold text-white mb-1">📊 匯整儀表板</h1>
+            <p class="text-slate-400 text-sm">適用：Level 2 最終匯整 (直轄市/縣市)</p>
         </div>
         <div class="flex gap-2">
-            <button onclick="document.getElementById('agg-input').click()" class="bg-slate-700 px-4 py-2 rounded hover:bg-slate-600 text-sm">📂 匯入檔案</button>
+            <button onclick="document.getElementById('agg-input').click()" class="bg-slate-700 border border-slate-600 px-4 py-2 rounded-lg hover:bg-slate-600 text-sm font-bold flex items-center gap-2">📂 匯入檔案</button>
             <input type="file" id="agg-input" multiple accept=".json,.html" class="hidden" onchange="agg_handleFiles(this.files)">
-            <button onclick="agg_exportWorkspace()" class="bg-teal-600 px-4 py-2 rounded hover:bg-teal-500 text-sm shadow">🌍 儲存工作區</button>
-            <button onclick="agg_clearAll()" class="bg-red-900 px-4 py-2 rounded hover:bg-red-800 text-sm border border-red-700">🗑️ 清空</button>
+            <button onclick="agg_exportWorkspace()" class="bg-teal-600 px-4 py-2 rounded-lg hover:bg-teal-500 text-sm font-bold shadow flex items-center gap-2">🌍 儲存工作區</button>
+            <button onclick="agg_clearAll()" class="bg-red-900/50 text-red-200 border border-red-900 px-4 py-2 rounded-lg hover:bg-red-900 text-sm">🗑️</button>
         </div>
     </div>
 
-    <div id="agg-dropzone" class="drop-zone rounded-xl p-8 text-center cursor-pointer mb-8">
-        <p class="text-xl font-bold text-slate-300">請將各單位回傳檔案拖曳至此</p>
-        <p class="text-sm text-slate-500">系統將自動解析合併</p>
+    <div id="agg-dropzone" class="drop-zone rounded-xl p-10 text-center cursor-pointer mb-8">
+        <div class="text-4xl mb-2">📥</div>
+        <p class="text-xl font-bold text-slate-300">將各單位回傳檔案拖曳至此</p>
+        <p class="text-sm text-slate-500">系統支援 .json 資料檔與 .html 備份檔混用</p>
     </div>
 
-    <div id="agg-content" class="hidden space-y-8">
+    <div id="agg-content" class="hidden space-y-8 animate-fade-in">
         <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
-            <div class="stat-card border-l-4 border-blue-500 bg-slate-800 p-4 rounded"><div class="text-slate-400 text-xs">單位數</div><div class="text-2xl font-bold" id="kpi-govs">0</div></div>
-            <div class="stat-card border-l-4 border-indigo-500 bg-slate-800 p-4 rounded"><div class="text-slate-400 text-xs">基金數</div><div class="text-2xl font-bold" id="kpi-funds">0</div></div>
-            <div class="stat-card border-l-4 border-green-500 bg-slate-800 p-4 rounded"><div class="text-slate-400 text-xs">總收入(億)</div><div class="text-2xl font-bold text-green-400" id="kpi-rev">0</div></div>
-            <div class="stat-card border-l-4 border-emerald-500 bg-slate-800 p-4 rounded"><div class="text-slate-400 text-xs">總賸餘(億)</div><div class="text-2xl font-bold text-emerald-400" id="kpi-surplus">0</div></div>
-            <div class="stat-card border-l-4 border-teal-500 bg-slate-800 p-4 rounded"><div class="text-slate-400 text-xs">盈餘家數</div><div class="text-2xl font-bold text-teal-300" id="kpi-profit">0</div></div>
-            <div class="stat-card border-l-4 border-red-500 bg-slate-800 p-4 rounded"><div class="text-slate-400 text-xs">虧損家數</div><div class="text-2xl font-bold text-red-400" id="kpi-loss">0</div></div>
+            <div class="stat-card border-l-4 border-blue-500 bg-slate-800 p-4 rounded-lg shadow-lg"><div class="text-slate-400 text-xs uppercase font-bold">彙整單位</div><div class="text-2xl font-bold mt-1" id="kpi-govs">0</div></div>
+            <div class="stat-card border-l-4 border-indigo-500 bg-slate-800 p-4 rounded-lg shadow-lg"><div class="text-slate-400 text-xs uppercase font-bold">基金總數</div><div class="text-2xl font-bold mt-1" id="kpi-funds">0</div></div>
+            <div class="stat-card border-l-4 border-green-500 bg-slate-800 p-4 rounded-lg shadow-lg"><div class="text-slate-400 text-xs uppercase font-bold">總收入(億)</div><div class="text-2xl font-bold text-green-400 mt-1" id="kpi-rev">0</div></div>
+            <div class="stat-card border-l-4 border-emerald-500 bg-slate-800 p-4 rounded-lg shadow-lg"><div class="text-slate-400 text-xs uppercase font-bold">本期賸餘(億)</div><div class="text-2xl font-bold text-emerald-400 mt-1" id="kpi-surplus">0</div></div>
+            <div class="stat-card border-l-4 border-teal-500 bg-slate-800 p-4 rounded-lg shadow-lg"><div class="text-slate-400 text-xs uppercase font-bold">盈餘家數</div><div class="text-2xl font-bold text-teal-300 mt-1" id="kpi-profit">0</div></div>
+            <div class="stat-card border-l-4 border-red-500 bg-slate-800 p-4 rounded-lg shadow-lg"><div class="text-slate-400 text-xs uppercase font-bold">虧損家數</div><div class="text-2xl font-bold text-red-400 mt-1" id="kpi-loss">0</div></div>
         </div>
 
-        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <select id="agg-filter-gov" class="bg-slate-900 border border-slate-600 rounded p-2 text-white" onchange="agg_search()"><option value="all">🏢 所有單位</option></select>
-                <input type="text" id="agg-search-txt" placeholder="搜尋基金..." class="bg-slate-900 border border-slate-600 rounded p-2 text-white" oninput="agg_search()">
-                <select id="agg-filter-type" class="bg-slate-900 border border-slate-600 rounded p-2 text-white" onchange="agg_search()">
+                <select id="agg-filter-gov" class="bg-slate-900 border border-slate-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" onchange="agg_search()"><option value="all">🏢 所有單位</option></select>
+                <input type="text" id="agg-search-txt" placeholder="搜尋基金..." class="bg-slate-900 border border-slate-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" oninput="agg_search()">
+                <select id="agg-filter-type" class="bg-slate-900 border border-slate-600 rounded-lg p-2 text-white outline-none focus:border-blue-500" onchange="agg_search()">
                     <option value="all">📂 所有類型</option><option value="op">營業基金</option><option value="wk">作業基金</option><option value="sp">特收基金</option><option value="debt">債務基金</option>
                 </select>
             </div>
-            <div class="overflow-x-auto max-h-64 overflow-y-auto border border-slate-700 rounded">
+            <div class="overflow-x-auto max-h-80 overflow-y-auto border border-slate-700 rounded-lg">
                 <table class="w-full agg-table text-left text-sm">
-                    <thead class="sticky top-0 bg-slate-900 z-10">
+                    <thead class="sticky top-0 bg-slate-900 z-10 shadow">
                         <tr>
                             <th class="sortable" onclick="agg_sortSearch('gov')">單位</th>
                             <th class="sortable" onclick="agg_sortSearch('type')">類型</th>
@@ -196,10 +256,12 @@
             <div class="text-right text-xs text-slate-500 mt-2" id="agg-search-stats">0 筆</div>
         </div>
 
-        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-lg">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="font-bold text-lg">🏛️ 各單位匯整概況</h3>
-                <button onclick="agg_exportExcel()" class="bg-green-600 px-4 py-2 rounded hover:bg-green-500 text-sm font-bold shadow">📊 匯出 Excel</button>
+                <h3 class="font-bold text-lg text-slate-200">🏛️ 各單位匯整概況</h3>
+                <button onclick="agg_exportExcel()" class="bg-green-600 px-4 py-2 rounded hover:bg-green-500 text-sm font-bold shadow flex items-center gap-2">
+                    <span>📊</span> 匯出 Excel
+                </button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full agg-table text-left text-sm">
@@ -227,6 +289,12 @@
         document.getElementById('tab-' + tabId).classList.remove('hidden');
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         document.getElementById('btn-' + tabId).classList.add('active');
+        
+        // Trigger auto-load for aggregator if switching to it
+        if(tabId === 'aggregator' && window.embeddedData && agg_data.length === 0) {
+            agg_data = window.embeddedData;
+            agg_updateDashboard();
+        }
     }
 
     // ==========================================
@@ -237,11 +305,8 @@
         mgr_loadFromStorage();
         if(document.querySelectorAll('#mgr-tbody-op tr').length === 0) mgr_resetRows();
         
-        // Auto-load aggregator backup if present in HTML
-        if(window.embeddedData && window.embeddedData.length > 0) {
-            agg_data = window.embeddedData;
-            agg_updateDashboard();
-        }
+        // Pre-load embedded data if exists (for workspace restoration)
+        if(window.embeddedData) agg_data = window.embeddedData;
         
         agg_setupDrag();
     });
@@ -258,22 +323,22 @@
     // Row Adders
     function mgr_addOpRow(d={}) { 
         const tr=document.createElement('tr'); 
-        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-rev',d.rev,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-cost',d.cost,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-gross',d.gross,1)}</td><td>${mgr_createInput('v-exp',d.exp,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-opprofit',d.opprofit,1)}</td><td>${mgr_createInput('v-nonrev',d.nonrev,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-nonexp',d.nonexp,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-nonprofit',d.nonprofit,1)}</td><td>${mgr_createInput('v-pretax',d.pretax,1)}</td><td>${mgr_createInput('v-tax',d.tax,0,'mgr_calcOp')}</td><td><input class="v-net font-bold text-red-600" value="${d.net||''}" readonly></td>`; 
+        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold hover:bg-red-50 rounded px-1" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-rev',d.rev,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-cost',d.cost,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-gross',d.gross,1)}</td><td>${mgr_createInput('v-exp',d.exp,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-opprofit',d.opprofit,1)}</td><td>${mgr_createInput('v-nonrev',d.nonrev,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-nonexp',d.nonexp,0,'mgr_calcOp')}</td><td>${mgr_createInput('v-nonprofit',d.nonprofit,1)}</td><td>${mgr_createInput('v-pretax',d.pretax,1)}</td><td>${mgr_createInput('v-tax',d.tax,0,'mgr_calcOp')}</td><td><input class="v-net font-bold text-red-600" value="${d.net||''}" readonly></td>`; 
         document.getElementById('mgr-tbody-op').appendChild(tr); if(d.rev) mgr_calcOp(tr.querySelector('.v-rev')); 
     }
     function mgr_addWkRow(d={}) {
         const tr=document.createElement('tr'); 
-        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-rev',d.rev,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-cost',d.cost,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-surplus',d.surplus,1)}</td><td>${mgr_createInput('v-nonrev',d.nonrev,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-nonexp',d.nonexp,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-nonsurplus',d.nonsurplus,1)}</td><td><input class="v-net font-bold text-green-600" value="${d.net||''}" readonly></td>`; 
+        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold hover:bg-red-50 rounded px-1" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-rev',d.rev,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-cost',d.cost,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-surplus',d.surplus,1)}</td><td>${mgr_createInput('v-nonrev',d.nonrev,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-nonexp',d.nonexp,0,'mgr_calcWk')}</td><td>${mgr_createInput('v-nonsurplus',d.nonsurplus,1)}</td><td><input class="v-net font-bold text-green-600" value="${d.net||''}" readonly></td>`; 
         document.getElementById('mgr-tbody-wk').appendChild(tr); if(d.rev) mgr_calcWk(tr.querySelector('.v-rev'));
     }
     function mgr_addSpRow(d={}) {
         const tr=document.createElement('tr');
-        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-source',d.source,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-use',d.use,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-surplus',d.surplus,1)}</td><td>${mgr_createInput('v-begin',d.begin,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-remit',d.remit,0,'mgr_calcSp')}</td><td><input class="v-end font-bold" value="${d.end||''}" readonly></td>`;
+        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold hover:bg-red-50 rounded px-1" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-source',d.source,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-use',d.use,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-surplus',d.surplus,1)}</td><td>${mgr_createInput('v-begin',d.begin,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-remit',d.remit,0,'mgr_calcSp')}</td><td><input class="v-end font-bold" value="${d.end||''}" readonly></td>`;
         document.getElementById('mgr-tbody-sp').appendChild(tr); if(d.source) mgr_calcSp(tr.querySelector('.v-source'));
     }
     function mgr_addDebtRow(d={}) {
         const tr=document.createElement('tr');
-        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-source',d.source,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-use',d.use,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-surplus',d.surplus,1)}</td><td>${mgr_createInput('v-begin',d.begin,0,'mgr_calcSp')}</td><td><input class="v-end font-bold" value="${d.end||''}" readonly></td>`;
+        tr.innerHTML=`<td class="text-center"><span class="text-red-500 cursor-pointer font-bold hover:bg-red-50 rounded px-1" onclick="mgr_delRow(this)">×</span></td><td><input type="text" class="name-input" value="${d.name||''}" oninput="mgr_autoSave()"></td><td>${mgr_createInput('v-source',d.source,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-use',d.use,0,'mgr_calcSp')}</td><td>${mgr_createInput('v-surplus',d.surplus,1)}</td><td>${mgr_createInput('v-begin',d.begin,0,'mgr_calcSp')}</td><td><input class="v-end font-bold" value="${d.end||''}" readonly></td>`;
         document.getElementById('mgr-tbody-debt').appendChild(tr); if(d.source) mgr_calcSp(tr.querySelector('.v-source'));
     }
     
@@ -313,8 +378,8 @@
     function mgr_exportJSON() { const d=mgr_collectData(); saveAs(new Blob([JSON.stringify(d,null,2)],{type:"application/json"}), `${d.metadata.org}_${d.metadata.year}.json`); }
     
     function mgr_exportHTML() {
-        document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value)); // Bake values
-        const html = "<!DOCTYPE html>\n" + document.documentElement.outerHTML; // Capture entire app state
+        document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
+        const html = "<!DOCTYPE html>\n" + document.documentElement.outerHTML; 
         saveAs(new Blob([html],{type:"text/html"}), `${document.getElementById('mgr-org').value}_備份.html`);
     }
 
@@ -324,11 +389,7 @@
         const createSheet = (name, data, headers) => {
             if(!data || data.length===0) return;
             const wsData = [headers];
-            data.forEach(item => {
-                const vals = Object.values(item); 
-                // Note: Object.values relies on collectData key order.
-                wsData.push(vals); 
-            });
+            data.forEach(item => { wsData.push(Object.values(item)); });
             XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), name);
         };
         createSheet('營業基金', d.op, ['名稱','營收','成本','費用','業外收','業外費','稅','毛利','營利','業外利','稅前','淨利']);
@@ -351,10 +412,6 @@
                     document.getElementById('mgr-org').value = doc.getElementById('mgr-org').value;
                     document.getElementById('mgr-year').value = doc.getElementById('mgr-year').value;
                     document.getElementById('mgr-user').value = doc.getElementById('mgr-user').value;
-                    // Rebuild rows from saved HTML structure
-                    // Simplified logic: user HTML backup preserves inputs with value attributes
-                    // Here we assume the scraper logic or similar rebuild
-                    // Ideally, use scraper logic:
                     const g = (tr, s) => tr.querySelector(s)?.getAttribute('value') || tr.querySelector(s)?.value || '';
                     mgr_resetRows();
                     doc.querySelectorAll('#mgr-tbody-op tr').forEach(tr => mgr_addOpRow({name:g(tr,'.name-input'), rev:g(tr,'.v-rev'), cost:g(tr,'.v-cost'), exp:g(tr,'.v-exp'), nonrev:g(tr,'.v-nonrev'), nonexp:g(tr,'.v-nonexp'), tax:g(tr,'.v-tax')}));
@@ -398,13 +455,10 @@
                 if(file.name.endsWith('.json')) {
                     try { const j=JSON.parse(txt); if(j.metadata) agg_process(j); } catch(e){}
                 } else {
-                    // Try Workspace
                     const m = txt.match(/window\.embeddedData = (\[.*?\]);/s);
                     if(m && m[1]) { try{ JSON.parse(m[1]).forEach(j=>agg_process(j)); return; }catch(e){} }
-                    // Try County Backup
                     const doc = new DOMParser().parseFromString(txt, 'text/html');
                     if(doc.getElementById('mgr-org')) {
-                        // Use scraper from Manager module, but targeting the doc
                         const val = (row,s) => row.querySelector(s)?.getAttribute('value') || row.querySelector(s)?.value || '';
                         const meta = { org: val(doc, '#mgr-org'), year: val(doc, '#mgr-year'), user: val(doc, '#mgr-user') };
                         if(meta.org) {
@@ -435,17 +489,14 @@
         if(agg_data.length === 0) return;
         document.getElementById('agg-content').classList.remove('hidden');
         
-        // Refresh Dropdown
         const sel = document.getElementById('agg-filter-gov');
         sel.innerHTML = '<option value="all">🏢 所有單位</option>';
         [...agg_data].sort((a,b)=>a.metadata.org.localeCompare(b.metadata.org,'zh-Hant')).forEach(g => {
             sel.innerHTML += `<option value="${g.metadata.org}">${g.metadata.org}</option>`;
         });
 
-        // Calc Stats
         let s = { govs: agg_data.length, funds: 0, rev: 0, surplus: 0, profit: 0, loss: 0 };
         const num = (v) => parseFloat(v)||0;
-        
         const getT = (f, t) => {
             let i=0,o=0,n=0;
             if(t==='op') { i=num(f.rev)+num(f.nonrev); n=num(f.net); }
@@ -472,8 +523,7 @@
         document.getElementById('kpi-profit').innerText = s.profit;
         document.getElementById('kpi-loss').innerText = s.loss;
 
-        agg_renderGov();
-        agg_search();
+        agg_renderGov(); agg_search();
     }
 
     function agg_search() {
@@ -489,7 +539,6 @@
                 if(type !== 'all' && type !== tCode) return;
                 list?.forEach(f => {
                     if(txt && !f.name.toLowerCase().includes(txt)) return;
-                    // Total Calc
                     let i=0, o=0, n=0;
                     if(tCode==='op') { i=num(f.rev)+num(f.nonrev); o=num(f.cost)+num(f.exp)+num(f.nonexp)+num(f.tax); n=num(f.net); }
                     else if(tCode==='wk') { i=num(f.rev)+num(f.nonrev); o=num(f.cost)+num(f.nonexp); n=num(f.net); }
@@ -511,20 +560,23 @@
             return (a[k]-b[k])*d;
         });
         
-        // Update icons
         document.querySelectorAll('.agg-table th.sortable').forEach(th => {
             th.classList.remove('asc','desc');
             if(th.getAttribute('onclick').includes(`'${k}'`)) th.classList.add(agg_sort.dir);
         });
 
-        agg_searchCache.forEach(r => {
-            const color = r.net >= 0 ? 'text-green-400' : 'text-red-400';
-            tbody.innerHTML += `<tr class="border-b border-slate-700 hover:bg-slate-700/50">
-                <td>${r.gov}</td><td><span class="bg-slate-600 px-1 rounded text-xs">${r.type}</span></td><td>${r.name}</td>
-                <td class="text-right font-mono">${r.rev.toLocaleString()}</td><td class="text-right font-mono">${r.exp.toLocaleString()}</td>
-                <td class="text-right font-mono font-bold ${color}">${r.net.toLocaleString()}</td>
-            </tr>`;
-        });
+        if(agg_searchCache.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">無符合資料</td></tr>';
+        } else {
+            agg_searchCache.forEach(r => {
+                const color = r.net >= 0 ? 'text-green-400' : 'text-red-400';
+                tbody.innerHTML += `<tr class="border-b border-slate-700 hover:bg-slate-700/50">
+                    <td>${r.gov}</td><td><span class="bg-slate-600 px-1 rounded text-xs">${r.type}</span></td><td>${r.name}</td>
+                    <td class="text-right font-mono">${r.rev.toLocaleString()}</td><td class="text-right font-mono">${r.exp.toLocaleString()}</td>
+                    <td class="text-right font-mono font-bold ${color}">${r.net.toLocaleString()}</td>
+                </tr>`;
+            });
+        }
         document.getElementById('agg-search-stats').innerText = `${agg_searchCache.length} 筆`;
     }
 
@@ -566,12 +618,12 @@
     function agg_exportWorkspace() {
         const s = `<script>window.embeddedData = ${JSON.stringify(agg_data)};<\/script>`;
         let h = document.documentElement.outerHTML.replace(/<script>window\.embeddedData = .*?<\/script>/s, '');
-        saveAs(new Blob([h.replace('</body>', s+'</body>')], {type:"text/html"}), `匯整工作區_${new Date().toISOString().slice(0,10)}.html`);
+        let p = h.lastIndexOf('</body>');
+        saveAs(new Blob([h.substring(0,p)+s+h.substring(p)],{type:"text/html"}), `匯整工作區_${new Date().toISOString().slice(0,10)}.html`);
     }
 
     function agg_exportExcel() {
         const wb = XLSX.utils.book_new();
-        // 1. Comparison
         const ws1Data = [['單位','營業淨利','作業賸餘','特收賸餘','債務期末','綜合評估']];
         const num = (v) => parseFloat(v)||0;
         const sum = (arr,k) => arr?arr.reduce((a,i)=>a+num(i[k]),0):0;
@@ -581,7 +633,6 @@
         });
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ws1Data), "單位比較表");
 
-        // 2. Details
         const ws2Data = [['單位','類型','基金名稱','總收入/來源','總支出/用途','盈虧']];
         agg_data.forEach(g => {
             const push = (list, tName, tCode) => {
