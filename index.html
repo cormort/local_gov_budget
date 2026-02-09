@@ -602,6 +602,58 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ws2Data), "明細總表");
         XLSX.writeFile(wb, `預算匯整總表.xlsx`);
     }
+// ==========================================
+// MODULE: EXCEL PASTE SUPPORT (新增：Excel 貼上支援)
+// ==========================================
+
+document.addEventListener('paste', function (e) {
+    // 檢查目前焦點是否在 input 內
+    const activeElem = document.activeElement;
+    if (!activeElem || activeElem.tagName !== 'INPUT' || activeElem.type === 'text' && !activeElem.classList.contains('name-input') && activeElem.type !== 'number') {
+        return;
+    }
+
+    // 取得剪貼簿資料
+    const clipboardData = e.clipboardData || window.clipboardData;
+    const pastedData = clipboardData.getData('Text');
+
+    // 判斷是否為 Excel 格式 (通常以 Tab 分隔欄位，換行分隔列)
+    if (pastedData.includes('\t') || pastedData.includes('\n')) {
+        e.preventDefault(); // 攔截預設貼上行為
+
+        const rows = pastedData.split(/\r\n|\n|\r/);
+        const currentRow = activeElem.closest('tr');
+        const currentTd = activeElem.closest('td');
+        const tbody = currentRow.parentNode;
+        
+        // 取得當前單元格在該列的索引
+        const startColIdx = Array.from(currentRow.children).indexOf(currentTd);
+        const startRowIdx = Array.from(tbody.children).indexOf(currentRow);
+
+        rows.forEach((row, i) => {
+            if (row.trim() === "") return;
+            const cols = row.split('\t');
+            const targetRow = tbody.children[startRowIdx + i];
+            
+            if (targetRow) {
+                cols.forEach((value, j) => {
+                    const targetTd = targetRow.children[startColIdx + j];
+                    if (targetTd) {
+                        const input = targetTd.querySelector('input:not([readonly])');
+                        if (input) {
+                            // 清理數字格式 (移除逗號、百分比等)
+                            let cleanValue = value.trim().replace(/,/g, '');
+                            input.value = cleanValue;
+                            
+                            // 觸發該 input 的 input 事件，讓系統執行自動計算與儲存
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                    }
+                });
+            }
+        });
+    }
+});
 </script>
 </body>
 </html>
