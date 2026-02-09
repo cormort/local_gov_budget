@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政府預算查填與匯總系統 v3.8 (JSON & HTML 雙支援)</title>
+    <title>政府預算查填匯總系統 v3.8.3 (智慧貼上引導版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -11,16 +11,21 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
         .budget-table th { background-color: #e2e8f0; padding: 10px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; white-space: nowrap; color: #334155; }
-        .budget-table td { padding: 4px; border: 1px solid #cbd5e1; min-width: 100px; }
+        .budget-table td { padding: 4px; border: 1px solid #cbd5e1; min-width: 100px; position: relative; }
         .budget-table input { width: 100%; padding: 4px; border: 1px solid transparent; text-align: right; background: transparent; font-size: 0.9rem; }
         .budget-table input:focus { outline: none; border-color: #3b82f6; background: white; }
-        .budget-table input[readonly] { font-weight: bold; background-color: #f8fafc; }
+        .budget-table input[readonly] { font-weight: bold; background-color: #f8fafc; color: #2563eb; }
         .negative-value { color: #dc2626 !important; font-weight: bold; }
         .total-row { background-color: #f1f5f9; font-weight: bold; }
         .section-card { background: white; padding: 24px; border-radius: 12px; margin-bottom: 2rem; border-top: 4px solid #64748b; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        .drop-zone { border: 3px dashed #475569; transition: 0.3s; background-color: #1e293b; border-radius: 12px; }
-        .drop-zone.active { border-color: #38bdf8; background-color: #334155; }
-        .stat-card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; color: white; }
+        
+        /* 貼上功能提示樣式 */
+        [data-tip]:hover::after {
+            content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem;
+            white-space: nowrap; z-index: 50; pointer-events: none; margin-bottom: 5px;
+        }
+        .excel-guide { background: #eff6ff; border: 1px dashed #3b82f6; padding: 10px; border-radius: 8px; font-size: 0.85rem; color: #1e40af; margin-bottom: 1rem; }
     </style>
 </head>
 <body>
@@ -28,10 +33,13 @@
 <nav class="bg-white border-b sticky top-0 z-50 shadow-sm">
     <div class="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center">
         <div class="flex items-center gap-3">
-            <div class="bg-blue-600 text-white p-2 rounded-lg font-bold">🇹🇼</div>
-            <h1 class="font-bold text-lg text-slate-800">政府預算查填匯總系統 v3.8</h1>
+            <div class="bg-blue-600 text-white p-2 rounded-lg font-bold text-xl">🇹🇼</div>
+            <div>
+                <h1 class="font-bold text-lg text-slate-800 leading-tight">政府預算查填匯總平臺</h1>
+                <p class="text-xs text-slate-500">v3.8.3 (支援 Excel 跨列貼上)</p>
+            </div>
         </div>
-        <div class="bg-slate-100 p-1 rounded-full flex gap-1">
+        <div class="tab-pill-container bg-slate-100 p-1 rounded-full flex gap-1">
             <button onclick="switchTab('manager')" id="btn-manager" class="px-6 py-2 rounded-full font-bold transition active bg-white shadow-sm">📝 填報站</button>
             <button onclick="switchTab('aggregator')" id="btn-aggregator" class="px-6 py-2 rounded-full font-bold transition text-slate-500">📊 匯整端</button>
         </div>
@@ -40,47 +48,42 @@
 
 <div id="tab-manager" class="max-w-[98%] mx-auto p-4 block">
     <div class="flex justify-between items-center mb-6">
-        <h2 class="text-2xl font-bold text-slate-800">預算填報工作站</h2>
+        <div class="flex items-center gap-3">
+            <h2 class="text-2xl font-bold text-slate-800">預算填報工作站</h2>
+            <span class="animate-pulse bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full font-bold border border-blue-200">✨ 支援 Excel 貼上</span>
+        </div>
         <div class="flex gap-2">
+            <button onclick="document.getElementById('mgr-import-file').click()" class="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入舊檔</button>
+            <input type="file" id="mgr-import-file" class="hidden" accept=".json,.html" onchange="mgr_handleImport(this.files)">
             <button onclick="mgr_exportJSON()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
-            <button onclick="mgr_exportHTML()" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-teal-700">🌍 備份 HTML</button>
+            <button onclick="mgr_exportHTML()" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow">🌍 備份 HTML</button>
             <button onclick="mgr_exportXLSX()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 匯出 Excel</button>
             <button onclick="mgr_clearAll()" class="text-red-500 px-3 py-2 border rounded-lg text-sm hover:bg-red-50">🗑️ 清空</button>
         </div>
     </div>
 
+    <div class="excel-guide flex items-center gap-2">
+        <span>💡</span>
+        <span><b>操作提示：</b>您可以從 Excel 選取整塊資料區域按下 <kbd class="bg-white px-1 border rounded">Ctrl+C</kbd>，點擊下方表單任一格子按下 <kbd class="bg-white px-1 border rounded">Ctrl+V</kbd> 即可快速填入多列數據。</span>
+    </div>
+
     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <input type="text" id="mgr-org" class="border-b-2 w-full p-2 outline-none font-bold" placeholder="填報機關名稱">
-        <input type="number" id="mgr-year" class="border-b-2 w-full p-2 outline-none" value="115">
-        <input type="text" id="mgr-user" class="border-b-2 w-full p-2 outline-none" placeholder="承辦人姓名">
+        <div><label class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="mgr-org" class="border-b-2 w-full p-2 outline-none font-bold focus:border-blue-500"></div>
+        <div><label class="text-xs font-bold text-slate-400 uppercase">年度</label><input type="number" id="mgr-year" class="border-b-2 w-full p-2 outline-none" value="115"></div>
+        <div><label class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="mgr-user" class="border-b-2 w-full p-2 outline-none" placeholder="姓名"></div>
     </div>
     <div id="sections-container"></div>
 </div>
 
 <div id="tab-aggregator" class="max-w-[98%] mx-auto p-6 hidden bg-[#0f172a] min-h-screen text-white rounded-xl mt-4">
-    <div class="flex justify-between items-end mb-8 border-b border-slate-700 pb-6">
-        <h1 class="text-3xl font-bold">📊 匯整儀表板</h1>
-        <button onclick="agg_clearAll()" class="bg-red-900/40 text-red-200 px-4 py-2 rounded-lg text-sm">🗑️ 清空數據</button>
-    </div>
-    <div id="agg-dropzone" class="drop-zone p-12 text-center cursor-pointer mb-8">
-        <p class="text-xl font-bold text-slate-300">📥 拖曳單位的 JSON 或 HTML 備份檔至此進行自動匯整</p>
-        <p class="text-slate-500 text-sm mt-2">系統將自動識別格式並提取預算數值</p>
-    </div>
+    <div id="agg-dropzone" class="drop-zone p-12 text-center cursor-pointer mb-8 rounded-xl">📥 拖曳 JSON 或 HTML 至此匯整</div>
     <div id="agg-content" class="hidden space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="agg-kpi"></div>
-        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead><tr class="border-b border-slate-600"><th class="pb-3">機關</th><th class="pb-3">基金類型</th><th class="pb-3">基金名稱</th><th class="pb-3 text-right">預算盈虧</th></tr></thead>
-                    <tbody id="agg-list-body" class="text-slate-300"></tbody>
-                </table>
-            </div>
-        </div>
+        <div id="agg-list-area" class="bg-slate-800 p-6 rounded-xl border border-slate-700"><table class="w-full text-left text-sm"><tbody id="agg-list-body"></tbody></table></div>
     </div>
 </div>
 
 <script>
-    // --- 配置與科目定義 ---
     const sectionConfigs = [
         { id: 'op', title: '一、營業基金', color: '#2563eb', fields: ['name','rev','cost','gross','exp','opprofit','nonrev','nonexp','nonprofit','pretax','tax','net'] },
         { id: 'wk', title: '二、作業基金', color: '#16a34a', fields: ['name','rev','cost','surplus','nonrev','nonexp','nonsurplus','net'] },
@@ -89,12 +92,7 @@
         { id: 'cp', title: '五、資本計畫基金', color: '#0891b2', fields: ['name','source','use','surplus','begin','remit','end'] }
     ];
 
-    const fieldNames = {
-        name:'基金名稱', rev:'營業/業務收入', cost:'營業/業務成本與費用', gross:'營業毛利(毛損)', exp:'營業費用', 
-        opprofit:'營業利益(損失)', nonrev:'營業/業務外收入', nonexp:'營業/業務外費用', nonprofit:'營業外利益(損失)', 
-        pretax:'稅前淨利(淨損)', tax:'所得稅費用(利益)', net:'本期淨利/賸餘(淨損/短絀)', surplus:'本期賸餘(短絀)', 
-        nonsurplus:'業務外賸餘(短絀)', source:'基金來源', use:'基金用途', begin:'期初基金餘額', remit:'解繳公庫', end:'期末基金餘額'
-    };
+    const fieldNames = { name:'基金名稱', rev:'收入', cost:'成本費用', gross:'毛利', exp:'費用', opprofit:'利益', nonrev:'外收入', nonexp:'外費用', nonprofit:'外利益', pretax:'稅前', tax:'所得稅', net:'本期盈虧', surplus:'本期賸餘', nonsurplus:'外賸餘', source:'來源', use:'用途', begin:'期初', remit:'解繳', end:'期末' };
 
     function switchTab(id) {
         document.getElementById('tab-manager').classList.toggle('hidden', id !== 'manager');
@@ -105,23 +103,23 @@
 
     function render() {
         const container = document.getElementById('sections-container');
+        container.innerHTML = '';
         sectionConfigs.forEach(conf => {
             const div = document.createElement('div');
             div.className = 'section-card'; div.style.borderTopColor = conf.color;
-            div.innerHTML = `<div class="flex justify-between items-center mb-4"><h3 class="font-bold text-lg" style="color:${conf.color}">${conf.title}</h3><button onclick="mgr_addRow('${conf.id}')" class="text-blue-600 text-xs font-bold hover:underline">+ 新增</button></div>
+            div.innerHTML = `<div class="flex justify-between items-center mb-4"><h3 class="font-bold text-lg" style="color:${conf.color}">${conf.title}</h3><button onclick="mgr_addRow('${conf.id}')" class="text-blue-600 text-xs font-bold hover:underline">+ 手動新增</button></div>
                 <div class="overflow-x-auto"><table class="w-full budget-table"><thead><tr><th class="w-8"></th>${conf.fields.map(f => `<th>${fieldNames[f]}</th>`).join('')}</tr></thead><tbody id="tbody-${conf.id}"></tbody><tfoot id="tfoot-${conf.id}" class="total-row"><tr><td>∑</td><td class="text-center">合計</td>${conf.fields.slice(1).map(f => `<td><input type="text" class="t-${f}" readonly value="0"></td>`).join('')}</tr></tfoot></table></div>`;
             container.appendChild(div);
-            mgr_addRow(conf.id);
         });
     }
 
-    function mgr_addRow(type) {
+    function mgr_addRow(type, data = {}) {
         const conf = sectionConfigs.find(c => c.id === type);
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="text-center"><button onclick="this.closest('tr').remove(); update('${type}');">✕</button></td>` + 
+        tr.innerHTML = `<td class="text-center"><button onclick="this.closest('tr').remove(); update('${type}');" class="text-red-400">✕</button></td>` + 
             conf.fields.map(f => {
                 const isRO = ['gross','opprofit','nonprofit','pretax','net','surplus','nonsurplus','end'].includes(f);
-                return `<td><input type="${f==='name'?'text':'number'}" class="v-${f} ${f==='name'?'text-left':''}" ${isRO?'readonly':''} oninput="update('${type}')"></td>`;
+                return `<td data-tip="${isRO?'系統自動計算':'支援從 Excel 貼上數據'}"><input type="${f==='name'?'text':'number'}" class="v-${f} ${f==='name'?'text-left':''}" value="${data[f]||''}" ${isRO?'readonly':''} oninput="update('${type}')"></td>`;
             }).join('');
         document.getElementById(`tbody-${type}`).appendChild(tr);
     }
@@ -140,82 +138,95 @@
         });
         Object.keys(totals).forEach(f => {
             const tEl = document.querySelector(`#tfoot-${type} .t-${f}`);
-            tEl.value = totals[f].toLocaleString(); tEl.classList.toggle('negative-value', totals[f]<0);
+            if(tEl) { tEl.value = totals[f].toLocaleString(); tEl.classList.toggle('negative-value', totals[f]<0); }
         });
     }
 
-    // --- 數據匯出與匯整核心 ---
-    function mgr_exportJSON() {
-        const data = {
-            metadata: { org: document.getElementById('mgr-org').value, year: document.getElementById('mgr-year').value },
-            sections: sectionConfigs.map(conf => ({
-                id: conf.id,
-                items: Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
-                    let item = {}; conf.fields.forEach(f => item[f] = tr.querySelector('.v-'+f).value);
-                    return item;
-                })
-            }))
-        };
-        saveAs(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}), `${data.metadata.org}_預算資料.json`);
-    }
-
-    let agg_data = [];
-    function agg_setupDrag() {
-        const zone = document.getElementById('agg-dropzone');
-        zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('active'); };
-        zone.ondragleave = () => zone.classList.remove('active');
-        zone.ondrop = (e) => { e.preventDefault(); zone.classList.remove('active'); agg_handleFiles(e.dataTransfer.files); };
-    }
-
-    function agg_handleFiles(files) {
-        Array.from(files).forEach(file => {
-            const r = new FileReader();
-            r.onload = (e) => {
-                const content = e.target.result;
-                if (file.name.endsWith('.json')) {
-                    agg_process(JSON.parse(content));
-                } else {
-                    const doc = new DOMParser().parseFromString(content, 'text/html');
-                    const meta = { org: doc.getElementById('mgr-org')?.value || '未知機關' };
-                    const sections = sectionConfigs.map(conf => ({
-                        id: conf.id,
-                        items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
-                            let item = {}; conf.fields.forEach(f => {
-                                const inp = tr.querySelector('.v-'+f);
-                                item[f] = inp?.getAttribute('value') || inp?.value || 0;
-                            });
-                            return item;
-                        }).filter(i => i.name)
-                    }));
-                    agg_process({ metadata: meta, sections: sections });
+    // --- 貼上功能核心 ---
+    document.addEventListener('paste', e => {
+        const el = document.activeElement;
+        if (!el || el.readOnly || el.tagName !== 'INPUT') return;
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        if (!text.includes('\t') && !text.includes('\n')) return;
+        e.preventDefault();
+        const rowsData = text.split(/\r\n|\n|\r/).filter(r => r.trim());
+        const startTr = el.closest('tr'), tbody = startTr.parentNode, type = tbody.id.replace('tbody-', '');
+        const colIdx = Array.from(startTr.children).indexOf(el.closest('td')), rowIdx = Array.from(tbody.children).indexOf(startTr);
+        rowsData.forEach((rowStr, i) => {
+            let targetTr = tbody.children[rowIdx + i];
+            if (!targetTr) { mgr_addRow(type); targetTr = tbody.lastElementChild; }
+            rowStr.split('\t').forEach((val, j) => {
+                const input = targetTr.children[colIdx + j]?.querySelector('input:not([readonly])');
+                if (input) { 
+                    input.value = val.trim().replace(/,/g, ''); 
+                    input.dispatchEvent(new Event('input', {bubbles:true})); 
                 }
-            };
-            r.readAsText(file);
+            });
+        });
+    });
+
+    // --- 匯入/匯出 (保持 3.8.2 邏輯) ---
+    function mgr_handleImport(files) {
+        const file = files[0]; if(!file) return;
+        const r = new FileReader();
+        r.onload = (e) => {
+            const content = e.target.result;
+            if (file.name.endsWith('.json')) { mgr_populate(JSON.parse(content)); }
+            else {
+                const doc = new DOMParser().parseFromString(content, 'text/html');
+                const data = {
+                    metadata: { org: doc.getElementById('mgr-org')?.value, year: doc.getElementById('mgr-year')?.value },
+                    sections: sectionConfigs.map(conf => ({ id: conf.id, items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                        let item = {}; conf.fields.forEach(f => { const inp = tr.querySelector('.v-'+f); item[f] = inp?.getAttribute('value') || inp?.value || 0; });
+                        return item;
+                    }).filter(i => i.name) }))
+                };
+                mgr_populate(data);
+            }
+        };
+        r.readAsText(file);
+    }
+
+    function mgr_populate(data) {
+        document.getElementById('mgr-org').value = data.metadata.org || '';
+        document.getElementById('mgr-year').value = data.metadata.year || '115';
+        sectionConfigs.forEach(conf => {
+            const tbody = document.getElementById(`tbody-${conf.id}`);
+            tbody.innerHTML = '';
+            const section = data.sections.find(s => s.id === conf.id);
+            if (section && section.items.length > 0) section.items.forEach(i => mgr_addRow(conf.id, i));
+            else mgr_addRow(conf.id);
         });
     }
 
-    function agg_process(json) {
-        const idx = agg_data.findIndex(g => g.metadata.org === json.metadata.org);
-        if(idx >= 0) agg_data[idx] = json; else agg_data.push(json);
-        agg_updateUI();
+    function mgr_exportXLSX() {
+        const combined = [["政府預算總表"], ["機關：", document.getElementById('mgr-org').value], []];
+        const sheetData = []; 
+        sectionConfigs.forEach(conf => {
+            sheetData.push([conf.title]);
+            sheetData.push(conf.fields.map(f => fieldNames[f]));
+            Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).forEach(tr => {
+                sheetData.push(conf.fields.map((f, idx) => {
+                    const val = tr.querySelector('.v-'+f).value;
+                    return idx === 0 ? val : { v: parseFloat(val) || 0, t: 'n', z: '#,##0' };
+                }));
+            });
+            const footRow = ["合計"];
+            conf.fields.slice(1).forEach(f => footRow.push({ v: parseFloat(document.querySelector(`#tfoot-${conf.id} .t-${f}`).value.replace(/,/g, '')) || 0, t: 'n', z: '#,##0' }));
+            sheetData.push(footRow, []); 
+        });
+        const ws = XLSX.utils.aoa_to_sheet(sheetData);
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "預算總表");
+        XLSX.writeFile(wb, "預算報表.xlsx");
     }
 
-    function agg_updateUI() {
-        document.getElementById('agg-content').classList.remove('hidden');
-        let rev = 0, surplus = 0, loss = 0;
-        const tbody = document.getElementById('agg-list-body');
-        tbody.innerHTML = '';
-
-        agg_data.forEach(g => {
-            g.sections.forEach(s => s.items.forEach(i => {
-                let r = parseFloat(i.rev || i.source || 0), n = parseFloat(i.net || i.surplus || 0);
-                rev += r; surplus += n; if(n < 0) loss++;
-                tbody.innerHTML += `<tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
-                    <td class="py-3 font-bold">${g.metadata.org}</td><td>${s.id.toUpperCase()}</td><td>${i.name}</td>
-                    <td class="text-right font-bold ${n<0?'text-red-400':'text-green-400'}">${n.toLocaleString()}</td></tr>`;
-            }));
-        });
-        document.getElementById('agg-kpi').innerHTML = `<div class="stat-card">機關：${agg_data.length}</div><div class="stat-card">預算總收：${(rev/100000).toFixed(2)} 億</div><div class="stat-card">總盈虧：${(surplus/100000).toFixed(2)} 億</div><div class="stat-card text-red-400">虧損家數：${loss}</div>`;
+    function mgr_exportJSON() {
+        const data = { metadata: { org: document.getElementById('mgr-org').value, year: document.getElementById('mgr-year').value, user: document.getElementById('mgr-user').value },
+            sections: sectionConfigs.map(conf => ({ id: conf.id, items: Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                let item = {}; conf.fields.forEach(f => item[f] = tr.querySelector('.v-'+f).value); return item;
+            }).filter(i => i.name) }))
+        };
+        saveAs(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}), `${data.metadata.org}_預算.json`);
     }
 
     function mgr_exportHTML() {
@@ -223,22 +234,10 @@
         saveAs(new Blob(["<!DOCTYPE html>\n" + document.documentElement.outerHTML], {type: "text/html"}), "預算備份.html");
     }
 
-    function mgr_exportXLSX() {
-        const combined = [["政府預算匯總表"], ["機關：", document.getElementById('mgr-org').value], []];
-        sectionConfigs.forEach(conf => {
-            combined.push([conf.title], conf.fields.map(f => fieldNames[f]));
-            Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).forEach(tr => combined.push(conf.fields.map(f => tr.querySelector('.v-'+f).value)));
-            let foot = ["合計"]; conf.fields.slice(1).forEach(f => foot.push(document.querySelector(`#tfoot-${conf.id} .t-${f}`).value));
-            combined.push(foot, []);
-        });
-        XLSX.utils.book_append_sheet(XLSX.utils.book_new(), XLSX.utils.aoa_to_sheet(combined), "預算報表");
-        XLSX.writeFile(XLSX.utils.book_new(), "完整報表.xlsx");
-    }
-
     function mgr_clearAll() { if(confirm('確定清空？')) location.reload(); }
     function agg_clearAll() { agg_data = []; document.getElementById('agg-content').classList.add('hidden'); }
 
-    document.addEventListener('DOMContentLoaded', () => { render(); agg_setupDrag(); });
+    document.addEventListener('DOMContentLoaded', () => { render(); agg_setupDrag(); sectionConfigs.forEach(c => mgr_addRow(c.id)); });
 </script>
 </body>
 </html>
