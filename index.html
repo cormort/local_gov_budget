@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>政府預算查填與匯總系統 v3.7 (含數據檢核版)</title>
+    <title>政府預算查填與匯總系統 v3.8 (JSON & HTML 雙支援)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -16,9 +16,11 @@
         .budget-table input:focus { outline: none; border-color: #3b82f6; background: white; }
         .budget-table input[readonly] { font-weight: bold; background-color: #f8fafc; }
         .negative-value { color: #dc2626 !important; font-weight: bold; }
-        .validation-error { background-color: #fef08a !important; border: 1px solid #eab308 !important; }
         .total-row { background-color: #f1f5f9; font-weight: bold; }
         .section-card { background: white; padding: 24px; border-radius: 12px; margin-bottom: 2rem; border-top: 4px solid #64748b; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .drop-zone { border: 3px dashed #475569; transition: 0.3s; background-color: #1e293b; border-radius: 12px; }
+        .drop-zone.active { border-color: #38bdf8; background-color: #334155; }
+        .stat-card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; color: white; }
     </style>
 </head>
 <body>
@@ -27,7 +29,7 @@
     <div class="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center">
         <div class="flex items-center gap-3">
             <div class="bg-blue-600 text-white p-2 rounded-lg font-bold">🇹🇼</div>
-            <h1 class="font-bold text-lg text-slate-800">預算查填平臺 v3.7</h1>
+            <h1 class="font-bold text-lg text-slate-800">政府預算查填匯總系統 v3.8</h1>
         </div>
         <div class="bg-slate-100 p-1 rounded-full flex gap-1">
             <button onclick="switchTab('manager')" id="btn-manager" class="px-6 py-2 rounded-full font-bold transition active bg-white shadow-sm">📝 填報站</button>
@@ -40,35 +42,45 @@
     <div class="flex justify-between items-center mb-6">
         <h2 class="text-2xl font-bold text-slate-800">預算填報工作站</h2>
         <div class="flex gap-2">
+            <button onclick="mgr_exportJSON()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
             <button onclick="mgr_exportHTML()" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-teal-700">🌍 備份 HTML</button>
-            <button onclick="mgr_exportXLSX()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 匯出單一分頁 Excel</button>
+            <button onclick="mgr_exportXLSX()" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 匯出 Excel</button>
             <button onclick="mgr_clearAll()" class="text-red-500 px-3 py-2 border rounded-lg text-sm hover:bg-red-50">🗑️ 清空</button>
         </div>
     </div>
 
     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div><label class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="mgr-org" class="border-b-2 w-full p-2 outline-none focus:border-blue-500 font-bold" placeholder="請輸入機關名稱"></div>
-        <div><label class="text-xs font-bold text-slate-400 uppercase">年度</label><input type="number" id="mgr-year" class="border-b-2 w-full p-2 outline-none" value="115"></div>
-        <div><label class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="mgr-user" class="border-b-2 w-full p-2 outline-none" placeholder="承辦姓名"></div>
+        <input type="text" id="mgr-org" class="border-b-2 w-full p-2 outline-none font-bold" placeholder="填報機關名稱">
+        <input type="number" id="mgr-year" class="border-b-2 w-full p-2 outline-none" value="115">
+        <input type="text" id="mgr-user" class="border-b-2 w-full p-2 outline-none" placeholder="承辦人姓名">
     </div>
-
     <div id="sections-container"></div>
 </div>
 
 <div id="tab-aggregator" class="max-w-[98%] mx-auto p-6 hidden bg-[#0f172a] min-h-screen text-white rounded-xl mt-4">
     <div class="flex justify-between items-end mb-8 border-b border-slate-700 pb-6">
         <h1 class="text-3xl font-bold">📊 匯整儀表板</h1>
-        <button onclick="document.getElementById('agg-input').click()" class="bg-slate-700 px-4 py-2 rounded-lg text-sm font-bold">📂 匯入備份檔</button>
-        <input type="file" id="agg-input" multiple accept=".json,.html" class="hidden" onchange="agg_handleFiles(this.files)">
+        <button onclick="agg_clearAll()" class="bg-red-900/40 text-red-200 px-4 py-2 rounded-lg text-sm">🗑️ 清空數據</button>
     </div>
-    <div id="agg-dropzone" class="bg-slate-800/50 border-2 border-dashed border-slate-600 p-12 text-center rounded-xl mb-8">📥 拖曳單位 HTML 備份檔至此自動匯整</div>
+    <div id="agg-dropzone" class="drop-zone p-12 text-center cursor-pointer mb-8">
+        <p class="text-xl font-bold text-slate-300">📥 拖曳單位的 JSON 或 HTML 備份檔至此進行自動匯整</p>
+        <p class="text-slate-500 text-sm mt-2">系統將自動識別格式並提取預算數值</p>
+    </div>
     <div id="agg-content" class="hidden space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="agg-kpi"></div>
-        <div id="agg-table-area" class="bg-slate-800 p-6 rounded-xl border border-slate-700"></div>
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead><tr class="border-b border-slate-600"><th class="pb-3">機關</th><th class="pb-3">基金類型</th><th class="pb-3">基金名稱</th><th class="pb-3 text-right">預算盈虧</th></tr></thead>
+                    <tbody id="agg-list-body" class="text-slate-300"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
+    // --- 配置與科目定義 ---
     const sectionConfigs = [
         { id: 'op', title: '一、營業基金', color: '#2563eb', fields: ['name','rev','cost','gross','exp','opprofit','nonrev','nonexp','nonprofit','pretax','tax','net'] },
         { id: 'wk', title: '二、作業基金', color: '#16a34a', fields: ['name','rev','cost','surplus','nonrev','nonexp','nonsurplus','net'] },
@@ -96,17 +108,17 @@
         sectionConfigs.forEach(conf => {
             const div = document.createElement('div');
             div.className = 'section-card'; div.style.borderTopColor = conf.color;
-            div.innerHTML = `<div class="flex justify-between items-center mb-4"><h3 class="font-bold text-lg" style="color:${conf.color}">${conf.title}</h3><button onclick="mgr_addRow('${conf.id}')" class="text-blue-600 text-xs font-bold">+ 新增</button></div>
+            div.innerHTML = `<div class="flex justify-between items-center mb-4"><h3 class="font-bold text-lg" style="color:${conf.color}">${conf.title}</h3><button onclick="mgr_addRow('${conf.id}')" class="text-blue-600 text-xs font-bold hover:underline">+ 新增</button></div>
                 <div class="overflow-x-auto"><table class="w-full budget-table"><thead><tr><th class="w-8"></th>${conf.fields.map(f => `<th>${fieldNames[f]}</th>`).join('')}</tr></thead><tbody id="tbody-${conf.id}"></tbody><tfoot id="tfoot-${conf.id}" class="total-row"><tr><td>∑</td><td class="text-center">合計</td>${conf.fields.slice(1).map(f => `<td><input type="text" class="t-${f}" readonly value="0"></td>`).join('')}</tr></tfoot></table></div>`;
             container.appendChild(div);
             mgr_addRow(conf.id);
         });
     }
 
-    function mgr_addRow(type, data = {}) {
+    function mgr_addRow(type) {
         const conf = sectionConfigs.find(c => c.id === type);
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="text-center"><button onclick="this.closest('tr').remove(); update('${type}');" class="text-red-400">✕</button></td>` + 
+        tr.innerHTML = `<td class="text-center"><button onclick="this.closest('tr').remove(); update('${type}');">✕</button></td>` + 
             conf.fields.map(f => {
                 const isRO = ['gross','opprofit','nonprofit','pretax','net','surplus','nonsurplus','end'].includes(f);
                 return `<td><input type="${f==='name'?'text':'number'}" class="v-${f} ${f==='name'?'text-left':''}" ${isRO?'readonly':''} oninput="update('${type}')"></td>`;
@@ -118,51 +130,92 @@
         const rows = document.querySelectorAll(`#tbody-${type} tr`);
         const conf = sectionConfigs.find(c => c.id === type);
         let totals = {}; conf.fields.slice(1).forEach(f => totals[f] = 0);
-        
         rows.forEach(row => {
             const v = (c) => parseFloat(row.querySelector('.v-'+c).value) || 0;
             const r = (c) => row.querySelector('.v-'+c);
-            
-            // 計算公式與檢核
-            if(type === 'op') {
-                let g = v('rev')-v('cost'), op = g-v('exp'), np = v('nonrev')-v('nonexp');
-                r('gross').value = g; r('opprofit').value = op; r('nonprofit').value = np; r('pretax').value = op+np; r('net').value = op+np-v('tax');
-            } else if(type === 'wk') {
-                let s = v('rev')-v('cost'), ns = v('nonrev')-v('nonexp');
-                r('surplus').value = s; r('nonsurplus').value = ns; r('net').value = s+ns;
-            } else {
-                let s = v('source')-v('use'), expectedEnd = v('begin') + s - v('remit');
-                r('surplus').value = s; r('end').value = expectedEnd;
-            }
-            
-            conf.fields.slice(1).forEach(f => {
-                let el = row.querySelector('.v-'+f);
-                el.classList.toggle('negative-value', parseFloat(el.value) < 0);
-                totals[f] += parseFloat(el.value) || 0;
-            });
+            if(type === 'op') { let g=v('rev')-v('cost'), op=g-v('exp'), np=v('nonrev')-v('nonexp'); r('gross').value=g; r('opprofit').value=op; r('nonprofit').value=np; r('pretax').value=op+np; r('net').value=op+np-v('tax'); }
+            else if(type === 'wk') { let s=v('rev')-v('cost'), ns=v('nonrev')-v('nonexp'); r('surplus').value=s; r('nonsurplus').value=ns; r('net').value=s+ns; }
+            else { let s=v('source')-v('use'); r('surplus').value=s; r('end').value=v('begin')+s-v('remit'); }
+            conf.fields.slice(1).forEach(f => { let val=v(f); row.querySelector('.v-'+f).classList.toggle('negative-value', val<0); totals[f]+=val; });
         });
-        
         Object.keys(totals).forEach(f => {
             const tEl = document.querySelector(`#tfoot-${type} .t-${f}`);
-            tEl.value = totals[f].toLocaleString(); tEl.classList.toggle('negative-value', totals[f] < 0);
+            tEl.value = totals[f].toLocaleString(); tEl.classList.toggle('negative-value', totals[f]<0);
         });
     }
 
-    function mgr_exportXLSX() {
-        const wb = XLSX.utils.book_new();
-        const combinedData = [["政府預算填報總表"], ["單位：", document.getElementById('mgr-org').value, "年度：", document.getElementById('mgr-year').value], []];
-        sectionConfigs.forEach(conf => {
-            combinedData.push([conf.title]);
-            combinedData.push(conf.fields.map(f => fieldNames[f]));
-            Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).forEach(tr => {
-                combinedData.push(conf.fields.map(f => tr.querySelector('.v-'+f).value));
-            });
-            const foot = ["合計"];
-            conf.fields.slice(1).forEach(f => foot.push(document.querySelector(`#tfoot-${conf.id} .t-${f}`).value));
-            combinedData.push(foot, []);
+    // --- 數據匯出與匯整核心 ---
+    function mgr_exportJSON() {
+        const data = {
+            metadata: { org: document.getElementById('mgr-org').value, year: document.getElementById('mgr-year').value },
+            sections: sectionConfigs.map(conf => ({
+                id: conf.id,
+                items: Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                    let item = {}; conf.fields.forEach(f => item[f] = tr.querySelector('.v-'+f).value);
+                    return item;
+                })
+            }))
+        };
+        saveAs(new Blob([JSON.stringify(data, null, 2)], {type: "application/json"}), `${data.metadata.org}_預算資料.json`);
+    }
+
+    let agg_data = [];
+    function agg_setupDrag() {
+        const zone = document.getElementById('agg-dropzone');
+        zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('active'); };
+        zone.ondragleave = () => zone.classList.remove('active');
+        zone.ondrop = (e) => { e.preventDefault(); zone.classList.remove('active'); agg_handleFiles(e.dataTransfer.files); };
+    }
+
+    function agg_handleFiles(files) {
+        Array.from(files).forEach(file => {
+            const r = new FileReader();
+            r.onload = (e) => {
+                const content = e.target.result;
+                if (file.name.endsWith('.json')) {
+                    agg_process(JSON.parse(content));
+                } else {
+                    const doc = new DOMParser().parseFromString(content, 'text/html');
+                    const meta = { org: doc.getElementById('mgr-org')?.value || '未知機關' };
+                    const sections = sectionConfigs.map(conf => ({
+                        id: conf.id,
+                        items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                            let item = {}; conf.fields.forEach(f => {
+                                const inp = tr.querySelector('.v-'+f);
+                                item[f] = inp?.getAttribute('value') || inp?.value || 0;
+                            });
+                            return item;
+                        }).filter(i => i.name)
+                    }));
+                    agg_process({ metadata: meta, sections: sections });
+                }
+            };
+            r.readAsText(file);
         });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(combinedData), "預算總表");
-        XLSX.writeFile(wb, `${document.getElementById('mgr-org').value || '預算報表'}.xlsx`);
+    }
+
+    function agg_process(json) {
+        const idx = agg_data.findIndex(g => g.metadata.org === json.metadata.org);
+        if(idx >= 0) agg_data[idx] = json; else agg_data.push(json);
+        agg_updateUI();
+    }
+
+    function agg_updateUI() {
+        document.getElementById('agg-content').classList.remove('hidden');
+        let rev = 0, surplus = 0, loss = 0;
+        const tbody = document.getElementById('agg-list-body');
+        tbody.innerHTML = '';
+
+        agg_data.forEach(g => {
+            g.sections.forEach(s => s.items.forEach(i => {
+                let r = parseFloat(i.rev || i.source || 0), n = parseFloat(i.net || i.surplus || 0);
+                rev += r; surplus += n; if(n < 0) loss++;
+                tbody.innerHTML += `<tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                    <td class="py-3 font-bold">${g.metadata.org}</td><td>${s.id.toUpperCase()}</td><td>${i.name}</td>
+                    <td class="text-right font-bold ${n<0?'text-red-400':'text-green-400'}">${n.toLocaleString()}</td></tr>`;
+            }));
+        });
+        document.getElementById('agg-kpi').innerHTML = `<div class="stat-card">機關：${agg_data.length}</div><div class="stat-card">預算總收：${(rev/100000).toFixed(2)} 億</div><div class="stat-card">總盈虧：${(surplus/100000).toFixed(2)} 億</div><div class="stat-card text-red-400">虧損家數：${loss}</div>`;
     }
 
     function mgr_exportHTML() {
@@ -170,27 +223,22 @@
         saveAs(new Blob(["<!DOCTYPE html>\n" + document.documentElement.outerHTML], {type: "text/html"}), "預算備份.html");
     }
 
-    document.addEventListener('paste', e => {
-        const el = document.activeElement;
-        if (!el || el.readOnly || el.tagName !== 'INPUT') return;
-        const text = e.clipboardData.getData('text');
-        if (!text.includes('\t') && !text.includes('\n')) return;
-        e.preventDefault();
-        const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim());
-        const startTr = el.closest('tr'), tbody = startTr.parentNode, type = tbody.id.replace('tbody-', '');
-        const colIdx = Array.from(startTr.children).indexOf(el.closest('td')), rowIdx = Array.from(tbody.children).indexOf(startTr);
-        lines.forEach((l, i) => {
-            let tr = tbody.children[rowIdx + i];
-            if(!tr) { mgr_addRow(type); tr = tbody.lastElementChild; }
-            l.split('\t').forEach((v, j) => {
-                const input = tr.children[colIdx + j]?.querySelector('input:not([readonly])');
-                if(input) { input.value = v.trim().replace(/,/g, ''); input.dispatchEvent(new Event('input', {bubbles:true})); }
-            });
+    function mgr_exportXLSX() {
+        const combined = [["政府預算匯總表"], ["機關：", document.getElementById('mgr-org').value], []];
+        sectionConfigs.forEach(conf => {
+            combined.push([conf.title], conf.fields.map(f => fieldNames[f]));
+            Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).forEach(tr => combined.push(conf.fields.map(f => tr.querySelector('.v-'+f).value)));
+            let foot = ["合計"]; conf.fields.slice(1).forEach(f => foot.push(document.querySelector(`#tfoot-${conf.id} .t-${f}`).value));
+            combined.push(foot, []);
         });
-    });
+        XLSX.utils.book_append_sheet(XLSX.utils.book_new(), XLSX.utils.aoa_to_sheet(combined), "預算報表");
+        XLSX.writeFile(XLSX.utils.book_new(), "完整報表.xlsx");
+    }
 
-    function mgr_clearAll() { if(confirm('確定清空？')) { location.reload(); } }
-    document.addEventListener('DOMContentLoaded', render);
+    function mgr_clearAll() { if(confirm('確定清空？')) location.reload(); }
+    function agg_clearAll() { agg_data = []; document.getElementById('agg-content').classList.add('hidden'); }
+
+    document.addEventListener('DOMContentLoaded', () => { render(); agg_setupDrag(); });
 </script>
 </body>
 </html>
