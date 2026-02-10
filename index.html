@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Security: Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';">
     <title>政府預算查填匯總系統 v3.9.0 (優化版)</title>
     <!-- 優化: 使用固定版本 Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
@@ -124,6 +126,16 @@
 
 <script>
     // ========== 配置 ==========
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     const sectionConfigs = [
         { id: 'op', title: '一、營業基金', color: '#2563eb', fields: ['name','rev','cost','gross','exp','opprofit','nonrev','nonexp','nonprofit','pretax','tax','net'] },
         { id: 'wk', title: '二、作業基金', color: '#16a34a', fields: ['name','rev','cost','surplus','nonrev','nonexp','nonsurplus','net'] },
@@ -260,10 +272,12 @@
         const conf = sectionConfigs.find(c => c.id === type);
         if (!conf) return;
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class="text-center"><button onclick="deleteRow(this, '${type}')" class="text-red-400 hover:text-red-600">✕</button></td>` + 
+        // Fix: Use JSON.stringify for safe JS string escaping inside event handlers, then escapeHtml for HTML attribute
+        const safeType = escapeHtml(JSON.stringify(type));
+        tr.innerHTML = `<td class="text-center"><button onclick="deleteRow(this, ${safeType})" class="text-red-400 hover:text-red-600">✕</button></td>` + 
             conf.fields.map(f => {
                 const isRO = ['gross','opprofit','nonprofit','pretax','net','surplus','nonsurplus','end'].includes(f);
-                return `<td data-tip="${isRO?'系統自動計算':'支援從 Excel 貼上數據'}"><input type="${f==='name'?'text':'number'}" class="v-${f} ${f==='name'?'text-left':''}" value="${data[f]||''}" ${isRO?'readonly':''} oninput="handleInput('${type}')"></td>`;
+                return `<td data-tip="${isRO?'系統自動計算':'支援從 Excel 貼上數據'}"><input type="${f==='name'?'text':'number'}" class="v-${f} ${f==='name'?'text-left':''}" value="${escapeHtml(data[f])}" ${isRO?'readonly':''} oninput="handleInput(${safeType})"></td>`;
             }).join('');
         document.getElementById(`tbody-${type}`).appendChild(tr);
     }
@@ -384,7 +398,10 @@
             try {
                 const content = e.target.result;
                 if (file.name.endsWith('.json')) { 
-                    mgr_populate(JSON.parse(content)); 
+                    const data = JSON.parse(content);
+                    if (!data || typeof data !== 'object') throw new Error('Invalid JSON structure');
+                    if (!data.sections || !Array.isArray(data.sections)) throw new Error('Invalid sections data');
+                    mgr_populate(data); 
                 }
                 else {
                     const doc = new DOMParser().parseFromString(content, 'text/html');
@@ -518,6 +535,8 @@
                 let data;
                 if (file.name.endsWith('.json')) {
                     data = JSON.parse(e.target.result);
+                    if (!data || typeof data !== 'object') throw new Error('Invalid JSON structure');
+                    if (!data.sections || !Array.isArray(data.sections)) throw new Error('Invalid sections data');
                 } else {
                     const doc = new DOMParser().parseFromString(e.target.result, 'text/html');
                     data = {
@@ -572,7 +591,7 @@
         document.getElementById('agg-list-body').innerHTML = agg_data.map((d, i) => `
             <tr class="border-b border-slate-700">
                 <td class="py-3 text-slate-400">${i+1}</td>
-                <td class="py-3 font-bold">${d.metadata?.org || '未命名'}</td>
+                <td class="py-3 font-bold">${escapeHtml(d.metadata?.org || '未命名')}</td>
                 <td class="py-3">${d.sections?.reduce((sum, s) => sum + (s.items?.length || 0), 0) || 0} 筆基金</td>
                 <td class="py-3"><button onclick="agg_data.splice(${i},1);agg_render();" class="text-red-400 hover:text-red-300">移除</button></td>
             </tr>
