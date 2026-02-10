@@ -20,8 +20,8 @@ const sectionConfigs = [
 ];
 
 const fieldNames = {
-    name:'\u57fa\u91d1\u540d\u7a31', rev:'\u6536\u5165', cost:'\u6210\u672c\u8cbb\u7528', gross:'\u6bdb\u5229', exp:'\u8cbb\u7528',
-    opprofit:'\u5229\u76ca', nonrev:'\u5916\u6536\u5165', nonexp:'\u5916\u8cbb\u7528', nonprofit:'\u5916\u5229\u76ca',
+    name:'\u57fa\u91d1\u540d\u7a31', rev:'\u4e00\u3001\u6536\u5165', cost:'\u4e00\u3001\u6210\u672c\u8cbb\u7528', gross:'\u4e00\u3001\u6bdb\u5229', exp:'\u4e00\u3001\u8cbb\u7528',
+    opprofit:'\u4e00\u3001\u5229\u76ca', nonrev:'\u4e00\u3001\u5916\u6536\u5165', nonexp:'\u4e00\u3001\u5916\u8cbb\u7528', nonprofit:'\u4e00\u3001\u5916\u5229\u76ca',
     pretax:'\u7a05\u524d', tax:'\u6240\u5f97\u7a05', net:'\u672c\u671f\u76c8\u8667', surplus:'\u672c\u671f\u8cf8\u9918',
     nonsurplus:'\u5916\u8cf8\u9918', source:'\u4f86\u6e90', use:'\u7528\u9014', begin:'\u671f\u521d', remit:'\u89e3\u7e73', end:'\u671f\u672b'
 };
