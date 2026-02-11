@@ -30,10 +30,10 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 靜態備份功能 (含列印按鈕與日期) ==========
+// ========== 2. 靜態備份功能 (修正 cloneDoc 錯誤與 CSP 限制) ==========
 function mgr_exportHTML() {
     try {
-        // 同步 input 值
+        // 同步所有現有數據到 HTML 屬性
         document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
         
         let inlineStyle = "";
@@ -46,15 +46,21 @@ function mgr_exportHTML() {
             }
         } catch (e) { console.warn("CSS 抓取受限"); }
 
+        // 使用 document.documentElement 複製
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // A. 移除所有功能性元件
-        cloneDoc.querySelector('nav')?.remove();
-        cloneDoc.getElementById('tab-aggregator')?.remove();
+        // --- 修正：使用 querySelector 取代 getElementById ---
+        const tabManager = cloneDoc.querySelector('#tab-manager');
+        const tabAggregator = cloneDoc.querySelector('#tab-aggregator');
+        const nav = cloneDoc.querySelector('nav');
+
+        // A. 移除功能性元件
+        if (nav) nav.remove();
+        if (tabAggregator) tabAggregator.remove();
         cloneDoc.querySelectorAll('.flex.gap-2, #btn-clear, .excel-guide, script').forEach(el => el.remove());
         cloneDoc.querySelectorAll('.add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
-        // B. 轉換 input 為純文字
+        // B. 轉換 input 為純文字 span
         cloneDoc.querySelectorAll('input').forEach(input => {
             const span = document.createElement('span');
             span.textContent = input.value || '';
@@ -62,7 +68,7 @@ function mgr_exportHTML() {
             input.parentNode.replaceChild(span, input);
         });
 
-        // C. 加入列印控制區 (按鈕與日期)
+        // C. 建立列印頭部 (修正 CSP：不使用 onclick)
         const printHeader = document.createElement('div');
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -70,55 +76,69 @@ function mgr_exportHTML() {
         printHeader.className = "max-w-7xl mx-auto mb-6 flex justify-between items-end border-b pb-4 no-print";
         printHeader.innerHTML = `
             <div>
-                <button onclick="window.print()" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
-                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態備份檔，僅供檢視與列印。</p>
+                <button id="print-trigger" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
+                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態唯讀備份。建議列印時「目標」選「另存為 PDF」。</p>
             </div>
-            <div style="text-align:right; color:#64748b; font-size:14px;">
-                產製日期：${dateStr}
-            </div>
+            <div style="text-align:right; color:#64748b; font-size:14px;">產製日期：${dateStr}</div>
         `;
-        const container = cloneDoc.getElementById('tab-manager');
-        container.prepend(printHeader);
-        container.style.marginTop = "20px";
 
-        // D. 注入 CSS (包含列印隱藏邏輯)
+        // D. 插入列印區域並注入「非行內」腳本
+        if (tabManager) {
+            tabManager.prepend(printHeader);
+            tabManager.classList.remove('hidden'); // 確保備份檔開啟時是顯示的
+            tabManager.style.marginTop = "20px";
+        }
+
+        // 注入一小段 Script 來控制列印 (這段會被放在備份檔末端)
+        const scriptTag = document.createElement('script');
+        scriptTag.textContent = `document.getElementById('print-trigger').addEventListener('click', () => window.print());`;
+        cloneDoc.querySelector('body').appendChild(scriptTag);
+
+        // E. 注入 CSS
         cloneDoc.querySelectorAll('link[href*="css"]').forEach(l => { if(!l.href.includes('fonts')) l.remove(); });
         const styleTag = document.createElement('style');
         styleTag.textContent = inlineStyle + `
-            @media print { .no-print { display: none !important; } body { background: white; } .section-card { border: 1px solid #eee; break-inside: avoid; } }
-            body { background: #f8fafc; padding-bottom: 50px; }
-            .section-card { box-shadow: none !important; margin-bottom: 30px; }
-            span.negative-value { color: #dc2626; font-weight: bold; }
+            @media print { .no-print { display: none !important; } body { background: white !important; } .section-card { border: 1px solid #eee !important; break-inside: avoid; } }
+            body { background: #f8fafc !important; padding-bottom: 50px; }
+            .section-card { box-shadow: none !important; margin-bottom: 30px; border: 1px solid #e2e8f0 !important; }
+            span.negative-value { color: #dc2626 !important; font-weight: bold; }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
+        // F. 下載
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
         saveAs(new Blob([htmlContent], { type: "text/html" }), `靜態報表_${org}.html`);
-    } catch (err) { alert('匯出失敗：' + err.message); }
+    } catch (err) { 
+        console.error(err);
+        alert('匯出失敗：' + err.message); 
+    }
 }
 
-// ========== 3. 匯整端邏輯 (參考 index 41) ==========
+// ========== 3. 匯整端邏輯 ==========
 let agg_data = [];
 function agg_processFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
         try {
             const doc = new DOMParser().parseFromString(e.target.result, 'text/html');
+            // 兼容靜態 span 格式或動態 input 格式
+            const getVal = (row, field) => {
+                const el = row.querySelector('.v-'+field) || row.querySelector('.v-'+field.replace('v-',''));
+                return el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '';
+            };
+
             const data = {
                 metadata: { 
-                    org: doc.getElementById('mgr-org')?.value || file.name.replace('.html',''),
-                    year: doc.getElementById('mgr-year')?.value || '115',
-                    user: doc.getElementById('mgr-user')?.value || '未知'
+                    org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''),
+                    year: doc.querySelector('#mgr-year')?.value || doc.querySelector('#mgr-year')?.textContent || '115',
+                    user: doc.querySelector('#mgr-user')?.value || doc.querySelector('#mgr-user')?.textContent || '未知'
                 },
                 sections: sectionConfigs.map(conf => ({
                     id: conf.id,
                     items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
                         let item = {};
-                        conf.fields.forEach(f => {
-                            const inp = tr.querySelector('.v-'+f) || tr.querySelector('.v-'+f.replace('v-',''));
-                            item[f] = inp?.getAttribute('value') || inp?.textContent || '';
-                        });
+                        conf.fields.forEach(f => item[f] = getVal(tr, f));
                         return item;
                     }).filter(i => i.name)
                 }))
@@ -143,7 +163,7 @@ function agg_render() {
             sec.items?.forEach(item => {
                 stats.funds++;
                 let rev = (sec.id === 'op' || sec.id === 'wk') ? (num(item.rev) + num(item.nonrev)) : num(item.source);
-                let bal = num(item.net) || num(item.surplus) || (num(item.end) - num(item.begin));
+                let bal = num(item.net) || num(item.surplus);
                 stats.totalRev += rev;
                 if (bal >= 0) stats.profit++; else stats.loss++;
             });
@@ -162,14 +182,14 @@ function agg_render() {
             <td class="p-3 text-slate-500">${i+1}</td>
             <td class="p-3 font-bold text-blue-300">${d.metadata.org}</td>
             <td class="p-3 text-sm text-slate-400">${d.metadata.year}年 / ${d.metadata.user}</td>
-            <td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="agg_remove(${i})">移除</button></td>
+            <td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_remove(${i})">移除</button></td>
         </tr>
     `).join('');
 }
 
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
 
-// ========== 4. 填報端核心計算與介面 ==========
+// ========== 4. 填報端核心邏輯 ==========
 function render() {
     const container = document.getElementById('sections-container');
     container.innerHTML = '';
@@ -245,16 +265,25 @@ function update(type) {
     });
 }
 
-// ========== 5. 事件與初始化 ==========
+// ========== 5. 事件繫結與初始化 ==========
 function bindEvents() {
-    document.getElementById('btn-manager').onclick = () => { document.getElementById('tab-manager').classList.remove('hidden'); document.getElementById('tab-aggregator').classList.add('hidden'); };
-    document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
+    document.getElementById('btn-manager').onclick = () => { 
+        document.getElementById('tab-manager').classList.remove('hidden'); 
+        document.getElementById('tab-aggregator').classList.add('hidden'); 
+    };
+    document.getElementById('btn-aggregator').onclick = () => { 
+        document.getElementById('tab-manager').classList.add('hidden'); 
+        document.getElementById('tab-aggregator').classList.remove('hidden'); 
+    };
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
     document.getElementById('btn-agg-clear').onclick = () => { agg_data = []; agg_render(); };
     
     document.getElementById('sections-container').onclick = e => {
         if (e.target.classList.contains('add-row-btn')) mgr_addRow(e.target.dataset.section);
-        if (e.target.classList.contains('delete-btn')) { e.target.closest('tr').remove(); update(e.target.dataset.type); }
+        if (e.target.classList.contains('delete-btn')) { 
+            e.target.closest('tr').remove(); 
+            update(e.target.dataset.type); 
+        }
     };
     document.getElementById('sections-container').oninput = e => {
         const tbody = e.target.closest('tbody');
