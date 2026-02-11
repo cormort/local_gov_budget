@@ -30,7 +30,7 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 匯入功能 (修復重點) ==========
+// ========== 2. 匯入功能 (修正：相容舊版結構) ==========
 function mgr_handleImport(files) {
     const file = files[0];
     if (!file) return;
@@ -38,24 +38,23 @@ function mgr_handleImport(files) {
     reader.onload = (e) => {
         try {
             const content = e.target.result;
-            // 判斷是 JSON 還是 HTML
             if (content.trim().startsWith('{')) {
                 const data = JSON.parse(content);
                 mgr_populate(data);
+                alert('JSON 匯入成功！');
             } else {
+                // 處理 HTML 匯入
                 const doc = new DOMParser().parseFromString(content, 'text/html');
                 const getVal = (row, f) => {
-                    // 兼容 input 與 span (靜態報表)
                     const el = row.querySelector('.v-' + f);
                     if (!el) return '';
                     return el.tagName === 'INPUT' ? el.value : el.textContent;
                 };
-                
                 const data = {
                     metadata: { 
-                        org: doc.getElementById('mgr-org')?.value || doc.querySelector('#mgr-org')?.value || '', 
-                        year: doc.getElementById('mgr-year')?.value || doc.querySelector('#mgr-year')?.value || '',
-                        user: doc.getElementById('mgr-user')?.value || doc.querySelector('#mgr-user')?.value || ''
+                        org: doc.querySelector('#mgr-org')?.value || '', 
+                        year: doc.querySelector('#mgr-year')?.value || '',
+                        user: doc.querySelector('#mgr-user')?.value || ''
                     },
                     sections: sectionConfigs.map(conf => ({
                         id: conf.id,
@@ -63,23 +62,23 @@ function mgr_handleImport(files) {
                             let item = {};
                             conf.fields.forEach(f => item[f] = getVal(tr, f));
                             return item;
-                        }).filter(i => i.name) // 過濾掉空行
+                        }).filter(i => i.name)
                     }))
                 };
                 mgr_populate(data);
+                alert('HTML 匯入成功！');
             }
-            alert('匯入成功！');
-            // 清空 file input 以便重複匯入同檔
             document.getElementById('mgr-import-file').value = ''; 
         } catch (err) {
             console.error(err);
-            alert('匯入失敗：檔案格式錯誤或損毀。');
+            alert('匯入失敗：檔案格式錯誤。');
         }
     };
     reader.readAsText(file);
 }
 
 function mgr_populate(data) {
+    // 回填 Metadata
     if (data.metadata) {
         if(document.getElementById('mgr-org')) document.getElementById('mgr-org').value = data.metadata.org || '';
         if(document.getElementById('mgr-year')) document.getElementById('mgr-year').value = data.metadata.year || '';
@@ -89,13 +88,23 @@ function mgr_populate(data) {
     sectionConfigs.forEach(conf => {
         const tbody = document.getElementById(`tbody-${conf.id}`);
         if (!tbody) return;
-        tbody.innerHTML = ''; // 清空現有表格
-        
-        const sectionData = data.sections?.find(s => s.id === conf.id);
-        if (sectionData && sectionData.items && sectionData.items.length > 0) {
-            sectionData.items.forEach(item => mgr_addRow(conf.id, item));
+        tbody.innerHTML = ''; 
+
+        // 關鍵修正：判斷資料來源格式
+        let items = [];
+        if (data.sections && Array.isArray(data.sections)) {
+            // 新版結構： { sections: [ { id: 'op', items: [...] } ] }
+            const section = data.sections.find(s => s.id === conf.id);
+            if (section) items = section.items;
+        } else if (data[conf.id] && Array.isArray(data[conf.id])) {
+            // 舊版結構： { op: [...], wk: [...] }
+            items = data[conf.id];
+        }
+
+        if (items && items.length > 0) {
+            items.forEach(item => mgr_addRow(conf.id, item));
         } else {
-            mgr_addRow(conf.id); // 預設空行
+            mgr_addRow(conf.id);
         }
         update(conf.id);
     });
@@ -104,7 +113,6 @@ function mgr_populate(data) {
 // ========== 3. 匯出功能 (防呆 + 清洗 + 格線) ==========
 function mgr_exportHTML() {
     try {
-        // 檢查是否有值
         const allInputs = Array.from(document.querySelectorAll('#sections-container input:not([readonly])'));
         const hasData = allInputs.some(input => input.value.trim() !== "");
         if (!hasData) { alert('⚠️ 報表無資料，請先填寫。'); return; }
@@ -115,7 +123,6 @@ function mgr_exportHTML() {
         const tabManager = cloneDoc.querySelector('#tab-manager');
         if (!tabManager) return;
 
-        // 清洗介面
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
@@ -125,7 +132,6 @@ function mgr_exportHTML() {
             unwantedTexts.forEach(text => { if (el.textContent.includes(text)) el.remove(); });
         });
 
-        // Input 轉 Span
         cloneDoc.querySelectorAll('input').forEach(input => {
             const span = document.createElement('span');
             span.textContent = input.getAttribute('value') || '';
@@ -133,7 +139,6 @@ function mgr_exportHTML() {
             input.parentNode.replaceChild(span, input);
         });
 
-        // 報表頭部
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
         const printHeader = document.createElement('div');
@@ -146,7 +151,6 @@ function mgr_exportHTML() {
         tabManager.style.background = "white";
         tabManager.style.padding = "20px";
 
-        // 注入 CSS
         const styleTag = document.createElement('style');
         styleTag.textContent = `
             body { background: white !important; font-family: "Noto Sans TC", sans-serif; }
@@ -176,25 +180,36 @@ function agg_processFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
         try {
-            const doc = new DOMParser().parseFromString(e.target.result, 'text/html');
-            const getVal = (row, f) => {
-                const el = row.querySelector('.v-'+f);
-                return el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '';
-            };
-            const data = {
-                metadata: { org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''), year: '', user: '' },
-                sections: sectionConfigs.map(conf => ({
-                    id: conf.id,
-                    items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
-                        let item = {};
-                        conf.fields.forEach(f => item[f] = getVal(tr, f));
-                        return item;
-                    }).filter(i => i.name)
-                }))
-            };
+            let data;
+            const content = e.target.result;
+            // 匯整端也要支援 JSON 匯入
+            if (file.name.endsWith('.json') || content.trim().startsWith('{')) {
+                data = JSON.parse(content);
+                // 正規化 JSON 結構給 Aggregator 使用
+                if (!data.sections) {
+                    data.sections = sectionConfigs.map(c => ({ id: c.id, items: data[c.id] || [] }));
+                }
+            } else {
+                const doc = new DOMParser().parseFromString(content, 'text/html');
+                const getVal = (row, f) => {
+                    const el = row.querySelector('.v-'+f);
+                    return el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '';
+                };
+                data = {
+                    metadata: { org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''), year: '', user: '' },
+                    sections: sectionConfigs.map(conf => ({
+                        id: conf.id,
+                        items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                            let item = {};
+                            conf.fields.forEach(f => item[f] = getVal(tr, f));
+                            return item;
+                        }).filter(i => i.name)
+                    }))
+                };
+            }
             agg_data.push(data);
             agg_render();
-        } catch (err) { alert('檔案解析失敗'); }
+        } catch (err) { alert('檔案解析失敗：' + err.message); }
     };
     reader.readAsText(file);
 }
@@ -223,7 +238,7 @@ function agg_render() {
         <div class="bg-slate-800 p-4 rounded-lg"><div>盈虧</div><div class="text-sm">盈: ${stats.profit}/虧: ${stats.loss}</div></div>
     `;
     document.getElementById('agg-list-body').innerHTML = agg_data.map((d, i) => `
-        <tr class="border-b border-slate-700"><td class="p-3 text-slate-500">${i+1}</td><td class="p-3 font-bold text-blue-300">${d.metadata.org}</td><td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_remove(${i})">移除</button></td></tr>
+        <tr class="border-b border-slate-700"><td class="p-3 text-slate-500">${i+1}</td><td class="p-3 font-bold text-blue-300">${d.metadata.org || '未命名機關'}</td><td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_remove(${i})">移除</button></td></tr>
     `).join('');
 }
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
@@ -276,7 +291,6 @@ function bindEvents() {
     document.getElementById('btn-manager').onclick = () => { document.getElementById('tab-manager').classList.remove('hidden'); document.getElementById('tab-aggregator').classList.add('hidden'); };
     document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
     
-    // 修復：匯出與匯入按鈕綁定
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
     document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
     document.getElementById('mgr-import-file').onchange = (e) => mgr_handleImport(e.target.files);
