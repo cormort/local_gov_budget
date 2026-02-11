@@ -30,7 +30,7 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 匯入功能 ==========
+// ========== 2. 匯入功能 (修復：移除千分位逗號) ==========
 function mgr_handleImport(files) {
     const file = files[0];
     if (!file) return;
@@ -38,17 +38,28 @@ function mgr_handleImport(files) {
     reader.onload = (e) => {
         try {
             const content = e.target.result;
+            // 判斷是 JSON 還是 HTML
             if (content.trim().startsWith('{')) {
                 const data = JSON.parse(content);
                 mgr_populate(data);
                 alert('JSON 匯入成功！');
             } else {
+                // HTML 匯入邏輯
                 const doc = new DOMParser().parseFromString(content, 'text/html');
+                
                 const getVal = (row, f) => {
+                    // 嘗試尋找包含該欄位 class 的元素
                     const el = row.querySelector('.v-' + f);
                     if (!el) return '';
-                    return el.tagName === 'INPUT' ? el.value : el.textContent;
+                    
+                    // 取得原始值
+                    let val = el.tagName === 'INPUT' ? el.value : el.textContent;
+                    
+                    // 【關鍵修復】移除千分位逗號，確保轉換為純數字
+                    // 如果不移除，"1,000" 放入 input type="number" 會變成空值
+                    return val.replace(/,/g, '').trim(); 
                 };
+                
                 const data = {
                     metadata: { 
                         org: doc.querySelector('#mgr-org')?.value || '', 
@@ -65,7 +76,7 @@ function mgr_handleImport(files) {
                     }))
                 };
                 mgr_populate(data);
-                alert('HTML 匯入成功！');
+                alert('HTML 報表匯入成功！數據已還原。');
             }
             document.getElementById('mgr-import-file').value = ''; 
         } catch (err) {
@@ -137,9 +148,10 @@ function mgr_exportJSON() {
     }
 }
 
-// ========== 4. HTML 匯出功能 (修復 querySelectorAll 錯誤) ==========
+// ========== 4. HTML 匯出功能 (修復：格線與數值) ==========
 function mgr_exportHTML() {
     try {
+        // 防呆檢查
         const liveInputs = document.querySelectorAll('#sections-container input:not([readonly])');
         const hasData = Array.from(liveInputs).some(i => i.value.trim() !== "");
         if (!hasData) {
@@ -148,8 +160,7 @@ function mgr_exportHTML() {
 
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // 修正重點：直接從 document (來源) 和 cloneDoc (目標) 抓取 input
-        // 不透過 .body 屬性，避免 undefined 錯誤
+        // 抓取來源與目標 (一對一數值搬運)
         const sourceInputs = document.querySelectorAll('input'); 
         const targetInputs = cloneDoc.querySelectorAll('input'); 
 
@@ -159,6 +170,7 @@ function mgr_exportHTML() {
                 const rawValue = source.value;
                 const span = document.createElement('span');
                 
+                // 處理千分位
                 const num = parseFloat(rawValue.replace(/,/g, ''));
                 if (!isNaN(num) && rawValue.trim() !== '') {
                     span.textContent = num.toLocaleString();
@@ -166,8 +178,9 @@ function mgr_exportHTML() {
                     span.textContent = rawValue;
                 }
                 
+                // 保留 class 以便匯入時識別 (.v-name, .v-rev 等)
                 span.className = source.className;
-                // 強制樣式：確保不塌陷
+                // 強制行內樣式，防止塌陷
                 span.style.cssText = "display:inline-block; width:100%; min-height:1.2em; min-width:20px;";
                 span.classList.remove('border', 'border-b-2', 'outline-none');
                 
@@ -179,7 +192,7 @@ function mgr_exportHTML() {
             alert('系統警告：DOM 結構不一致，部分資料可能未匯出。');
         }
 
-        // 移除不必要的元素
+        // 清洗介面
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
@@ -191,6 +204,7 @@ function mgr_exportHTML() {
             }
         });
 
+        // 報表頭部
         const tabManager = cloneDoc.querySelector('#tab-manager');
         if (tabManager) {
             const now = new Date();
@@ -205,12 +219,34 @@ function mgr_exportHTML() {
             tabManager.style.padding = "20px";
         }
 
+        // 【關鍵修復】硬寫入格線樣式到每一個 td/th
+        // 這能保證就算 CSS 被覆蓋，HTML 標籤上的 style 也會生效
+        const tables = cloneDoc.querySelectorAll('table');
+        tables.forEach(table => {
+            table.style.borderCollapse = 'collapse';
+            table.style.width = '100%';
+            table.style.border = '2px solid black';
+            
+            const cells = table.querySelectorAll('th, td');
+            cells.forEach(cell => {
+                cell.style.border = '1px solid black'; // 硬寫入格線
+                cell.style.padding = '8px';
+                cell.style.textAlign = 'center';
+                cell.style.color = 'black';
+                cell.style.fontSize = '14px';
+            });
+            
+            // 標題列背景
+            table.querySelectorAll('thead th').forEach(th => {
+                th.style.backgroundColor = '#f1f5f9';
+                th.style.fontWeight = 'bold';
+            });
+        });
+
+        // 注入輔助 CSS (列印隱藏等)
         const styleTag = document.createElement('style');
         styleTag.textContent = `
             body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
-            .budget-table { border-collapse: collapse !important; width: 100% !important; border: 2px solid #000 !important; margin-bottom: 30px; background: white; }
-            .budget-table th, .budget-table td { border: 1px solid #000 !important; padding: 10px 5px !important; text-align: center; color: #000 !important; font-size: 14px; vertical-align: middle; }
-            .budget-table th { background-color: #f1f5f9 !important; font-weight: bold; }
             .section-card { border: none !important; margin-bottom: 50px; box-shadow: none !important; background: white; }
             h3 { margin-bottom: 15px; font-size: 1.5rem; color: #000 !important; font-weight: bold; }
             .negative-value { color: #dc2626 !important; font-weight: bold; }
@@ -247,7 +283,9 @@ function agg_processFile(file) {
                 const doc = new DOMParser().parseFromString(content, 'text/html');
                 const getVal = (row, f) => {
                     const el = row.querySelector('.v-'+f);
-                    return el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '';
+                    if (!el) return '';
+                    let val = el.tagName === 'INPUT' ? el.value : el.textContent;
+                    return val.replace(/,/g, '').trim(); // 匯整端也要去逗號
                 };
                 data = {
                     metadata: { org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''), year: '', user: '' },
