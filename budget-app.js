@@ -33,10 +33,9 @@ function getFieldLabel(sectionId, fieldId) {
 // ========== 2. 靜態備份功能 (強制顯示格線版) ==========
 function mgr_exportHTML() {
     try {
-        // 同步 input 到屬性
+        // 同步所有現有數據到 HTML 屬性
         document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
         
-        // 抓取現有 CSS
         let inlineStyle = "";
         try {
             for (let sheet of document.styleSheets) {
@@ -49,12 +48,27 @@ function mgr_exportHTML() {
 
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // A. 移除功能按鈕與腳本
-        cloneDoc.querySelector('nav')?.remove();
-        cloneDoc.querySelector('#tab-aggregator')?.remove();
-        cloneDoc.querySelectorAll('.flex.gap-2, #btn-clear, .excel-guide, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
+        const tabManager = cloneDoc.querySelector('#tab-manager');
+        const tabAggregator = cloneDoc.querySelector('#tab-aggregator');
+        const nav = cloneDoc.querySelector('nav');
 
-        // B. 轉換 input 為純文字 span (確保合計列也有線)
+        // A. 移除導覽列、功能按鈕與特定文字
+        if (nav) nav.remove(); // 直接移除整個導覽列 (含預算填報工作站字樣)
+        if (tabAggregator) tabAggregator.remove();
+        
+        // 移除「支援 Excel 貼上」、「自動儲存」等提示區域
+        cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
+        
+        // 針對特定文字內容進行掃描移除 (確保萬無一失)
+        cloneDoc.querySelectorAll('h1, h2, p, div').forEach(el => {
+            if (el.textContent.includes('預算填報工作站') || 
+                el.textContent.includes('支援 Excel 貼上') || 
+                el.textContent.includes('自動儲存')) {
+                el.remove();
+            }
+        });
+
+        // B. 轉換 input 為純文字 span
         cloneDoc.querySelectorAll('input').forEach(input => {
             const span = document.createElement('span');
             span.textContent = input.value || '';
@@ -62,60 +76,45 @@ function mgr_exportHTML() {
             input.parentNode.replaceChild(span, input);
         });
 
-        // C. 加入列印 Header 與日期
+        // C. 建立純淨的列印 Header
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
         const printHeader = document.createElement('div');
         printHeader.className = "no-print";
-        printHeader.style.cssText = "max-width:1280px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:1px solid #ccc; padding-bottom:15px;";
+        printHeader.style.cssText = "max-width:1280px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #334155; padding-bottom:15px;";
         printHeader.innerHTML = `
             <div>
                 <button id="p-btn" style="background:#2563eb; color:white; padding:10px 24px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button>
             </div>
-            <div style="text-align:right; color:#64748b;">產製日期：${dateStr}</div>
+            <div style="text-align:right; color:#334155; font-weight:500;">產製日期：${dateStr}</div>
         `;
-        const mgrTab = cloneDoc.querySelector('#tab-manager');
-        if (mgrTab) {
-            mgrTab.prepend(printHeader);
-            mgrTab.classList.remove('hidden');
+        
+        if (tabManager) {
+            tabManager.prepend(printHeader);
+            tabManager.classList.remove('hidden');
         }
 
-        // D. 注入強制格線 CSS 與列印指令
+        // D. 注入強化格線 CSS
         const styleTag = document.createElement('style');
         styleTag.textContent = inlineStyle + `
-            /* 強制格線設定 */
             .budget-table { 
                 border-collapse: collapse !important; 
                 width: 100% !important; 
-                margin-top: 10px;
-                border: 2px solid #000000 !important; /* 表格大框線 */
+                border: 2px solid #000 !important;
+                margin-bottom: 20px;
             }
             .budget-table th, .budget-table td { 
-                border: 1px solid #333333 !important; /* 儲存格細線 */
-                padding: 12px 8px !important;
+                border: 1px solid #000 !important; 
+                padding: 10px 5px !important;
                 text-align: center;
             }
-            .budget-table th { 
-                background-color: #f1f5f9 !important; 
-                font-weight: bold;
-                -webkit-print-color-adjust: exact;
-            }
-            .section-card { 
-                background: white; 
-                padding: 20px; 
-                margin-bottom: 40px; 
-                border-radius: 8px;
-                box-shadow: none !important;
-                border: 1px solid #ddd !important;
-            }
-            .negative-value { color: #dc2626 !important; font-weight: bold; }
-            
+            .budget-table th { background-color: #f1f5f9 !important; }
+            .section-card { border: none !important; margin-bottom: 50px; }
+            h3 { margin-bottom: 15px; font-size: 1.25rem; }
             @media print {
                 .no-print { display: none !important; }
                 body { background: white !important; }
-                .section-card { border: none !important; break-inside: avoid; }
-                .budget-table { border: 2px solid #000 !important; }
-                .budget-table th, .budget-table td { border: 1px solid #000 !important; }
+                .section-card { break-inside: avoid; }
             }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
@@ -126,7 +125,7 @@ function mgr_exportHTML() {
 
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
-        saveAs(new Blob([htmlContent], { type: "text/html" }), `靜態報表_${org}.html`);
+        saveAs(new Blob([htmlContent], { type: "text/html" }), `正式報表_${org}.html`);
     } catch (err) { alert('匯出失敗：' + err.message); }
 }
 
