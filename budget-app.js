@@ -30,7 +30,7 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 匯入功能 (修復：移除千分位逗號) ==========
+// ========== 2. 匯入功能 ==========
 function mgr_handleImport(files) {
     const file = files[0];
     if (!file) return;
@@ -38,28 +38,36 @@ function mgr_handleImport(files) {
     reader.onload = (e) => {
         try {
             const content = e.target.result;
-            // 判斷是 JSON 還是 HTML
             if (content.trim().startsWith('{')) {
                 const data = JSON.parse(content);
                 mgr_populate(data);
                 alert('JSON 匯入成功！');
             } else {
-                // HTML 匯入邏輯
                 const doc = new DOMParser().parseFromString(content, 'text/html');
+                // 嘗試從 HTML 標題或隱藏欄位抓取 metadata
+                let org = doc.querySelector('#mgr-org')?.value || '';
+                let year = doc.querySelector('#mgr-year')?.value || '';
+                let user = doc.querySelector('#mgr-user')?.value || '';
                 
+                // 如果是從靜態報表匯回，嘗試從標題文字抓取 (備用方案)
+                if (!org) {
+                    const titleH1 = doc.querySelector('h1.report-title');
+                    if (titleH1) {
+                        const text = titleH1.textContent; // 例如 "臺北市政府 114年度 預算表"
+                        const match = text.match(/^(.*?) (\d+)年度/);
+                        if (match) { org = match[1]; year = match[2]; }
+                    }
+                }
+
                 const getVal = (row, f) => {
                     const el = row.querySelector('.v-' + f);
                     if (!el) return '';
                     let val = el.tagName === 'INPUT' ? el.value : el.textContent;
-                    return val.replace(/,/g, '').trim(); // 移除千分位逗號
+                    return val.replace(/,/g, '').trim(); 
                 };
                 
                 const data = {
-                    metadata: { 
-                        org: doc.querySelector('#mgr-org')?.value || '', 
-                        year: doc.querySelector('#mgr-year')?.value || '',
-                        user: doc.querySelector('#mgr-user')?.value || ''
-                    },
+                    metadata: { org, year, user },
                     sections: sectionConfigs.map(conf => ({
                         id: conf.id,
                         items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
@@ -110,14 +118,19 @@ function mgr_populate(data) {
     });
 }
 
-// ========== 3. JSON 匯出功能 ==========
+// ========== 3. JSON 匯出功能 (確保 Metadata 存在) ==========
 function mgr_exportJSON() {
     try {
+        // 明確抓取 DOM 元素的值
+        const orgVal = document.getElementById('mgr-org')?.value || '';
+        const yearVal = document.getElementById('mgr-year')?.value || '';
+        const userVal = document.getElementById('mgr-user')?.value || '';
+
         const data = {
             metadata: {
-                org: document.getElementById('mgr-org').value || '',
-                year: document.getElementById('mgr-year').value || '',
-                user: document.getElementById('mgr-user').value || ''
+                org: orgVal,
+                year: yearVal,
+                user: userVal
             },
             sections: sectionConfigs.map(conf => ({
                 id: conf.id,
@@ -134,7 +147,7 @@ function mgr_exportJSON() {
         
         const jsonStr = JSON.stringify(data, null, 2);
         const blob = new Blob([jsonStr], { type: "application/json" });
-        const fileName = `${data.metadata.org || '預算'}_${data.metadata.year || '114'}年度.json`;
+        const fileName = `${orgVal || '預算'}_${yearVal || '114'}年度.json`;
         saveAs(blob, fileName);
     } catch (e) {
         console.error(e);
@@ -142,10 +155,15 @@ function mgr_exportJSON() {
     }
 }
 
-// ========== 4. HTML 匯出功能 (最終版：移除按鈕) ==========
+// ========== 4. HTML 匯出功能 (新增：自動產生正式標題) ==========
 function mgr_exportHTML() {
     try {
-        // 防呆檢查
+        // 1. 先抓取 Metadata (因為等一下 DOM 會被清洗，必須先存起來)
+        const metaOrg = document.getElementById('mgr-org')?.value || '________';
+        const metaYear = document.getElementById('mgr-year')?.value || '___';
+        const metaUser = document.getElementById('mgr-user')?.value || '';
+
+        // 2. 防呆檢查
         const liveInputs = document.querySelectorAll('#sections-container input:not([readonly])');
         const hasData = Array.from(liveInputs).some(i => i.value.trim() !== "");
         if (!hasData) {
@@ -154,17 +172,23 @@ function mgr_exportHTML() {
 
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // 一對一數值搬運
+        // 3. 一對一數值搬運 (Live -> Clone)
         const sourceInputs = document.querySelectorAll('input'); 
         const targetInputs = cloneDoc.querySelectorAll('input'); 
 
         if (sourceInputs.length === targetInputs.length) {
             sourceInputs.forEach((source, index) => {
                 const target = targetInputs[index];
+                
+                // 如果是 metadata 的 input，我們稍後會移除它並改成大標題，但為了保險起見還是填入
+                if (source.id === 'mgr-org' || source.id === 'mgr-year' || source.id === 'mgr-user') {
+                    target.setAttribute('value', source.value);
+                    return;
+                }
+
                 const rawValue = source.value;
                 const span = document.createElement('span');
                 
-                // 千分位處理
                 const num = parseFloat(rawValue.replace(/,/g, ''));
                 if (!isNaN(num) && rawValue.trim() !== '') {
                     span.textContent = num.toLocaleString();
@@ -180,13 +204,12 @@ function mgr_exportHTML() {
                     target.parentNode.replaceChild(span, target);
                 }
             });
-        } else {
-            alert('系統警告：DOM 結構不一致，部分資料可能未匯出。');
         }
 
-        // 清洗介面
+        // 4. 清洗介面 (移除原本的 Metadata 輸入區塊)
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
+        // 這裡會移除包含 Metadata 輸入框的容器 (因為它通常有 flex gap-2)
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
         const unwantedTexts = ['預算填報工作站', '支援 Excel 貼上', '自動儲存'];
@@ -196,23 +219,35 @@ function mgr_exportHTML() {
             }
         });
 
-        // 報表頭部 (只保留日期)
+        // 5. 重建正式標題 (使用剛剛抓取的 metaOrg, metaYear)
         const tabManager = cloneDoc.querySelector('#tab-manager');
         if (tabManager) {
             const now = new Date();
-            const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
-            const printHeader = document.createElement('div');
-            printHeader.className = "no-print";
-            // 改為靠右對齊，無按鈕
-            printHeader.style.cssText = "max-width:1200px; margin:20px auto; text-align:right; border-bottom:3px solid #000; padding-bottom:15px;";
-            printHeader.innerHTML = `<div style="color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>`;
-            tabManager.prepend(printHeader);
+            const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日`;
+            
+            // 建立一個包含兩個部分的 Header：上部分是報表標題，下部分是產製資訊
+            const headerContainer = document.createElement('div');
+            headerContainer.className = "report-header";
+            headerContainer.style.cssText = "margin: 0 auto 30px auto; width: 100%; max-width: 1200px; font-family: 'Noto Sans TC', sans-serif;";
+            
+            // 正式大標題
+            headerContainer.innerHTML = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 class="report-title" style="font-size: 28px; font-weight: bold; color: #000; margin: 0;">${metaOrg} ${metaYear}年度 預算表</h1>
+                    <p style="font-size: 14px; color: #333; margin-top: 5px;">填表人：${metaUser || '(未填寫)'}</p>
+                </div>
+                <div style="display: flex; justify-content: flex-end; border-bottom: 3px solid #000; padding-bottom: 5px; margin-bottom: 20px;">
+                    <div style="font-weight: bold; font-size: 14px; color: #000;">報表產製日期：${dateStr}</div>
+                </div>
+            `;
+            
+            tabManager.prepend(headerContainer);
             tabManager.classList.remove('hidden');
             tabManager.style.background = "white";
             tabManager.style.padding = "20px";
         }
 
-        // 硬寫入格線樣式
+        // 6. 硬寫入格線樣式
         const tables = cloneDoc.querySelectorAll('table');
         tables.forEach(table => {
             table.style.borderCollapse = 'collapse';
@@ -234,21 +269,24 @@ function mgr_exportHTML() {
             });
         });
 
-        // 注入 CSS
+        // 7. 注入 CSS
         const styleTag = document.createElement('style');
         styleTag.textContent = `
             body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
             .section-card { border: none !important; margin-bottom: 50px; box-shadow: none !important; background: white; }
-            h3 { margin-bottom: 15px; font-size: 1.5rem; color: #000 !important; font-weight: bold; }
+            h3 { margin-bottom: 15px; font-size: 1.5rem; color: #000 !important; font-weight: bold; border-left: 5px solid #000; padding-left: 10px; }
             .negative-value { color: #dc2626 !important; font-weight: bold; }
             span { display: inline-block; width: 100%; }
             @media print { .no-print { display: none !important; } .section-card { break-inside: avoid; } body { padding: 0; } }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
+        // 移除所有 script (因為這是靜態報表，不需要 JS)
+        cloneDoc.querySelectorAll('script').forEach(s => s.remove());
+
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
-        const org = document.getElementById('mgr-org').value || '預算報表';
-        saveAs(new Blob([htmlContent], { type: "text/html" }), `正式報表_${org}.html`);
+        const fileName = `正式報表_${metaOrg}_${metaYear}年.html`;
+        saveAs(new Blob([htmlContent], { type: "text/html" }), fileName);
 
     } catch (err) { console.error(err); alert('匯出失敗：' + err.message); }
 }
@@ -268,6 +306,21 @@ function agg_processFile(file) {
                 }
             } else {
                 const doc = new DOMParser().parseFromString(content, 'text/html');
+                
+                // 嘗試從靜態報表 Header 抓 Metadata
+                let org = doc.querySelector('#mgr-org')?.value || '';
+                let year = doc.querySelector('#mgr-year')?.value || '';
+                let user = doc.querySelector('#mgr-user')?.value || '';
+                
+                if (!org) {
+                     const titleH1 = doc.querySelector('h1.report-title');
+                     if (titleH1) {
+                         const text = titleH1.textContent;
+                         const match = text.match(/^(.*?) (\d+)年度/);
+                         if (match) { org = match[1]; year = match[2]; }
+                     }
+                }
+
                 const getVal = (row, f) => {
                     const el = row.querySelector('.v-'+f);
                     if (!el) return '';
@@ -275,7 +328,7 @@ function agg_processFile(file) {
                     return val.replace(/,/g, '').trim(); 
                 };
                 data = {
-                    metadata: { org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''), year: '', user: '' },
+                    metadata: { org, year, user },
                     sections: sectionConfigs.map(conf => ({
                         id: conf.id,
                         items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
