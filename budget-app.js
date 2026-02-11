@@ -105,7 +105,7 @@ function mgr_populate(data) {
     });
 }
 
-// ========== 3. JSON 匯出功能 (修復重點) ==========
+// ========== 3. JSON 匯出功能 ==========
 function mgr_exportJSON() {
     try {
         const data = {
@@ -123,7 +123,7 @@ function mgr_exportJSON() {
                         item[f] = input ? input.value : '';
                     });
                     return item;
-                }).filter(i => i.name && i.name.trim() !== '') // 過濾空行
+                }).filter(i => i.name && i.name.trim() !== '')
             }))
         };
         
@@ -137,7 +137,7 @@ function mgr_exportJSON() {
     }
 }
 
-// ========== 4. HTML 匯出功能 (一對一數值搬運版) ==========
+// ========== 4. HTML 匯出功能 (修復 querySelectorAll 錯誤) ==========
 function mgr_exportHTML() {
     try {
         const liveInputs = document.querySelectorAll('#sections-container input:not([readonly])');
@@ -147,29 +147,39 @@ function mgr_exportHTML() {
         }
 
         let cloneDoc = document.documentElement.cloneNode(true);
-        const sourceInputs = document.body.querySelectorAll('input'); 
-        const targetInputs = cloneDoc.body.querySelectorAll('input'); 
+        
+        // 修正重點：直接從 document (來源) 和 cloneDoc (目標) 抓取 input
+        // 不透過 .body 屬性，避免 undefined 錯誤
+        const sourceInputs = document.querySelectorAll('input'); 
+        const targetInputs = cloneDoc.querySelectorAll('input'); 
 
         if (sourceInputs.length === targetInputs.length) {
             sourceInputs.forEach((source, index) => {
                 const target = targetInputs[index];
                 const rawValue = source.value;
                 const span = document.createElement('span');
+                
                 const num = parseFloat(rawValue.replace(/,/g, ''));
                 if (!isNaN(num) && rawValue.trim() !== '') {
                     span.textContent = num.toLocaleString();
                 } else {
                     span.textContent = rawValue;
                 }
+                
                 span.className = source.className;
+                // 強制樣式：確保不塌陷
                 span.style.cssText = "display:inline-block; width:100%; min-height:1.2em; min-width:20px;";
                 span.classList.remove('border', 'border-b-2', 'outline-none');
-                target.parentNode.replaceChild(span, target);
+                
+                if(target.parentNode) {
+                    target.parentNode.replaceChild(span, target);
+                }
             });
         } else {
-            alert('系統警告：DOM 結構不一致，匯出的資料可能會錯位。');
+            alert('系統警告：DOM 結構不一致，部分資料可能未匯出。');
         }
 
+        // 移除不必要的元素
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
@@ -337,7 +347,7 @@ function bindEvents() {
     
     // 綁定所有按鈕
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
-    document.getElementById('btn-export-json').onclick = mgr_exportJSON; // 新增 JSON 匯出綁定
+    document.getElementById('btn-export-json').onclick = mgr_exportJSON; 
     document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
     document.getElementById('mgr-import-file').onchange = (e) => mgr_handleImport(e.target.files);
 
