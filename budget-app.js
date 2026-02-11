@@ -44,23 +44,22 @@ function mgr_handleImport(files) {
                 alert('JSON 匯入成功！');
             } else {
                 const doc = new DOMParser().parseFromString(content, 'text/html');
-                // 嘗試從 HTML 標題或隱藏欄位抓取 metadata
+                
                 let org = doc.querySelector('#mgr-org')?.value || '';
                 let year = doc.querySelector('#mgr-year')?.value || '';
                 let user = doc.querySelector('#mgr-user')?.value || '';
                 
-                // 如果是從靜態報表匯回，嘗試從標題文字抓取 (備用方案)
                 if (!org) {
-                    const titleH1 = doc.querySelector('h1.report-title');
-                    if (titleH1) {
-                        const text = titleH1.textContent; // 例如 "臺北市政府 114年度 預算表"
-                        const match = text.match(/^(.*?) (\d+)年度/);
-                        if (match) { org = match[1]; year = match[2]; }
-                    }
+                     const titleH1 = doc.querySelector('h1.report-title');
+                     if (titleH1) {
+                         const text = titleH1.textContent;
+                         const match = text.match(/^(.*?) (\d+)年度/);
+                         if (match) { org = match[1]; year = match[2]; }
+                     }
                 }
 
                 const getVal = (row, f) => {
-                    const el = row.querySelector('.v-' + f);
+                    const el = row.querySelector('.v-'+f);
                     if (!el) return '';
                     let val = el.tagName === 'INPUT' ? el.value : el.textContent;
                     return val.replace(/,/g, '').trim(); 
@@ -118,10 +117,9 @@ function mgr_populate(data) {
     });
 }
 
-// ========== 3. JSON 匯出功能 (確保 Metadata 存在) ==========
+// ========== 3. JSON 匯出功能 ==========
 function mgr_exportJSON() {
     try {
-        // 明確抓取 DOM 元素的值
         const orgVal = document.getElementById('mgr-org')?.value || '';
         const yearVal = document.getElementById('mgr-year')?.value || '';
         const userVal = document.getElementById('mgr-user')?.value || '';
@@ -155,15 +153,13 @@ function mgr_exportJSON() {
     }
 }
 
-// ========== 4. HTML 匯出功能 (新增：自動產生正式標題) ==========
+// ========== 4. HTML 匯出功能 ==========
 function mgr_exportHTML() {
     try {
-        // 1. 先抓取 Metadata (因為等一下 DOM 會被清洗，必須先存起來)
         const metaOrg = document.getElementById('mgr-org')?.value || '________';
         const metaYear = document.getElementById('mgr-year')?.value || '___';
         const metaUser = document.getElementById('mgr-user')?.value || '';
 
-        // 2. 防呆檢查
         const liveInputs = document.querySelectorAll('#sections-container input:not([readonly])');
         const hasData = Array.from(liveInputs).some(i => i.value.trim() !== "");
         if (!hasData) {
@@ -171,45 +167,33 @@ function mgr_exportHTML() {
         }
 
         let cloneDoc = document.documentElement.cloneNode(true);
-        
-        // 3. 一對一數值搬運 (Live -> Clone)
         const sourceInputs = document.querySelectorAll('input'); 
         const targetInputs = cloneDoc.querySelectorAll('input'); 
 
         if (sourceInputs.length === targetInputs.length) {
             sourceInputs.forEach((source, index) => {
                 const target = targetInputs[index];
-                
-                // 如果是 metadata 的 input，我們稍後會移除它並改成大標題，但為了保險起見還是填入
                 if (source.id === 'mgr-org' || source.id === 'mgr-year' || source.id === 'mgr-user') {
                     target.setAttribute('value', source.value);
                     return;
                 }
-
                 const rawValue = source.value;
                 const span = document.createElement('span');
-                
                 const num = parseFloat(rawValue.replace(/,/g, ''));
                 if (!isNaN(num) && rawValue.trim() !== '') {
                     span.textContent = num.toLocaleString();
                 } else {
                     span.textContent = rawValue;
                 }
-                
                 span.className = source.className;
                 span.style.cssText = "display:inline-block; width:100%; min-height:1.2em; min-width:20px;";
                 span.classList.remove('border', 'border-b-2', 'outline-none');
-                
-                if(target.parentNode) {
-                    target.parentNode.replaceChild(span, target);
-                }
+                if(target.parentNode) target.parentNode.replaceChild(span, target);
             });
         }
 
-        // 4. 清洗介面 (移除原本的 Metadata 輸入區塊)
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
-        // 這裡會移除包含 Metadata 輸入框的容器 (因為它通常有 flex gap-2)
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
         const unwantedTexts = ['預算填報工作站', '支援 Excel 貼上', '自動儲存'];
@@ -219,18 +203,15 @@ function mgr_exportHTML() {
             }
         });
 
-        // 5. 重建正式標題 (使用剛剛抓取的 metaOrg, metaYear)
         const tabManager = cloneDoc.querySelector('#tab-manager');
         if (tabManager) {
             const now = new Date();
             const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日`;
             
-            // 建立一個包含兩個部分的 Header：上部分是報表標題，下部分是產製資訊
             const headerContainer = document.createElement('div');
             headerContainer.className = "report-header";
             headerContainer.style.cssText = "margin: 0 auto 30px auto; width: 100%; max-width: 1200px; font-family: 'Noto Sans TC', sans-serif;";
             
-            // 正式大標題
             headerContainer.innerHTML = `
                 <div style="text-align: center; margin-bottom: 20px;">
                     <h1 class="report-title" style="font-size: 28px; font-weight: bold; color: #000; margin: 0;">${metaOrg} ${metaYear}年度 預算表</h1>
@@ -247,13 +228,11 @@ function mgr_exportHTML() {
             tabManager.style.padding = "20px";
         }
 
-        // 6. 硬寫入格線樣式
         const tables = cloneDoc.querySelectorAll('table');
         tables.forEach(table => {
             table.style.borderCollapse = 'collapse';
             table.style.width = '100%';
             table.style.border = '2px solid black';
-            
             const cells = table.querySelectorAll('th, td');
             cells.forEach(cell => {
                 cell.style.border = '1px solid black';
@@ -262,14 +241,12 @@ function mgr_exportHTML() {
                 cell.style.color = 'black';
                 cell.style.fontSize = '14px';
             });
-            
             table.querySelectorAll('thead th').forEach(th => {
                 th.style.backgroundColor = '#f1f5f9';
                 th.style.fontWeight = 'bold';
             });
         });
 
-        // 7. 注入 CSS
         const styleTag = document.createElement('style');
         styleTag.textContent = `
             body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
@@ -280,8 +257,6 @@ function mgr_exportHTML() {
             @media print { .no-print { display: none !important; } .section-card { break-inside: avoid; } body { padding: 0; } }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
-
-        // 移除所有 script (因為這是靜態報表，不需要 JS)
         cloneDoc.querySelectorAll('script').forEach(s => s.remove());
 
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
@@ -306,8 +281,6 @@ function agg_processFile(file) {
                 }
             } else {
                 const doc = new DOMParser().parseFromString(content, 'text/html');
-                
-                // 嘗試從靜態報表 Header 抓 Metadata
                 let org = doc.querySelector('#mgr-org')?.value || '';
                 let year = doc.querySelector('#mgr-year')?.value || '';
                 let user = doc.querySelector('#mgr-user')?.value || '';
@@ -419,6 +392,94 @@ function update(type) {
     Object.keys(totals).forEach(f => { const tEl = document.querySelector(`#tfoot-${type} .t-${f}`); if (tEl) { tEl.value = totals[f].toLocaleString(); tEl.classList.toggle('negative-value', totals[f] < 0); } });
 }
 
+// ========== 7. 鍵盤與貼上功能 (補回) ==========
+function bindKeyboardEvents() {
+    // 監聽 Enter 鍵 (自動跳下一列/新增列)
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        const el = document.activeElement;
+        if (!el || el.tagName !== 'INPUT' || el.readOnly) return;
+        
+        e.preventDefault(); // 防止預設行為
+        
+        const currentTr = el.closest('tr');
+        const tbody = currentTr.parentNode;
+        const type = tbody.id.replace('tbody-', '');
+        
+        // 找出目前是第幾個欄位
+        const tds = Array.from(currentTr.children);
+        const currentTd = el.closest('td');
+        const colIndex = tds.indexOf(currentTd);
+        
+        // 找下一列
+        let nextTr = currentTr.nextElementSibling;
+        
+        // 如果沒有下一列，就新增一列
+        if (!nextTr) {
+            mgr_addRow(type);
+            nextTr = tbody.lastElementChild;
+        }
+        
+        // 聚焦到下一列的同一欄位 (如果該欄位是 readonly，則找下一個可輸入的)
+        let targetInput = nextTr.children[colIndex]?.querySelector('input');
+        if (targetInput && targetInput.readOnly) {
+             // 簡單邏輯：如果是唯讀，嘗試找第一個可輸入的欄位 (通常是名稱)
+             targetInput = nextTr.querySelector('input:not([readonly])');
+        }
+        
+        if (targetInput) targetInput.focus();
+    });
+
+    // 監聽 Paste 貼上事件 (Excel 支援)
+    document.addEventListener('paste', e => {
+        const el = document.activeElement;
+        if (!el || el.tagName !== 'INPUT' || el.readOnly) return;
+
+        // 取得剪貼簿文字
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        if (!text) return;
+        
+        // 簡單判斷是否為表格資料 (有 Tab 或換行)
+        if (!text.includes('\t') && !text.includes('\n')) return;
+
+        e.preventDefault();
+        
+        const rows = text.split(/\r\n|\n|\r/).filter(r => r.trim());
+        const startTr = el.closest('tr');
+        const tbody = startTr.parentNode;
+        const type = tbody.id.replace('tbody-', '');
+        
+        const currentTd = el.closest('td');
+        const startColIdx = Array.from(startTr.children).indexOf(currentTd);
+        const startRowIdx = Array.from(tbody.children).indexOf(startTr);
+
+        rows.forEach((rowText, i) => {
+            let targetTr = tbody.children[startRowIdx + i];
+            // 如果列數不夠，自動新增
+            if (!targetTr) {
+                mgr_addRow(type);
+                targetTr = tbody.lastElementChild;
+            }
+            
+            const cells = rowText.split('\t');
+            cells.forEach((cellText, j) => {
+                const targetTd = targetTr.children[startColIdx + j];
+                if (targetTd) {
+                    const input = targetTd.querySelector('input');
+                    // 只填入非唯讀的欄位
+                    if (input && !input.readOnly) {
+                        // 去除千分位逗號後填入
+                        input.value = cellText.trim().replace(/,/g, '');
+                    }
+                }
+            });
+        });
+        
+        // 貼上後觸發更新計算
+        update(type);
+    });
+}
+
 function bindEvents() {
     document.getElementById('btn-manager').onclick = () => { document.getElementById('tab-manager').classList.remove('hidden'); document.getElementById('tab-aggregator').classList.add('hidden'); };
     document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
@@ -438,4 +499,9 @@ function bindEvents() {
     dz.onclick = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = e => Array.from(e.target.files).forEach(f => agg_processFile(f)); inp.click(); };
 }
 
-document.addEventListener('DOMContentLoaded', () => { render(); bindEvents(); sectionConfigs.forEach(c => mgr_addRow(c.id)); });
+document.addEventListener('DOMContentLoaded', () => { 
+    render(); 
+    bindEvents(); 
+    bindKeyboardEvents(); // 啟用鍵盤與貼上監聽
+    sectionConfigs.forEach(c => mgr_addRow(c.id)); 
+});
