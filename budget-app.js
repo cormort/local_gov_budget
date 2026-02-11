@@ -33,112 +33,104 @@ function getFieldLabel(sectionId, fieldId) {
 // ========== 2. 靜態備份功能 (強制顯示格線版) ==========
 function mgr_exportHTML() {
     try {
-        // 1. 同步所有輸入值到 DOM 屬性
-        document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
-        
-        // 2. 抓取 CSS 樣式
-        let inlineStyle = "";
-        try {
-            for (let sheet of document.styleSheets) {
-                if (sheet.href && (sheet.href.includes('budget-style.css') || sheet.href.includes('input.css'))) {
-                    const rules = sheet.rules || sheet.cssRules;
-                    inlineStyle += Array.from(rules).map(r => r.cssText).join("\n");
-                }
-            }
-        } catch (e) { console.warn("CSS 抓取受限"); }
+        // 1. 重要：在原頁面上同步所有 input 的數值到 value 屬性
+        // 這樣 cloneNode 才能抓到最新的數字
+        document.querySelectorAll('input').forEach(i => {
+            i.setAttribute('value', i.value);
+        });
 
-        // 3. 複製 DOM 並進行靜態化清洗
+        // 2. 複製整個 Document
         let cloneDoc = document.documentElement.cloneNode(true);
+        
+        // 3. 取得要處理的容器 (管理端)
         const tabManager = cloneDoc.querySelector('#tab-manager');
+        if (!tabManager) {
+            alert('找不到報表內容，請確認您正在管理分頁。');
+            return;
+        }
 
-        // A. 徹底移除導覽列與功能區塊
+        // --- A. 強制顯示管理分頁並移除不需要的區塊 ---
+        tabManager.classList.remove('hidden');
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
         
-        // B. 移除系統提示與操作按鈕
+        // --- B. 精準移除您指定的文字與按鈕 ---
+        // 移除所有操作按鈕與提示框
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
-        
-        // C. 關鍵修正：精準移除「預算填報工作站」、「支援 Excel 貼上」、「自動儲存」等特定文字
+
+        // 掃描並移除包含特定文字的標籤 (處理「預算填報工作站」等)
         const unwantedTexts = ['預算填報工作站', '支援 Excel 貼上', '自動儲存'];
-        cloneDoc.querySelectorAll('h1, h2, h3, p, div, span, label').forEach(el => {
+        cloneDoc.querySelectorAll('h1, h2, p, div, span, label').forEach(el => {
             unwantedTexts.forEach(text => {
-                if (el.textContent.includes(text)) {
-                    // 如果該元素包含這些文字，則移除該元素
-                    el.remove();
-                }
+                if (el.textContent.includes(text)) el.remove();
             });
         });
 
-        // D. 轉換所有 Input 為純文字 Span，確保格線內有內容
+        // --- C. 關鍵修正：將 Input 轉為可見文字 Span ---
+        // 確保每一筆資料與合計列都能顯示
         cloneDoc.querySelectorAll('input').forEach(input => {
+            const val = input.getAttribute('value') || '';
             const span = document.createElement('span');
-            span.textContent = input.value || '';
-            span.className = input.className + " inline-block";
+            span.textContent = val;
+            // 保留原本的數字樣式（如紅字或靠右）
+            span.className = input.className + " inline-block min-h-[1.5em] min-w-[10px]";
             input.parentNode.replaceChild(span, input);
         });
 
-        // E. 建立純淨報表標頭 (列印按鈕與日期)
+        // --- D. 建立正式報表頭部 ---
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
         const printHeader = document.createElement('div');
         printHeader.className = "no-print";
-        printHeader.style.cssText = "max-width:1280px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #000; padding-bottom:15px;";
+        printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #000; padding-bottom:15px;";
         printHeader.innerHTML = `
             <div>
                 <button id="p-btn" style="background:#2563eb; color:white; padding:10px 24px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button>
             </div>
             <div style="text-align:right; color:#000; font-weight:bold;">產製日期：${dateStr}</div>
         `;
-        
-        if (tabManager) {
-            tabManager.prepend(printHeader);
-            tabManager.classList.remove('hidden');
-            tabManager.style.background = "white";
-            tabManager.style.padding = "20px";
-        }
+        tabManager.prepend(printHeader);
 
-        // F. 注入強化格線 CSS
+        // --- E. 注入 CSS (強化黑格線) ---
         const styleTag = document.createElement('style');
-        styleTag.textContent = inlineStyle + `
-            /* 強制表格黑格線 */
+        styleTag.textContent = `
+            body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
             .budget-table { 
                 border-collapse: collapse !important; 
                 width: 100% !important; 
                 border: 2px solid #000 !important;
                 margin-bottom: 30px;
-                table-layout: auto;
+                background: white;
             }
             .budget-table th, .budget-table td { 
                 border: 1px solid #000 !important; 
-                padding: 12px 6px !important;
+                padding: 10px 5px !important;
                 text-align: center;
                 color: #000 !important;
             }
-            .budget-table th { background-color: #f1f5f9 !important; font-weight: bold; }
-            .section-card { border: none !important; margin-bottom: 60px; box-shadow: none !important; }
-            h3 { margin-bottom: 20px; font-size: 1.5rem; color: #000 !important; font-weight: bold; border-left: 6px solid #000; padding-left: 10px; }
+            .budget-table th { background-color: #f8fafc !important; font-weight: bold; }
+            .section-card { border: none !important; margin-bottom: 50px; background: white; }
+            h3 { margin-bottom: 15px; font-size: 1.4rem; color: #000 !important; font-weight: bold; }
             .negative-value { color: #dc2626 !important; font-weight: bold; }
-            
+            .no-print { margin-bottom: 20px; }
             @media print {
                 .no-print { display: none !important; }
-                body { background: white !important; }
                 .section-card { break-inside: avoid; }
             }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
-        // G. 加入列印腳本
+        // --- F. 下載檔案 ---
         const printScript = document.createElement('script');
         printScript.textContent = `document.addEventListener('DOMContentLoaded',function(){document.getElementById('p-btn').onclick=function(){window.print()}});`;
         cloneDoc.querySelector('body').appendChild(printScript);
 
-        // 4. 下載檔案
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
         saveAs(new Blob([htmlContent], { type: "text/html" }), `正式報表_${org}.html`);
     } catch (err) { 
         console.error(err);
-        alert('匯出失敗：' + err.message); 
+        alert('匯出失敗，請檢查主程式是否正常運行。'); 
     }
 }
 
