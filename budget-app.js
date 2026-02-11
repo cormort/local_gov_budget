@@ -30,97 +30,136 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 靜態備份功能 (強制顯示格線版) ==========
+// ========== 2. 匯入功能 (修復重點) ==========
+function mgr_handleImport(files) {
+    const file = files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const content = e.target.result;
+            // 判斷是 JSON 還是 HTML
+            if (content.trim().startsWith('{')) {
+                const data = JSON.parse(content);
+                mgr_populate(data);
+            } else {
+                const doc = new DOMParser().parseFromString(content, 'text/html');
+                const getVal = (row, f) => {
+                    // 兼容 input 與 span (靜態報表)
+                    const el = row.querySelector('.v-' + f);
+                    if (!el) return '';
+                    return el.tagName === 'INPUT' ? el.value : el.textContent;
+                };
+                
+                const data = {
+                    metadata: { 
+                        org: doc.getElementById('mgr-org')?.value || doc.querySelector('#mgr-org')?.value || '', 
+                        year: doc.getElementById('mgr-year')?.value || doc.querySelector('#mgr-year')?.value || '',
+                        user: doc.getElementById('mgr-user')?.value || doc.querySelector('#mgr-user')?.value || ''
+                    },
+                    sections: sectionConfigs.map(conf => ({
+                        id: conf.id,
+                        items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                            let item = {};
+                            conf.fields.forEach(f => item[f] = getVal(tr, f));
+                            return item;
+                        }).filter(i => i.name) // 過濾掉空行
+                    }))
+                };
+                mgr_populate(data);
+            }
+            alert('匯入成功！');
+            // 清空 file input 以便重複匯入同檔
+            document.getElementById('mgr-import-file').value = ''; 
+        } catch (err) {
+            console.error(err);
+            alert('匯入失敗：檔案格式錯誤或損毀。');
+        }
+    };
+    reader.readAsText(file);
+}
+
+function mgr_populate(data) {
+    if (data.metadata) {
+        if(document.getElementById('mgr-org')) document.getElementById('mgr-org').value = data.metadata.org || '';
+        if(document.getElementById('mgr-year')) document.getElementById('mgr-year').value = data.metadata.year || '';
+        if(document.getElementById('mgr-user')) document.getElementById('mgr-user').value = data.metadata.user || '';
+    }
+
+    sectionConfigs.forEach(conf => {
+        const tbody = document.getElementById(`tbody-${conf.id}`);
+        if (!tbody) return;
+        tbody.innerHTML = ''; // 清空現有表格
+        
+        const sectionData = data.sections?.find(s => s.id === conf.id);
+        if (sectionData && sectionData.items && sectionData.items.length > 0) {
+            sectionData.items.forEach(item => mgr_addRow(conf.id, item));
+        } else {
+            mgr_addRow(conf.id); // 預設空行
+        }
+        update(conf.id);
+    });
+}
+
+// ========== 3. 匯出功能 (防呆 + 清洗 + 格線) ==========
 function mgr_exportHTML() {
     try {
-        // 1. 重要：在原頁面上同步所有 input 的數值到 value 屬性
-        // 這樣 cloneNode 才能抓到最新的數字
-        document.querySelectorAll('input').forEach(i => {
-            i.setAttribute('value', i.value);
-        });
+        // 檢查是否有值
+        const allInputs = Array.from(document.querySelectorAll('#sections-container input:not([readonly])'));
+        const hasData = allInputs.some(input => input.value.trim() !== "");
+        if (!hasData) { alert('⚠️ 報表無資料，請先填寫。'); return; }
 
-        // 2. 複製整個 Document
+        document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
+
         let cloneDoc = document.documentElement.cloneNode(true);
-        
-        // 3. 取得要處理的容器 (管理端)
         const tabManager = cloneDoc.querySelector('#tab-manager');
-        if (!tabManager) {
-            alert('找不到報表內容，請確認您正在管理分頁。');
-            return;
-        }
+        if (!tabManager) return;
 
-        // --- A. 強制顯示管理分頁並移除不需要的區塊 ---
-        tabManager.classList.remove('hidden');
+        // 清洗介面
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
-        
-        // --- B. 精準移除您指定的文字與按鈕 ---
-        // 移除所有操作按鈕與提示框
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
-        // 掃描並移除包含特定文字的標籤 (處理「預算填報工作站」等)
         const unwantedTexts = ['預算填報工作站', '支援 Excel 貼上', '自動儲存'];
-        cloneDoc.querySelectorAll('h1, h2, p, div, span, label').forEach(el => {
-            unwantedTexts.forEach(text => {
-                if (el.textContent.includes(text)) el.remove();
-            });
+        cloneDoc.querySelectorAll('h1, h2, h3, p, div, span').forEach(el => {
+            unwantedTexts.forEach(text => { if (el.textContent.includes(text)) el.remove(); });
         });
 
-        // --- C. 關鍵修正：將 Input 轉為可見文字 Span ---
-        // 確保每一筆資料與合計列都能顯示
+        // Input 轉 Span
         cloneDoc.querySelectorAll('input').forEach(input => {
-            const val = input.getAttribute('value') || '';
             const span = document.createElement('span');
-            span.textContent = val;
-            // 保留原本的數字樣式（如紅字或靠右）
-            span.className = input.className + " inline-block min-h-[1.5em] min-w-[10px]";
+            span.textContent = input.getAttribute('value') || '';
+            span.className = input.className + " inline-block min-w-[5px]";
             input.parentNode.replaceChild(span, input);
         });
 
-        // --- D. 建立正式報表頭部 ---
+        // 報表頭部
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
         const printHeader = document.createElement('div');
         printHeader.className = "no-print";
-        printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #000; padding-bottom:15px;";
-        printHeader.innerHTML = `
-            <div>
-                <button id="p-btn" style="background:#2563eb; color:white; padding:10px 24px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button>
-            </div>
-            <div style="text-align:right; color:#000; font-weight:bold;">產製日期：${dateStr}</div>
-        `;
+        printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #000; padding-bottom:15px;";
+        printHeader.innerHTML = `<div><button id="p-btn" style="background:#2563eb; color:white; padding:12px 28px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button></div><div style="text-align:right; color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>`;
+        
         tabManager.prepend(printHeader);
+        tabManager.classList.remove('hidden');
+        tabManager.style.background = "white";
+        tabManager.style.padding = "20px";
 
-        // --- E. 注入 CSS (強化黑格線) ---
+        // 注入 CSS
         const styleTag = document.createElement('style');
         styleTag.textContent = `
-            body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
-            .budget-table { 
-                border-collapse: collapse !important; 
-                width: 100% !important; 
-                border: 2px solid #000 !important;
-                margin-bottom: 30px;
-                background: white;
-            }
-            .budget-table th, .budget-table td { 
-                border: 1px solid #000 !important; 
-                padding: 10px 5px !important;
-                text-align: center;
-                color: #000 !important;
-            }
-            .budget-table th { background-color: #f8fafc !important; font-weight: bold; }
-            .section-card { border: none !important; margin-bottom: 50px; background: white; }
-            h3 { margin-bottom: 15px; font-size: 1.4rem; color: #000 !important; font-weight: bold; }
+            body { background: white !important; font-family: "Noto Sans TC", sans-serif; }
+            .budget-table { border-collapse: collapse !important; width: 100% !important; border: 2px solid #000 !important; margin-bottom: 40px; background: white; }
+            .budget-table th, .budget-table td { border: 1px solid #000 !important; padding: 10px 4px !important; text-align: center; color: #000 !important; font-size: 14px; }
+            .budget-table th { background-color: #f1f5f9 !important; font-weight: bold; }
+            .section-card { border: none !important; margin-bottom: 60px; box-shadow: none !important; background: white; }
+            h3 { margin-bottom: 15px; font-size: 1.5rem; color: #000 !important; font-weight: bold; }
             .negative-value { color: #dc2626 !important; font-weight: bold; }
-            .no-print { margin-bottom: 20px; }
-            @media print {
-                .no-print { display: none !important; }
-                .section-card { break-inside: avoid; }
-            }
+            @media print { .no-print { display: none !important; } .section-card { break-inside: avoid; } body { padding: 0; } }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
-        // --- F. 下載檔案 ---
         const printScript = document.createElement('script');
         printScript.textContent = `document.addEventListener('DOMContentLoaded',function(){document.getElementById('p-btn').onclick=function(){window.print()}});`;
         cloneDoc.querySelector('body').appendChild(printScript);
@@ -128,13 +167,10 @@ function mgr_exportHTML() {
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
         saveAs(new Blob([htmlContent], { type: "text/html" }), `正式報表_${org}.html`);
-    } catch (err) { 
-        console.error(err);
-        alert('匯出失敗，請檢查主程式是否正常運行。'); 
-    }
+    } catch (err) { console.error(err); alert('匯出失敗'); }
 }
 
-// ========== 3. 其餘功能 (保持不變) ==========
+// ========== 4. 匯整端邏輯 ==========
 let agg_data = [];
 function agg_processFile(file) {
     const reader = new FileReader();
@@ -146,10 +182,7 @@ function agg_processFile(file) {
                 return el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '';
             };
             const data = {
-                metadata: { 
-                    org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''),
-                    year: doc.querySelector('#mgr-year')?.value || '', user: doc.querySelector('#mgr-user')?.value || ''
-                },
+                metadata: { org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''), year: '', user: '' },
                 sections: sectionConfigs.map(conf => ({
                     id: conf.id,
                     items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
@@ -195,6 +228,7 @@ function agg_render() {
 }
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
 
+// ========== 5. 基礎功能與事件 ==========
 function render() {
     const container = document.getElementById('sections-container');
     container.innerHTML = '';
@@ -241,7 +275,12 @@ function update(type) {
 function bindEvents() {
     document.getElementById('btn-manager').onclick = () => { document.getElementById('tab-manager').classList.remove('hidden'); document.getElementById('tab-aggregator').classList.add('hidden'); };
     document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
+    
+    // 修復：匯出與匯入按鈕綁定
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
+    document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
+    document.getElementById('mgr-import-file').onchange = (e) => mgr_handleImport(e.target.files);
+
     document.getElementById('btn-agg-clear').onclick = () => { agg_data = []; agg_render(); };
     document.getElementById('sections-container').onclick = e => {
         if (e.target.classList.contains('add-row-btn')) mgr_addRow(e.target.dataset.section);
