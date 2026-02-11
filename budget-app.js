@@ -1,6 +1,6 @@
 'use strict';
 
-// ========== 1. 全域配置與欄位定義 (對應您要求的專業名稱) ==========
+// ========== 1. 全域配置與欄位定義 ==========
 const sectionConfigs = [
     { id: 'op', title: '一、營業基金', color: '#2563eb', fields: ['name','rev','cost','gross','exp','opprofit','nonrev','nonexp','nonprofit','pretax','tax','net'] },
     { id: 'wk', title: '二、作業基金', color: '#16a34a', fields: ['name','rev','cost','surplus','nonrev','nonexp','nonsurplus','net'] },
@@ -17,7 +17,6 @@ const fieldNames = {
     begin: '期初基金餘額', remit: '解繳公庫', end: '期末基金餘額'
 };
 
-// 輔助函式：根據不同類別切換精確的標題文字
 function getFieldLabel(sectionId, fieldId) {
     if (sectionId === 'op') {
         const labels = { rev: '營業收入', cost: '營業成本', gross: '營業毛利(毛損)', exp: '營業費用', opprofit: '營業利益(損失)', nonrev: '營業外收入', nonexp: '營業外費用', nonprofit: '營業外利益(損失)', pretax: '稅前淨利(淨損)', tax: '所得稅費用(利益)', net: '本期淨利(淨損)' };
@@ -31,75 +30,99 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 匯出備份 (修正 CSS 跑掉的問題) ==========
+// ========== 2. 靜態備份功能 (含列印按鈕與日期) ==========
 function mgr_exportHTML() {
     try {
-        // 先將所有 input 的值同步到 DOM 的 value 屬性，確保備份檔靜態呈現正確
+        // 同步 input 值
         document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
         
-        // 抓取 budget-style.css 的內容
         let inlineStyle = "";
         try {
             for (let sheet of document.styleSheets) {
-                // 檢查是否為 budget-style.css (過濾掉 Google Fonts 等外部連結)
                 if (sheet.href && (sheet.href.includes('budget-style.css') || sheet.href.includes('input.css'))) {
                     const rules = sheet.rules || sheet.cssRules;
                     inlineStyle += Array.from(rules).map(r => r.cssText).join("\n");
                 }
             }
-        } catch (e) { console.warn("CSS 抓取受限，採用基礎排版備份"); }
+        } catch (e) { console.warn("CSS 抓取受限"); }
 
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // 移除原有的外部 CSS 引用，改為內嵌 Style 標籤
-        cloneDoc.querySelectorAll('link[href*="css"]').forEach(l => {
-            if(!l.href.includes('fonts')) l.remove();
+        // A. 移除所有功能性元件
+        cloneDoc.querySelector('nav')?.remove();
+        cloneDoc.getElementById('tab-aggregator')?.remove();
+        cloneDoc.querySelectorAll('.flex.gap-2, #btn-clear, .excel-guide, script').forEach(el => el.remove());
+        cloneDoc.querySelectorAll('.add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
+
+        // B. 轉換 input 為純文字
+        cloneDoc.querySelectorAll('input').forEach(input => {
+            const span = document.createElement('span');
+            span.textContent = input.value || '';
+            span.className = input.className + " inline-block";
+            input.parentNode.replaceChild(span, input);
         });
+
+        // C. 加入列印控制區 (按鈕與日期)
+        const printHeader = document.createElement('div');
+        const now = new Date();
+        const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
         
-        if (inlineStyle) {
-            const styleTag = document.createElement('style');
-            styleTag.textContent = inlineStyle;
-            cloneDoc.querySelector('head').appendChild(styleTag);
-        }
+        printHeader.className = "max-w-7xl mx-auto mb-6 flex justify-between items-end border-b pb-4 no-print";
+        printHeader.innerHTML = `
+            <div>
+                <button onclick="window.print()" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
+                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態備份檔，僅供檢視與列印。</p>
+            </div>
+            <div style="text-align:right; color:#64748b; font-size:14px;">
+                產製日期：${dateStr}
+            </div>
+        `;
+        const container = cloneDoc.getElementById('tab-manager');
+        container.prepend(printHeader);
+        container.style.marginTop = "20px";
+
+        // D. 注入 CSS (包含列印隱藏邏輯)
+        cloneDoc.querySelectorAll('link[href*="css"]').forEach(l => { if(!l.href.includes('fonts')) l.remove(); });
+        const styleTag = document.createElement('style');
+        styleTag.textContent = inlineStyle + `
+            @media print { .no-print { display: none !important; } body { background: white; } .section-card { border: 1px solid #eee; break-inside: avoid; } }
+            body { background: #f8fafc; padding-bottom: 50px; }
+            .section-card { box-shadow: none !important; margin-bottom: 30px; }
+            span.negative-value { color: #dc2626; font-weight: bold; }
+        `;
+        cloneDoc.querySelector('head').appendChild(styleTag);
 
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
-        const blob = new Blob([htmlContent], { type: "text/html" });
-        const org = document.getElementById('mgr-org').value || '預算備份';
-        saveAs(blob, `${org}.html`);
-    } catch (err) { alert('匯出 HTML 失敗：' + err.message); }
+        const org = document.getElementById('mgr-org').value || '預算報表';
+        saveAs(new Blob([htmlContent], { type: "text/html" }), `靜態報表_${org}.html`);
+    } catch (err) { alert('匯出失敗：' + err.message); }
 }
 
-// ========== 3. 匯整端邏輯 (參考 index (41).html) ==========
+// ========== 3. 匯整端邏輯 (參考 index 41) ==========
 let agg_data = [];
-
 function agg_processFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
         try {
-            let data;
-            if (file.name.endsWith('.json')) {
-                data = JSON.parse(e.target.result);
-            } else {
-                const doc = new DOMParser().parseFromString(e.target.result, 'text/html');
-                data = {
-                    metadata: { 
-                        org: doc.getElementById('mgr-org')?.value || file.name.replace('.html',''),
-                        year: doc.getElementById('mgr-year')?.value || '',
-                        user: doc.getElementById('mgr-user')?.value || ''
-                    },
-                    sections: sectionConfigs.map(conf => ({
-                        id: conf.id,
-                        items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
-                            let item = {};
-                            conf.fields.forEach(f => {
-                                const inp = tr.querySelector('.v-'+f);
-                                item[f] = inp?.getAttribute('value') || inp?.value || '';
-                            });
-                            return item;
-                        }).filter(i => i.name)
-                    }))
-                };
-            }
+            const doc = new DOMParser().parseFromString(e.target.result, 'text/html');
+            const data = {
+                metadata: { 
+                    org: doc.getElementById('mgr-org')?.value || file.name.replace('.html',''),
+                    year: doc.getElementById('mgr-year')?.value || '115',
+                    user: doc.getElementById('mgr-user')?.value || '未知'
+                },
+                sections: sectionConfigs.map(conf => ({
+                    id: conf.id,
+                    items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                        let item = {};
+                        conf.fields.forEach(f => {
+                            const inp = tr.querySelector('.v-'+f) || tr.querySelector('.v-'+f.replace('v-',''));
+                            item[f] = inp?.getAttribute('value') || inp?.textContent || '';
+                        });
+                        return item;
+                    }).filter(i => i.name)
+                }))
+            };
             agg_data.push(data);
             agg_render();
         } catch (err) { alert('檔案解析失敗'); }
@@ -113,13 +136,12 @@ function agg_render() {
     container.classList.remove('hidden');
 
     let stats = { govs: agg_data.length, funds: 0, totalRev: 0, profit: 0, loss: 0 };
-    const num = v => parseFloat(v) || 0;
+    const num = v => parseFloat(String(v).replace(/,/g,'')) || 0;
 
     agg_data.forEach(gov => {
         gov.sections?.forEach(sec => {
             sec.items?.forEach(item => {
                 stats.funds++;
-                // 參考 index(41) 的全口徑總額計算
                 let rev = (sec.id === 'op' || sec.id === 'wk') ? (num(item.rev) + num(item.nonrev)) : num(item.source);
                 let bal = num(item.net) || num(item.surplus) || (num(item.end) - num(item.begin));
                 stats.totalRev += rev;
@@ -129,9 +151,9 @@ function agg_render() {
     });
 
     document.getElementById('agg-kpi').innerHTML = `
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>機關總數</div><div class="text-2xl font-bold text-blue-400">${stats.govs}</div></div>
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>基金總數</div><div class="text-2xl font-bold text-green-400">${stats.funds}</div></div>
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>總收入規模(億)</div><div class="text-2xl font-bold text-emerald-400">${(stats.totalRev / 100000).toFixed(2)}</div></div>
+        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>機關數</div><div class="text-2xl font-bold text-blue-400">${stats.govs}</div></div>
+        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>基金數</div><div class="text-2xl font-bold text-green-400">${stats.funds}</div></div>
+        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>總規模(億)</div><div class="text-2xl font-bold text-emerald-400">${(stats.totalRev / 100000).toFixed(2)}</div></div>
         <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>盈虧分佈</div><div class="text-sm">盈: ${stats.profit} / 虧: ${stats.loss}</div></div>
     `;
 
@@ -139,15 +161,15 @@ function agg_render() {
         <tr class="border-b border-slate-700">
             <td class="p-3 text-slate-500">${i+1}</td>
             <td class="p-3 font-bold text-blue-300">${d.metadata.org}</td>
-            <td class="p-3 text-sm">${d.metadata.year}年 / ${d.metadata.user}</td>
-            <td class="p-3 text-right"><button class="text-red-400 hover:underline" onclick="agg_remove(${i})">移除</button></td>
+            <td class="p-3 text-sm text-slate-400">${d.metadata.year}年 / ${d.metadata.user}</td>
+            <td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="agg_remove(${i})">移除</button></td>
         </tr>
     `).join('');
 }
 
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
 
-// ========== 4. 填報端核心計算與自動化 ==========
+// ========== 4. 填報端核心計算與介面 ==========
 function render() {
     const container = document.getElementById('sections-container');
     container.innerHTML = '';
@@ -158,7 +180,7 @@ function render() {
         div.innerHTML = `
             <div class="flex justify-between items-center mb-4">
                 <h3 class="font-bold text-lg" style="color:${conf.color}">${conf.title}</h3>
-                <button class="add-row-btn text-blue-600 font-bold hover:underline" data-section="${conf.id}">+ 新增</button>
+                <button class="add-row-btn text-blue-600 font-bold hover:underline" data-section="${conf.id}">+ 新增基金</button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full budget-table text-sm">
@@ -209,7 +231,7 @@ function update(type) {
         
         conf.fields.slice(1).forEach(f => {
             let val = v(f);
-            row.querySelector('.v-'+f)?.classList.toggle('text-red-600', val < 0);
+            row.querySelector('.v-'+f)?.classList.toggle('negative-value', val < 0);
             totals[f] += val;
         });
     });
@@ -218,7 +240,7 @@ function update(type) {
         const tEl = document.querySelector(`#tfoot-${type} .t-${f}`);
         if (tEl) {
             tEl.value = totals[f].toLocaleString();
-            tEl.classList.toggle('text-red-600', totals[f] < 0);
+            tEl.classList.toggle('negative-value', totals[f] < 0);
         }
     });
 }
@@ -234,7 +256,6 @@ function bindEvents() {
         if (e.target.classList.contains('add-row-btn')) mgr_addRow(e.target.dataset.section);
         if (e.target.classList.contains('delete-btn')) { e.target.closest('tr').remove(); update(e.target.dataset.type); }
     };
-
     document.getElementById('sections-container').oninput = e => {
         const tbody = e.target.closest('tbody');
         if (tbody) update(tbody.id.replace('tbody-', ''));
@@ -246,8 +267,6 @@ function bindEvents() {
         inp.onchange = e => Array.from(e.target.files).forEach(f => agg_processFile(f));
         inp.click();
     };
-    dz.ondragover = e => { e.preventDefault(); dz.classList.add('bg-slate-700'); };
-    dz.ondrop = e => { e.preventDefault(); dz.classList.remove('bg-slate-700'); Array.from(e.dataTransfer.files).forEach(f => agg_processFile(f)); };
 }
 
 document.addEventListener('DOMContentLoaded', () => {
