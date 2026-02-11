@@ -48,16 +48,10 @@ function mgr_handleImport(files) {
                 const doc = new DOMParser().parseFromString(content, 'text/html');
                 
                 const getVal = (row, f) => {
-                    // 嘗試尋找包含該欄位 class 的元素
                     const el = row.querySelector('.v-' + f);
                     if (!el) return '';
-                    
-                    // 取得原始值
                     let val = el.tagName === 'INPUT' ? el.value : el.textContent;
-                    
-                    // 【關鍵修復】移除千分位逗號，確保轉換為純數字
-                    // 如果不移除，"1,000" 放入 input type="number" 會變成空值
-                    return val.replace(/,/g, '').trim(); 
+                    return val.replace(/,/g, '').trim(); // 移除千分位逗號
                 };
                 
                 const data = {
@@ -76,7 +70,7 @@ function mgr_handleImport(files) {
                     }))
                 };
                 mgr_populate(data);
-                alert('HTML 報表匯入成功！數據已還原。');
+                alert('HTML 報表匯入成功！');
             }
             document.getElementById('mgr-import-file').value = ''; 
         } catch (err) {
@@ -148,7 +142,7 @@ function mgr_exportJSON() {
     }
 }
 
-// ========== 4. HTML 匯出功能 (修復：格線與數值) ==========
+// ========== 4. HTML 匯出功能 (最終版：移除按鈕) ==========
 function mgr_exportHTML() {
     try {
         // 防呆檢查
@@ -160,7 +154,7 @@ function mgr_exportHTML() {
 
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // 抓取來源與目標 (一對一數值搬運)
+        // 一對一數值搬運
         const sourceInputs = document.querySelectorAll('input'); 
         const targetInputs = cloneDoc.querySelectorAll('input'); 
 
@@ -170,7 +164,7 @@ function mgr_exportHTML() {
                 const rawValue = source.value;
                 const span = document.createElement('span');
                 
-                // 處理千分位
+                // 千分位處理
                 const num = parseFloat(rawValue.replace(/,/g, ''));
                 if (!isNaN(num) && rawValue.trim() !== '') {
                     span.textContent = num.toLocaleString();
@@ -178,9 +172,7 @@ function mgr_exportHTML() {
                     span.textContent = rawValue;
                 }
                 
-                // 保留 class 以便匯入時識別 (.v-name, .v-rev 等)
                 span.className = source.className;
-                // 強制行內樣式，防止塌陷
                 span.style.cssText = "display:inline-block; width:100%; min-height:1.2em; min-width:20px;";
                 span.classList.remove('border', 'border-b-2', 'outline-none');
                 
@@ -204,23 +196,23 @@ function mgr_exportHTML() {
             }
         });
 
-        // 報表頭部
+        // 報表頭部 (只保留日期)
         const tabManager = cloneDoc.querySelector('#tab-manager');
         if (tabManager) {
             const now = new Date();
             const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
             const printHeader = document.createElement('div');
             printHeader.className = "no-print";
-            printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #000; padding-bottom:15px;";
-            printHeader.innerHTML = `<div><button id="p-btn" style="background:#2563eb; color:white; padding:12px 28px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button></div><div style="text-align:right; color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>`;
+            // 改為靠右對齊，無按鈕
+            printHeader.style.cssText = "max-width:1200px; margin:20px auto; text-align:right; border-bottom:3px solid #000; padding-bottom:15px;";
+            printHeader.innerHTML = `<div style="color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>`;
             tabManager.prepend(printHeader);
             tabManager.classList.remove('hidden');
             tabManager.style.background = "white";
             tabManager.style.padding = "20px";
         }
 
-        // 【關鍵修復】硬寫入格線樣式到每一個 td/th
-        // 這能保證就算 CSS 被覆蓋，HTML 標籤上的 style 也會生效
+        // 硬寫入格線樣式
         const tables = cloneDoc.querySelectorAll('table');
         tables.forEach(table => {
             table.style.borderCollapse = 'collapse';
@@ -229,21 +221,20 @@ function mgr_exportHTML() {
             
             const cells = table.querySelectorAll('th, td');
             cells.forEach(cell => {
-                cell.style.border = '1px solid black'; // 硬寫入格線
+                cell.style.border = '1px solid black';
                 cell.style.padding = '8px';
                 cell.style.textAlign = 'center';
                 cell.style.color = 'black';
                 cell.style.fontSize = '14px';
             });
             
-            // 標題列背景
             table.querySelectorAll('thead th').forEach(th => {
                 th.style.backgroundColor = '#f1f5f9';
                 th.style.fontWeight = 'bold';
             });
         });
 
-        // 注入輔助 CSS (列印隱藏等)
+        // 注入 CSS
         const styleTag = document.createElement('style');
         styleTag.textContent = `
             body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
@@ -254,10 +245,6 @@ function mgr_exportHTML() {
             @media print { .no-print { display: none !important; } .section-card { break-inside: avoid; } body { padding: 0; } }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
-
-        const printScript = document.createElement('script');
-        printScript.textContent = `document.addEventListener('DOMContentLoaded',function(){document.getElementById('p-btn').onclick=function(){window.print()}});`;
-        cloneDoc.querySelector('body').appendChild(printScript);
 
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
@@ -285,7 +272,7 @@ function agg_processFile(file) {
                     const el = row.querySelector('.v-'+f);
                     if (!el) return '';
                     let val = el.tagName === 'INPUT' ? el.value : el.textContent;
-                    return val.replace(/,/g, '').trim(); // 匯整端也要去逗號
+                    return val.replace(/,/g, '').trim(); 
                 };
                 data = {
                     metadata: { org: doc.querySelector('#mgr-org')?.value || doc.querySelector('#mgr-org')?.textContent || file.name.replace('.html',''), year: '', user: '' },
@@ -383,7 +370,6 @@ function bindEvents() {
     document.getElementById('btn-manager').onclick = () => { document.getElementById('tab-manager').classList.remove('hidden'); document.getElementById('tab-aggregator').classList.add('hidden'); };
     document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
     
-    // 綁定所有按鈕
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
     document.getElementById('btn-export-json').onclick = mgr_exportJSON; 
     document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
