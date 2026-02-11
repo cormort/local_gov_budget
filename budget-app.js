@@ -33,7 +33,7 @@ function getFieldLabel(sectionId, fieldId) {
 // ========== 2. 靜態備份功能 (修正 cloneDoc 錯誤與相容 CSP) ==========
 function mgr_exportHTML() {
     try {
-        // 先同步當前值
+        // 同步所有現有數據到 HTML 屬性
         document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
         
         let inlineStyle = "";
@@ -46,16 +46,19 @@ function mgr_exportHTML() {
             }
         } catch (e) { console.warn("CSS 抓取受限"); }
 
-        // 複製 DocumentElement
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // A. 移除功能性元件 (改用 querySelector 取代 getElementById)
-        cloneDoc.querySelector('nav')?.remove();
-        cloneDoc.querySelector('#tab-aggregator')?.remove();
+        const tabManager = cloneDoc.querySelector('#tab-manager');
+        const tabAggregator = cloneDoc.querySelector('#tab-aggregator');
+        const nav = cloneDoc.querySelector('nav');
+
+        // A. 移除功能性元件
+        if (nav) nav.remove();
+        if (tabAggregator) tabAggregator.remove();
         cloneDoc.querySelectorAll('.flex.gap-2, #btn-clear, .excel-guide, script').forEach(el => el.remove());
         cloneDoc.querySelectorAll('.add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
-        // B. 轉換所有 Input 為純文字 Span
+        // B. 轉換 input 為純文字 span
         cloneDoc.querySelectorAll('input').forEach(input => {
             const span = document.createElement('span');
             span.textContent = input.value || '';
@@ -63,7 +66,7 @@ function mgr_exportHTML() {
             input.parentNode.replaceChild(span, input);
         });
 
-        // C. 加入列印控制區域 (不使用行內 onclick)
+        // C. 建立列印頭部
         const printHeader = document.createElement('div');
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -71,36 +74,38 @@ function mgr_exportHTML() {
         printHeader.className = "max-w-7xl mx-auto mb-6 flex justify-between items-end border-b pb-4 no-print";
         printHeader.innerHTML = `
             <div>
-                <button id="print-btn" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
-                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態備份檔。列印時建議選「另存為 PDF」。</p>
+                <button id="print-trigger" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
+                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態唯讀報表，已強化格線顯示，建議列印時選「另存為 PDF」。</p>
             </div>
             <div style="text-align:right; color:#64748b; font-size:14px;">產製日期：${dateStr}</div>
         `;
 
-        const mgrTab = cloneDoc.querySelector('#tab-manager');
-        if (mgrTab) {
-            mgrTab.prepend(printHeader);
-            mgrTab.classList.remove('hidden'); // 確保靜態檔開啟時顯示
-            mgrTab.style.marginTop = "20px";
+        if (tabManager) {
+            tabManager.prepend(printHeader);
+            tabManager.classList.remove('hidden'); 
+            tabManager.style.marginTop = "20px";
         }
 
-        // D. 注入一段安全的腳本來處理列印點擊 (放在 body 最後)
-        const printScript = document.createElement('script');
-        printScript.textContent = `
-            document.addEventListener('DOMContentLoaded', function() {
-                var btn = document.getElementById('print-btn');
-                if (btn) {
-                    btn.addEventListener('click', function() { window.print(); });
-                }
-            });
-        `;
-        cloneDoc.querySelector('body').appendChild(printScript);
+        const scriptTag = document.createElement('script');
+        scriptTag.textContent = `document.getElementById('print-trigger').addEventListener('click', () => window.print());`;
+        cloneDoc.querySelector('body').appendChild(scriptTag);
 
-        // E. 注入 CSS (含列印優化)
+        // D. 注入 CSS (特別強化格線)
         cloneDoc.querySelectorAll('link[href*="css"]').forEach(l => { if(!l.href.includes('fonts')) l.remove(); });
         const styleTag = document.createElement('style');
         styleTag.textContent = inlineStyle + `
-            @media print { .no-print { display: none !important; } body { background: white !important; } .section-card { border: 1px solid #eee !important; break-inside: avoid; } }
+            /* 靜態報表格線強化 */
+            .budget-table { border-collapse: collapse !important; width: 100%; border: 2px solid #334155 !important; }
+            .budget-table th, .budget-table td { border: 1px solid #334155 !important; padding: 8px !important; }
+            .budget-table th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
+            
+            @media print { 
+                .no-print { display: none !important; } 
+                body { background: white !important; padding: 0 !important; } 
+                .section-card { border: none !important; box-shadow: none !important; break-inside: avoid; margin-bottom: 40px !important; }
+                .budget-table { border: 1.5px solid #000 !important; }
+                .budget-table th, .budget-table td { border: 1px solid #000 !important; }
+            }
             body { background: #f8fafc !important; padding-bottom: 50px; }
             .section-card { box-shadow: none !important; margin-bottom: 30px; border: 1px solid #e2e8f0 !important; }
             span.negative-value { color: #dc2626 !important; font-weight: bold; }
