@@ -113,16 +113,40 @@ function mgr_populate(data) {
 // ========== 3. 匯出功能 (防呆 + 清洗 + 格線) ==========
 function mgr_exportHTML() {
     try {
-        const allInputs = Array.from(document.querySelectorAll('#sections-container input:not([readonly])'));
-        const hasData = allInputs.some(input => input.value.trim() !== "");
-        if (!hasData) { alert('⚠️ 報表無資料，請先填寫。'); return; }
+        // 1. 取得當前畫面上的所有輸入框 (來源資料)
+        const sourceInputs = document.querySelectorAll('#sections-container input');
+        
+        // 檢查是否有資料
+        const hasData = Array.from(sourceInputs).some(input => input.value.trim() !== "" && !input.readOnly);
+        if (!hasData) {
+            if(!confirm('⚠️ 警告：目前報表似乎是空白的。\n是否仍要強制匯出？')) return;
+        }
 
-        document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
-
+        // 2. 複製整份文件
         let cloneDoc = document.documentElement.cloneNode(true);
         const tabManager = cloneDoc.querySelector('#tab-manager');
-        if (!tabManager) return;
+        if (!tabManager) { alert('匯出錯誤：找不到報表容器'); return; }
 
+        // 3. 【關鍵修正】強制數值同步：一對一將來源資料填入複製後的 HTML
+        // 我們直接對應 Index，這比 setAttribute 更可靠
+        const targetInputs = cloneDoc.querySelectorAll('#sections-container input');
+        
+        if (sourceInputs.length !== targetInputs.length) {
+            console.warn('DOM 結構不一致，改用屬性同步模式');
+            // 備用方案
+            document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
+            cloneDoc = document.documentElement.cloneNode(true);
+        } else {
+            // 主力方案：直接把畫面上的值 (source) 塞進備份檔 (target) 的文字內容中
+            sourceInputs.forEach((src, idx) => {
+                const tgt = targetInputs[idx];
+                // 將值暫存於 data-value 屬性，確保轉 span 時抓得到
+                tgt.setAttribute('value', src.value); 
+                tgt.value = src.value;
+            });
+        }
+
+        // 4. 清洗介面 (移除不需要的按鈕與文字)
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
@@ -132,30 +156,56 @@ function mgr_exportHTML() {
             unwantedTexts.forEach(text => { if (el.textContent.includes(text)) el.remove(); });
         });
 
+        // 5. 將 Input 轉為 Span (靜態文字)
+        // 這裡直接讀取我們剛剛強制寫入的 attribute
         cloneDoc.querySelectorAll('input').forEach(input => {
+            const val = input.getAttribute('value') || input.value || '';
             const span = document.createElement('span');
-            span.textContent = input.getAttribute('value') || '';
-            span.className = input.className + " inline-block min-w-[5px]";
+            
+            // 處理千分位：如果是數字，加上千分位逗號讓報表更好看
+            let displayVal = val;
+            if (!isNaN(parseFloat(val)) && val.trim() !== '') {
+                displayVal = parseFloat(val).toLocaleString();
+            }
+
+            span.textContent = displayVal;
+            // 繼承樣式 (靠右、紅字) 並給予最小寬度避免格線塌陷
+            span.className = input.className + " inline-block min-w-[1em] min-h-[1.2em] w-full";
+            
+            // 移除 input 邊框相關的 class，確保 span 乾淨
+            span.classList.remove('border', 'border-b-2', 'outline-none');
+            
             input.parentNode.replaceChild(span, input);
         });
 
+        // 6. 建立報表標頭
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
         const printHeader = document.createElement('div');
         printHeader.className = "no-print";
         printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #000; padding-bottom:15px;";
-        printHeader.innerHTML = `<div><button id="p-btn" style="background:#2563eb; color:white; padding:12px 28px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button></div><div style="text-align:right; color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>`;
+        printHeader.innerHTML = `
+            <div><button id="p-btn" style="background:#2563eb; color:white; padding:12px 28px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button></div>
+            <div style="text-align:right; color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>
+        `;
         
         tabManager.prepend(printHeader);
         tabManager.classList.remove('hidden');
         tabManager.style.background = "white";
         tabManager.style.padding = "20px";
 
+        // 7. 注入 CSS (強制黑格線)
         const styleTag = document.createElement('style');
         styleTag.textContent = `
             body { background: white !important; font-family: "Noto Sans TC", sans-serif; }
-            .budget-table { border-collapse: collapse !important; width: 100% !important; border: 2px solid #000 !important; margin-bottom: 40px; background: white; }
-            .budget-table th, .budget-table td { border: 1px solid #000 !important; padding: 10px 4px !important; text-align: center; color: #000 !important; font-size: 14px; }
+            .budget-table { 
+                border-collapse: collapse !important; width: 100% !important; 
+                border: 2px solid #000 !important; margin-bottom: 40px; background: white; 
+            }
+            .budget-table th, .budget-table td { 
+                border: 1px solid #000 !important; padding: 8px 4px !important; 
+                text-align: center; color: #000 !important; font-size: 14px; 
+            }
             .budget-table th { background-color: #f1f5f9 !important; font-weight: bold; }
             .section-card { border: none !important; margin-bottom: 60px; box-shadow: none !important; background: white; }
             h3 { margin-bottom: 15px; font-size: 1.5rem; color: #000 !important; font-weight: bold; }
@@ -164,14 +214,20 @@ function mgr_exportHTML() {
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
+        // 8. 注入列印腳本
         const printScript = document.createElement('script');
         printScript.textContent = `document.addEventListener('DOMContentLoaded',function(){document.getElementById('p-btn').onclick=function(){window.print()}});`;
         cloneDoc.querySelector('body').appendChild(printScript);
 
+        // 9. 下載
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
         saveAs(new Blob([htmlContent], { type: "text/html" }), `正式報表_${org}.html`);
-    } catch (err) { console.error(err); alert('匯出失敗'); }
+
+    } catch (err) { 
+        console.error(err); 
+        alert('匯出失敗：' + err.message); 
+    }
 }
 
 // ========== 4. 匯整端邏輯 ==========
