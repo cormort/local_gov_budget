@@ -30,7 +30,7 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 匯入功能 (修正：相容舊版結構) ==========
+// ========== 2. 匯入功能 ==========
 function mgr_handleImport(files) {
     const file = files[0];
     if (!file) return;
@@ -43,7 +43,6 @@ function mgr_handleImport(files) {
                 mgr_populate(data);
                 alert('JSON 匯入成功！');
             } else {
-                // 處理 HTML 匯入
                 const doc = new DOMParser().parseFromString(content, 'text/html');
                 const getVal = (row, f) => {
                     const el = row.querySelector('.v-' + f);
@@ -78,7 +77,6 @@ function mgr_handleImport(files) {
 }
 
 function mgr_populate(data) {
-    // 回填 Metadata
     if (data.metadata) {
         if(document.getElementById('mgr-org')) document.getElementById('mgr-org').value = data.metadata.org || '';
         if(document.getElementById('mgr-year')) document.getElementById('mgr-year').value = data.metadata.year || '';
@@ -90,14 +88,11 @@ function mgr_populate(data) {
         if (!tbody) return;
         tbody.innerHTML = ''; 
 
-        // 關鍵修正：判斷資料來源格式
         let items = [];
         if (data.sections && Array.isArray(data.sections)) {
-            // 新版結構： { sections: [ { id: 'op', items: [...] } ] }
             const section = data.sections.find(s => s.id === conf.id);
             if (section) items = section.items;
         } else if (data[conf.id] && Array.isArray(data[conf.id])) {
-            // 舊版結構： { op: [...], wk: [...] }
             items = data[conf.id];
         }
 
@@ -110,127 +105,122 @@ function mgr_populate(data) {
     });
 }
 
-// ========== 3. 匯出功能 (防呆 + 清洗 + 格線) ==========
+// ========== 3. JSON 匯出功能 (修復重點) ==========
+function mgr_exportJSON() {
+    try {
+        const data = {
+            metadata: {
+                org: document.getElementById('mgr-org').value || '',
+                year: document.getElementById('mgr-year').value || '',
+                user: document.getElementById('mgr-user').value || ''
+            },
+            sections: sectionConfigs.map(conf => ({
+                id: conf.id,
+                items: Array.from(document.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
+                    let item = {};
+                    conf.fields.forEach(f => {
+                        const input = tr.querySelector(`.v-${f}`);
+                        item[f] = input ? input.value : '';
+                    });
+                    return item;
+                }).filter(i => i.name && i.name.trim() !== '') // 過濾空行
+            }))
+        };
+        
+        const jsonStr = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonStr], { type: "application/json" });
+        const fileName = `${data.metadata.org || '預算'}_${data.metadata.year || '114'}年度.json`;
+        saveAs(blob, fileName);
+    } catch (e) {
+        console.error(e);
+        alert('JSON 匯出失敗：' + e.message);
+    }
+}
+
+// ========== 4. HTML 匯出功能 (一對一數值搬運版) ==========
 function mgr_exportHTML() {
     try {
-        // 1. 取得當前畫面上的所有輸入框 (來源資料)
-        const sourceInputs = document.querySelectorAll('#sections-container input');
-        
-        // 檢查是否有資料
-        const hasData = Array.from(sourceInputs).some(input => input.value.trim() !== "" && !input.readOnly);
+        const liveInputs = document.querySelectorAll('#sections-container input:not([readonly])');
+        const hasData = Array.from(liveInputs).some(i => i.value.trim() !== "");
         if (!hasData) {
-            if(!confirm('⚠️ 警告：目前報表似乎是空白的。\n是否仍要強制匯出？')) return;
+            if(!confirm('⚠️ 警告：目前報表似乎是空白的，是否仍要匯出？')) return;
         }
 
-        // 2. 複製整份文件
         let cloneDoc = document.documentElement.cloneNode(true);
-        const tabManager = cloneDoc.querySelector('#tab-manager');
-        if (!tabManager) { alert('匯出錯誤：找不到報表容器'); return; }
+        const sourceInputs = document.body.querySelectorAll('input'); 
+        const targetInputs = cloneDoc.body.querySelectorAll('input'); 
 
-        // 3. 【關鍵修正】強制數值同步：一對一將來源資料填入複製後的 HTML
-        // 我們直接對應 Index，這比 setAttribute 更可靠
-        const targetInputs = cloneDoc.querySelectorAll('#sections-container input');
-        
-        if (sourceInputs.length !== targetInputs.length) {
-            console.warn('DOM 結構不一致，改用屬性同步模式');
-            // 備用方案
-            document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
-            cloneDoc = document.documentElement.cloneNode(true);
-        } else {
-            // 主力方案：直接把畫面上的值 (source) 塞進備份檔 (target) 的文字內容中
-            sourceInputs.forEach((src, idx) => {
-                const tgt = targetInputs[idx];
-                // 將值暫存於 data-value 屬性，確保轉 span 時抓得到
-                tgt.setAttribute('value', src.value); 
-                tgt.value = src.value;
+        if (sourceInputs.length === targetInputs.length) {
+            sourceInputs.forEach((source, index) => {
+                const target = targetInputs[index];
+                const rawValue = source.value;
+                const span = document.createElement('span');
+                const num = parseFloat(rawValue.replace(/,/g, ''));
+                if (!isNaN(num) && rawValue.trim() !== '') {
+                    span.textContent = num.toLocaleString();
+                } else {
+                    span.textContent = rawValue;
+                }
+                span.className = source.className;
+                span.style.cssText = "display:inline-block; width:100%; min-height:1.2em; min-width:20px;";
+                span.classList.remove('border', 'border-b-2', 'outline-none');
+                target.parentNode.replaceChild(span, target);
             });
+        } else {
+            alert('系統警告：DOM 結構不一致，匯出的資料可能會錯位。');
         }
 
-        // 4. 清洗介面 (移除不需要的按鈕與文字)
         cloneDoc.querySelector('nav')?.remove();
         cloneDoc.querySelector('#tab-aggregator')?.remove();
         cloneDoc.querySelectorAll('.excel-guide, .flex.gap-2, #btn-clear, script, .add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
         const unwantedTexts = ['預算填報工作站', '支援 Excel 貼上', '自動儲存'];
-        cloneDoc.querySelectorAll('h1, h2, h3, p, div, span').forEach(el => {
-            unwantedTexts.forEach(text => { if (el.textContent.includes(text)) el.remove(); });
-        });
-
-        // 5. 將 Input 轉為 Span (靜態文字)
-        // 這裡直接讀取我們剛剛強制寫入的 attribute
-        cloneDoc.querySelectorAll('input').forEach(input => {
-            const val = input.getAttribute('value') || input.value || '';
-            const span = document.createElement('span');
-            
-            // 處理千分位：如果是數字，加上千分位逗號讓報表更好看
-            let displayVal = val;
-            if (!isNaN(parseFloat(val)) && val.trim() !== '') {
-                displayVal = parseFloat(val).toLocaleString();
+        cloneDoc.querySelectorAll('h1, h2, h3, p, div, span, label').forEach(el => {
+            if (el.children.length === 0 && unwantedTexts.some(text => el.textContent.includes(text))) {
+                el.remove();
             }
-
-            span.textContent = displayVal;
-            // 繼承樣式 (靠右、紅字) 並給予最小寬度避免格線塌陷
-            span.className = input.className + " inline-block min-w-[1em] min-h-[1.2em] w-full";
-            
-            // 移除 input 邊框相關的 class，確保 span 乾淨
-            span.classList.remove('border', 'border-b-2', 'outline-none');
-            
-            input.parentNode.replaceChild(span, input);
         });
 
-        // 6. 建立報表標頭
-        const now = new Date();
-        const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
-        const printHeader = document.createElement('div');
-        printHeader.className = "no-print";
-        printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #000; padding-bottom:15px;";
-        printHeader.innerHTML = `
-            <div><button id="p-btn" style="background:#2563eb; color:white; padding:12px 28px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button></div>
-            <div style="text-align:right; color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>
-        `;
-        
-        tabManager.prepend(printHeader);
-        tabManager.classList.remove('hidden');
-        tabManager.style.background = "white";
-        tabManager.style.padding = "20px";
+        const tabManager = cloneDoc.querySelector('#tab-manager');
+        if (tabManager) {
+            const now = new Date();
+            const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+            const printHeader = document.createElement('div');
+            printHeader.className = "no-print";
+            printHeader.style.cssText = "max-width:1200px; margin:20px auto; display:flex; justify-content:space-between; align-items:flex-end; border-bottom:3px solid #000; padding-bottom:15px;";
+            printHeader.innerHTML = `<div><button id="p-btn" style="background:#2563eb; color:white; padding:12px 28px; border-radius:6px; font-weight:bold; cursor:pointer; border:none; font-size:16px;">🖨️ 列印 / 儲存 PDF</button></div><div style="text-align:right; color:#000; font-weight:bold; font-size:16px;">產製日期：${dateStr}</div>`;
+            tabManager.prepend(printHeader);
+            tabManager.classList.remove('hidden');
+            tabManager.style.background = "white";
+            tabManager.style.padding = "20px";
+        }
 
-        // 7. 注入 CSS (強制黑格線)
         const styleTag = document.createElement('style');
         styleTag.textContent = `
-            body { background: white !important; font-family: "Noto Sans TC", sans-serif; }
-            .budget-table { 
-                border-collapse: collapse !important; width: 100% !important; 
-                border: 2px solid #000 !important; margin-bottom: 40px; background: white; 
-            }
-            .budget-table th, .budget-table td { 
-                border: 1px solid #000 !important; padding: 8px 4px !important; 
-                text-align: center; color: #000 !important; font-size: 14px; 
-            }
+            body { background: white !important; font-family: "Noto Sans TC", sans-serif; padding: 20px; }
+            .budget-table { border-collapse: collapse !important; width: 100% !important; border: 2px solid #000 !important; margin-bottom: 30px; background: white; }
+            .budget-table th, .budget-table td { border: 1px solid #000 !important; padding: 10px 5px !important; text-align: center; color: #000 !important; font-size: 14px; vertical-align: middle; }
             .budget-table th { background-color: #f1f5f9 !important; font-weight: bold; }
-            .section-card { border: none !important; margin-bottom: 60px; box-shadow: none !important; background: white; }
+            .section-card { border: none !important; margin-bottom: 50px; box-shadow: none !important; background: white; }
             h3 { margin-bottom: 15px; font-size: 1.5rem; color: #000 !important; font-weight: bold; }
             .negative-value { color: #dc2626 !important; font-weight: bold; }
+            span { display: inline-block; width: 100%; }
             @media print { .no-print { display: none !important; } .section-card { break-inside: avoid; } body { padding: 0; } }
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
-        // 8. 注入列印腳本
         const printScript = document.createElement('script');
         printScript.textContent = `document.addEventListener('DOMContentLoaded',function(){document.getElementById('p-btn').onclick=function(){window.print()}});`;
         cloneDoc.querySelector('body').appendChild(printScript);
 
-        // 9. 下載
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
         saveAs(new Blob([htmlContent], { type: "text/html" }), `正式報表_${org}.html`);
 
-    } catch (err) { 
-        console.error(err); 
-        alert('匯出失敗：' + err.message); 
-    }
+    } catch (err) { console.error(err); alert('匯出失敗：' + err.message); }
 }
 
-// ========== 4. 匯整端邏輯 ==========
+// ========== 5. 匯整端邏輯 ==========
 let agg_data = [];
 function agg_processFile(file) {
     const reader = new FileReader();
@@ -238,10 +228,8 @@ function agg_processFile(file) {
         try {
             let data;
             const content = e.target.result;
-            // 匯整端也要支援 JSON 匯入
             if (file.name.endsWith('.json') || content.trim().startsWith('{')) {
                 data = JSON.parse(content);
-                // 正規化 JSON 結構給 Aggregator 使用
                 if (!data.sections) {
                     data.sections = sectionConfigs.map(c => ({ id: c.id, items: data[c.id] || [] }));
                 }
@@ -299,7 +287,7 @@ function agg_render() {
 }
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
 
-// ========== 5. 基礎功能與事件 ==========
+// ========== 6. 基礎功能與事件 ==========
 function render() {
     const container = document.getElementById('sections-container');
     container.innerHTML = '';
@@ -347,7 +335,9 @@ function bindEvents() {
     document.getElementById('btn-manager').onclick = () => { document.getElementById('tab-manager').classList.remove('hidden'); document.getElementById('tab-aggregator').classList.add('hidden'); };
     document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
     
+    // 綁定所有按鈕
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
+    document.getElementById('btn-export-json').onclick = mgr_exportJSON; // 新增 JSON 匯出綁定
     document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
     document.getElementById('mgr-import-file').onchange = (e) => mgr_handleImport(e.target.files);
 
