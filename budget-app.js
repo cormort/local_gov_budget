@@ -1,6 +1,6 @@
 'use strict';
 
-// ========== 1. 全域配置與欄位定義 ==========
+// ========== 1. 全域配置與欄位定義 (對應您要求的專業名稱) ==========
 const sectionConfigs = [
     { id: 'op', title: '一、營業基金', color: '#2563eb', fields: ['name','rev','cost','gross','exp','opprofit','nonrev','nonexp','nonprofit','pretax','tax','net'] },
     { id: 'wk', title: '二、作業基金', color: '#16a34a', fields: ['name','rev','cost','surplus','nonrev','nonexp','nonsurplus','net'] },
@@ -30,10 +30,10 @@ function getFieldLabel(sectionId, fieldId) {
     return fieldNames[fieldId];
 }
 
-// ========== 2. 靜態備份功能 (修正 cloneDoc 錯誤與 CSP 限制) ==========
+// ========== 2. 靜態備份功能 (修正 cloneDoc 錯誤與相容 CSP) ==========
 function mgr_exportHTML() {
     try {
-        // 同步所有現有數據到 HTML 屬性
+        // 先同步當前值
         document.querySelectorAll('input').forEach(i => i.setAttribute('value', i.value));
         
         let inlineStyle = "";
@@ -46,21 +46,16 @@ function mgr_exportHTML() {
             }
         } catch (e) { console.warn("CSS 抓取受限"); }
 
-        // 使用 document.documentElement 複製
+        // 複製 DocumentElement
         let cloneDoc = document.documentElement.cloneNode(true);
         
-        // --- 修正：使用 querySelector 取代 getElementById ---
-        const tabManager = cloneDoc.querySelector('#tab-manager');
-        const tabAggregator = cloneDoc.querySelector('#tab-aggregator');
-        const nav = cloneDoc.querySelector('nav');
-
-        // A. 移除功能性元件
-        if (nav) nav.remove();
-        if (tabAggregator) tabAggregator.remove();
+        // A. 移除功能性元件 (改用 querySelector 取代 getElementById)
+        cloneDoc.querySelector('nav')?.remove();
+        cloneDoc.querySelector('#tab-aggregator')?.remove();
         cloneDoc.querySelectorAll('.flex.gap-2, #btn-clear, .excel-guide, script').forEach(el => el.remove());
         cloneDoc.querySelectorAll('.add-row-btn, .delete-btn, #autosave-indicator, #undo-btn').forEach(el => el.remove());
 
-        // B. 轉換 input 為純文字 span
+        // B. 轉換所有 Input 為純文字 Span
         cloneDoc.querySelectorAll('input').forEach(input => {
             const span = document.createElement('span');
             span.textContent = input.value || '';
@@ -68,7 +63,7 @@ function mgr_exportHTML() {
             input.parentNode.replaceChild(span, input);
         });
 
-        // C. 建立列印頭部 (修正 CSP：不使用 onclick)
+        // C. 加入列印控制區域 (不使用行內 onclick)
         const printHeader = document.createElement('div');
         const now = new Date();
         const dateStr = `${now.getFullYear()-1911}年${now.getMonth()+1}月${now.getDate()}日 ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -76,25 +71,32 @@ function mgr_exportHTML() {
         printHeader.className = "max-w-7xl mx-auto mb-6 flex justify-between items-end border-b pb-4 no-print";
         printHeader.innerHTML = `
             <div>
-                <button id="print-trigger" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
-                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態唯讀備份。建議列印時「目標」選「另存為 PDF」。</p>
+                <button id="print-btn" style="background:#2563eb; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">🖨️ 列印此報表</button>
+                <p style="font-size:12px; color:#64748b; margin-top:8px;">提示：此為靜態備份檔。列印時建議選「另存為 PDF」。</p>
             </div>
             <div style="text-align:right; color:#64748b; font-size:14px;">產製日期：${dateStr}</div>
         `;
 
-        // D. 插入列印區域並注入「非行內」腳本
-        if (tabManager) {
-            tabManager.prepend(printHeader);
-            tabManager.classList.remove('hidden'); // 確保備份檔開啟時是顯示的
-            tabManager.style.marginTop = "20px";
+        const mgrTab = cloneDoc.querySelector('#tab-manager');
+        if (mgrTab) {
+            mgrTab.prepend(printHeader);
+            mgrTab.classList.remove('hidden'); // 確保靜態檔開啟時顯示
+            mgrTab.style.marginTop = "20px";
         }
 
-        // 注入一小段 Script 來控制列印 (這段會被放在備份檔末端)
-        const scriptTag = document.createElement('script');
-        scriptTag.textContent = `document.getElementById('print-trigger').addEventListener('click', () => window.print());`;
-        cloneDoc.querySelector('body').appendChild(scriptTag);
+        // D. 注入一段安全的腳本來處理列印點擊 (放在 body 最後)
+        const printScript = document.createElement('script');
+        printScript.textContent = `
+            document.addEventListener('DOMContentLoaded', function() {
+                var btn = document.getElementById('print-btn');
+                if (btn) {
+                    btn.addEventListener('click', function() { window.print(); });
+                }
+            });
+        `;
+        cloneDoc.querySelector('body').appendChild(printScript);
 
-        // E. 注入 CSS
+        // E. 注入 CSS (含列印優化)
         cloneDoc.querySelectorAll('link[href*="css"]').forEach(l => { if(!l.href.includes('fonts')) l.remove(); });
         const styleTag = document.createElement('style');
         styleTag.textContent = inlineStyle + `
@@ -105,7 +107,6 @@ function mgr_exportHTML() {
         `;
         cloneDoc.querySelector('head').appendChild(styleTag);
 
-        // F. 下載
         const htmlContent = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
         const org = document.getElementById('mgr-org').value || '預算報表';
         saveAs(new Blob([htmlContent], { type: "text/html" }), `靜態報表_${org}.html`);
@@ -115,16 +116,15 @@ function mgr_exportHTML() {
     }
 }
 
-// ========== 3. 匯整端邏輯 ==========
+// ========== 3. 匯整端邏輯 (支持讀取靜態 Span 或 Input) ==========
 let agg_data = [];
 function agg_processFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
         try {
             const doc = new DOMParser().parseFromString(e.target.result, 'text/html');
-            // 兼容靜態 span 格式或動態 input 格式
-            const getVal = (row, field) => {
-                const el = row.querySelector('.v-'+field) || row.querySelector('.v-'+field.replace('v-',''));
+            const getVal = (row, fieldClass) => {
+                const el = row.querySelector('.' + fieldClass);
                 return el ? (el.tagName === 'INPUT' ? el.value : el.textContent) : '';
             };
 
@@ -138,7 +138,7 @@ function agg_processFile(file) {
                     id: conf.id,
                     items: Array.from(doc.querySelectorAll(`#tbody-${conf.id} tr`)).map(tr => {
                         let item = {};
-                        conf.fields.forEach(f => item[f] = getVal(tr, f));
+                        conf.fields.forEach(f => item[f] = getVal(tr, 'v-'+f));
                         return item;
                     }).filter(i => i.name)
                 }))
@@ -171,10 +171,10 @@ function agg_render() {
     });
 
     document.getElementById('agg-kpi').innerHTML = `
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>機關數</div><div class="text-2xl font-bold text-blue-400">${stats.govs}</div></div>
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>基金數</div><div class="text-2xl font-bold text-green-400">${stats.funds}</div></div>
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>總規模(億)</div><div class="text-2xl font-bold text-emerald-400">${(stats.totalRev / 100000).toFixed(2)}</div></div>
-        <div class="kpi-card bg-slate-800 p-4 rounded-lg"><div>盈虧分佈</div><div class="text-sm">盈: ${stats.profit} / 虧: ${stats.loss}</div></div>
+        <div class="bg-slate-800 p-4 rounded-lg"><div>機關數</div><div class="text-2xl font-bold text-blue-400">${stats.govs}</div></div>
+        <div class="bg-slate-800 p-4 rounded-lg"><div>基金數</div><div class="text-2xl font-bold text-green-400">${stats.funds}</div></div>
+        <div class="bg-slate-800 p-4 rounded-lg"><div>總規模(億)</div><div class="text-2xl font-bold text-emerald-400">${(stats.totalRev / 100000).toFixed(2)}</div></div>
+        <div class="bg-slate-800 p-4 rounded-lg"><div>盈虧分佈</div><div class="text-sm">盈: ${stats.profit} / 虧: ${stats.loss}</div></div>
     `;
 
     document.getElementById('agg-list-body').innerHTML = agg_data.map((d, i) => `
@@ -189,7 +189,7 @@ function agg_render() {
 
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
 
-// ========== 4. 填報端核心邏輯 ==========
+// ========== 4. 填報端核心計算 ==========
 function render() {
     const container = document.getElementById('sections-container');
     container.innerHTML = '';
@@ -265,7 +265,7 @@ function update(type) {
     });
 }
 
-// ========== 5. 事件繫結與初始化 ==========
+// ========== 5. 初始化與事件綁定 ==========
 function bindEvents() {
     document.getElementById('btn-manager').onclick = () => { 
         document.getElementById('tab-manager').classList.remove('hidden'); 
