@@ -153,6 +153,72 @@ function mgr_exportJSON() {
     }
 }
 
+
+// ========== 4b. Excel 匯出功能 ==========
+function mgr_exportXLSX() {
+    try {
+        const orgVal = document.getElementById('mgr-org')?.value || '預算';
+        const yearVal = document.getElementById('mgr-year')?.value || '';
+        const userVal = document.getElementById('mgr-user')?.value || '';
+        const wb = XLSX.utils.book_new();
+
+        sectionConfigs.forEach(conf => {
+            const rows = document.querySelectorAll(`#tbody-${conf.id} tr`);
+            if (!rows.length) return;
+
+            // 表頭
+            const header = [conf.fields.map(f => getFieldLabel(conf.id, f))];
+
+            // 資料列
+            const data = Array.from(rows).map(tr =>
+                conf.fields.map(f => {
+                    const input = tr.querySelector(`.v-${f}`);
+                    if (!input) return '';
+                    const val = input.value.replace(/,/g, '').trim();
+                    const num = parseFloat(val);
+                    return isNaN(num) ? val : num;
+                })
+            ).filter(row => row[0] !== ''); // 過濾空名稱列
+
+            if (!data.length) return;
+
+            // 加入合計列
+            const tfoot = document.getElementById(`tfoot-${conf.id}`);
+            if (tfoot) {
+                const totalRow = conf.fields.map((f, i) => {
+                    if (i === 0) return '合計';
+                    const tEl = tfoot.querySelector(`.t-${f}`);
+                    if (!tEl) return '';
+                    const num = parseFloat(tEl.value.replace(/,/g, ''));
+                    return isNaN(num) ? '' : num;
+                });
+                data.push(totalRow);
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet([...header, ...data]);
+
+            // 設定欄寬
+            ws['!cols'] = conf.fields.map((f, i) => ({ wch: i === 0 ? 20 : 14 }));
+
+            // 安全的工作表名稱（Excel 限制 31 字元，不能含特殊字元）
+            const sheetName = conf.title.replace(/[:\\\/\?\*\[\]]/g, '').substring(0, 31);
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
+
+        if (!wb.SheetNames.length) {
+            alert('⚠️ 沒有資料可匯出，請先填寫預算資料。');
+            return;
+        }
+
+        const fileName = `${orgVal}_${yearVal}年度預算.xlsx`;
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        saveAs(new Blob([wbout], { type: 'application/octet-stream' }), fileName);
+
+    } catch (e) {
+        console.error(e);
+        alert('Excel 匯出失敗：' + e.message);
+    }
+}
 // ========== 4. HTML 匯出功能 ==========
 function mgr_exportHTML() {
     try {
@@ -485,7 +551,8 @@ function bindEvents() {
     document.getElementById('btn-aggregator').onclick = () => { document.getElementById('tab-manager').classList.add('hidden'); document.getElementById('tab-aggregator').classList.remove('hidden'); };
     
     document.getElementById('btn-export-html').onclick = mgr_exportHTML;
-    document.getElementById('btn-export-json').onclick = mgr_exportJSON; 
+    document.getElementById('btn-export-json').onclick = mgr_exportJSON;
+    document.getElementById('btn-export-xlsx').onclick = mgr_exportXLSX;
     document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
     document.getElementById('mgr-import-file').onchange = (e) => mgr_handleImport(e.target.files);
 
