@@ -334,6 +334,56 @@ function mgr_exportHTML() {
 
 // ========== 5. 匯整端邏輯 ==========
 let agg_data = [];
+
+function agg_getUniqueValues(field) {
+    const values = new Set();
+    agg_data.forEach(d => {
+        if (field === 'year') values.add(d.metadata?.year);
+        else if (field === 'org') values.add(d.metadata?.org);
+        else if (field === 'section') {
+            d.sections?.forEach(s => values.add(s.id));
+        }
+        else if (field === 'name') {
+            d.sections?.forEach(s => {
+                s.items?.forEach(i => i.name && values.add(i.name));
+            });
+        }
+    });
+    return [...values].filter(Boolean).sort();
+}
+
+function agg_getOrgsByYear(year) {
+    const orgs = new Set();
+    agg_data.forEach(d => {
+        if (d.metadata?.year === year) orgs.add(d.metadata?.org);
+    });
+    return [...orgs].filter(Boolean).sort();
+}
+
+function agg_getSectionsByYearAndOrg(year, org) {
+    const sections = new Set();
+    agg_data.forEach(d => {
+        if (d.metadata?.year === year && d.metadata?.org === org) {
+            d.sections?.forEach(s => sections.add(s.id));
+        }
+    });
+    return [...sections].sort((a, b) => {
+        const order = ['op', 'wk', 'db', 'sp', 'cp'];
+        return order.indexOf(a) - order.indexOf(b);
+    });
+}
+
+function agg_getNamesByYearOrgSection(year, org, sectionId) {
+    const names = new Set();
+    agg_data.forEach(d => {
+        if (d.metadata?.year === year && d.metadata?.org === org) {
+            const section = d.sections?.find(s => s.id === sectionId);
+            section?.items?.forEach(i => i.name && names.add(i.name));
+        }
+    });
+    return [...names].filter(Boolean).sort();
+}
+
 function agg_processFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
@@ -389,30 +439,108 @@ function agg_render() {
     const container = document.getElementById('agg-content');
     if (!agg_data.length) { container.classList.add('hidden'); return; }
     container.classList.remove('hidden');
-    let stats = { govs: agg_data.length, funds: 0, totalRev: 0, profit: 0, loss: 0 };
+    
+    // 更新 cascade 下拉選單
+    const yearSelect = document.getElementById('agg-filter-year');
+    const orgSelect = document.getElementById('filter-org');
+    const sectionSelect = document.getElementById('filter-section');
+    const nameSelect = document.getElementById('filter-name');
+    const fieldSelect = document.getElementById('filter-field');
+    
+    const currentYear = yearSelect.value;
+    const currentOrg = orgSelect.value;
+    const currentSection = sectionSelect.value;
+    
+    // 年度
+    const years = agg_getUniqueValues('year');
+    yearSelect.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+    yearSelect.value = currentYear;
+    
+    // 機關（根據年度過濾）
+    const orgs = currentYear ? agg_getOrgsByYear(currentYear) : agg_getUniqueValues('org');
+    orgSelect.innerHTML = '<option value="">全部機關</option>' + orgs.map(o => `<option value="${o}">${o}</option>`).join('');
+    orgSelect.value = currentOrg;
+    
+    // 基金類型（根據年度+機關過濾）
+    const sections = (currentYear && currentOrg) ? agg_getSectionsByYearAndOrg(currentYear, currentOrg) : [];
+    sectionSelect.innerHTML = '<option value="">全部類型</option>' + sections.map(s => {
+        const conf = sectionConfigs.find(c => c.id === s);
+        return conf ? `<option value="${s}">${conf.title}</option>` : '';
+    }).join('');
+    sectionSelect.value = currentSection;
+    
+    // 基金名稱（根據年度+機關+類型過濾）
+    const names = (currentYear && currentOrg && currentSection) ? agg_getNamesByYearOrgSection(currentYear, currentOrg, currentSection) : [];
+    nameSelect.innerHTML = '<option value="">全部基金</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
+    
+    // 會計科目（根據基金類型過濾）
+    const currentField = fieldSelect.value;
+    const fieldOptions = currentSection ? sectionConfigs.find(c => c.id === currentSection)?.fields.filter(f => f !== 'name') : [];
+    fieldSelect.innerHTML = '<option value="">全部科目</option>' + (fieldOptions || []).map(f => `<option value="${f}">${getFieldLabel(currentSection, f)}</option>`).join('');
+    fieldSelect.value = currentField;
+    
+    // 統計（根據篩選條件）
+    const filterData = agg_data.filter(d => {
+        if (currentYear && d.metadata?.year !== currentYear) return false;
+        if (currentOrg && d.metadata?.org !== currentOrg) return false;
+        return true;
+    }).flatMap(d => {
+        if (currentSection) {
+            const section = d.sections?.find(s => s.id === currentSection);
+            return section ? [{ section, metadata: d.metadata }] : [];
+        }
+        return d.sections?.map(section => ({ section, metadata: d.metadata })) || [];
+    }).filter(item => {
+        if (nameSelect.value && !item.section.items?.some(i => i.name === nameSelect.value)) return false;
+        return true;
+    });
+    
+    const currentField = fieldSelect.value;
+    const filterDataWithField = currentField ? filterData.map(d => {
+        const section = d.section;
+        const filteredItems = section.items?.map(item => {
+            const obj = {};
+            if (currentField === 'name') {
+                obj.name = item.name;
+            } else {
+                obj[currentField] = item[currentField];
+            }
+            return obj;
+        });
+        return { ...d, section: { ...section, items: filteredItems } };
+    }) : filterData;
+    
+    let stats = { govs: new Set(filterDataWithField.map(d => d.metadata?.org)).size, funds: 0, totalRev: 0, profit: 0, loss: 0 };
     const num = v => parseFloat(String(v).replace(/,/g,'')) || 0;
-    agg_data.forEach(gov => {
-        gov.sections?.forEach(sec => {
-            sec.items?.forEach(item => {
-                stats.funds++;
-                let rev = (sec.id === 'op' || sec.id === 'wk') ? (num(item.rev) + num(item.nonrev)) : num(item.source);
-                let bal = num(item.net) || num(item.surplus);
-                stats.totalRev += rev;
-                if (bal >= 0) stats.profit++; else stats.loss++;
-            });
+    filterDataWithField.forEach(({ section }) => {
+        section.items?.forEach(item => {
+            stats.funds++;
+            let rev = (section.id === 'op' || section.id === 'wk') ? (num(item.rev) + num(item.nonrev)) : num(item.source);
+            let bal = num(item.net) || num(item.surplus);
+            stats.totalRev += rev;
+            if (bal >= 0) stats.profit++; else stats.loss++;
         });
     });
+    
     document.getElementById('agg-kpi').innerHTML = `
         <div class="bg-slate-800 p-4 rounded-lg"><div>機關數</div><div class="text-2xl font-bold text-blue-400">${stats.govs}</div></div>
         <div class="bg-slate-800 p-4 rounded-lg"><div>基金數</div><div class="text-2xl font-bold text-green-400">${stats.funds}</div></div>
         <div class="bg-slate-800 p-4 rounded-lg"><div>規模(億)</div><div class="text-2xl font-bold text-emerald-400">${(stats.totalRev / 100000).toFixed(2)}</div></div>
         <div class="bg-slate-800 p-4 rounded-lg"><div>盈虧</div><div class="text-sm">盈: ${stats.profit}/虧: ${stats.loss}</div></div>
     `;
-    document.getElementById('agg-list-body').innerHTML = agg_data.map((d, i) => `
-        <tr class="border-b border-slate-700"><td class="p-3 text-slate-500">${i+1}</td><td class="p-3 font-bold text-blue-300">${d.metadata.org || '未命名機關'}</td><td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_remove(${i})">移除</button></td></tr>
+    
+    // 根據篩選條件顯示列表
+    const displayData = filterDataWithField.map(d => d.metadata.org).filter((v, i, a) => a.indexOf(v) === i);
+    document.getElementById('agg-list-body').innerHTML = displayData.map((org, i) => `
+        <tr class="border-b border-slate-700"><td class="p-3 text-slate-500">${i+1}</td><td class="p-3 font-bold text-blue-300">${org}</td><td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_removeByOrg('${org}')">移除</button></td></tr>
     `).join('');
 }
+
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
+window.agg_removeByOrg = (org) => { 
+    agg_data = agg_data.filter(d => d.metadata?.org !== org); 
+    agg_render(); 
+};
 
 // ========== 6. 基礎功能與事件 ==========
 function render() {
@@ -564,6 +692,19 @@ function bindEvents() {
     document.getElementById('sections-container').oninput = e => { const tbody = e.target.closest('tbody'); if (tbody) update(tbody.id.replace('tbody-', '')); };
     const dz = document.getElementById('agg-dropzone');
     dz.onclick = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = e => Array.from(e.target.files).forEach(f => agg_processFile(f)); inp.click(); };
+    
+    // Cascade dropdown 事件
+    const yearSelect = document.getElementById('agg-filter-year');
+    const orgSelect = document.getElementById('filter-org');
+    const sectionSelect = document.getElementById('filter-section');
+    const nameSelect = document.getElementById('filter-name');
+    const fieldSelect = document.getElementById('filter-field');
+    
+    yearSelect.onchange = () => { orgSelect.value = ''; sectionSelect.value = ''; nameSelect.value = ''; fieldSelect.value = ''; agg_render(); };
+    orgSelect.onchange = () => { sectionSelect.value = ''; nameSelect.value = ''; fieldSelect.value = ''; agg_render(); };
+    sectionSelect.onchange = () => { nameSelect.value = ''; fieldSelect.value = ''; agg_render(); };
+    nameSelect.onchange = () => { fieldSelect.value = ''; agg_render(); };
+    fieldSelect.onchange = agg_render;
 }
 
 document.addEventListener('DOMContentLoaded', () => { 
