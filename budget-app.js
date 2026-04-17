@@ -474,10 +474,10 @@ function agg_render() {
     nameSelect.innerHTML = '<option value="">全部基金</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
     
     // 會計科目（根據基金類型過濾）
-    const currentField = fieldSelect.value;
+    const fieldToFilter = fieldSelect.value;
     const fieldOptions = currentSection ? sectionConfigs.find(c => c.id === currentSection)?.fields.filter(f => f !== 'name') : [];
     fieldSelect.innerHTML = '<option value="">全部科目</option>' + (fieldOptions || []).map(f => `<option value="${f}">${getFieldLabel(currentSection, f)}</option>`).join('');
-    fieldSelect.value = currentField;
+    fieldSelect.value = fieldToFilter;
     
     // 統計（根據篩選條件）
     const filterData = agg_data.filter(d => {
@@ -495,15 +495,14 @@ function agg_render() {
         return true;
     });
     
-    const currentField = fieldSelect.value;
-    const filterDataWithField = currentField ? filterData.map(d => {
+    const filterDataWithField = fieldToFilter ? filterData.map(d => {
         const section = d.section;
         const filteredItems = section.items?.map(item => {
             const obj = {};
-            if (currentField === 'name') {
+            if (fieldToFilter === 'name') {
                 obj.name = item.name;
             } else {
-                obj[currentField] = item[currentField];
+                obj[fieldToFilter] = item[fieldToFilter];
             }
             return obj;
         });
