@@ -437,8 +437,22 @@ function agg_processFile(file) {
 
 function agg_render() {
     const container = document.getElementById('agg-content');
-    if (!agg_data.length) { container.classList.add('hidden'); return; }
+    const emptyState = document.getElementById('agg-empty');
+    const statsSection = document.getElementById('agg-stats');
+    const filterSection = document.getElementById('agg-filter');
+    
+    if (!agg_data.length) { 
+        container.classList.add('hidden');
+        statsSection.classList.add('hidden');
+        filterSection.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        return; 
+    }
+    
+    emptyState.classList.add('hidden');
     container.classList.remove('hidden');
+    statsSection.classList.remove('hidden');
+    filterSection.classList.remove('hidden');
     
     // 更新 cascade 下拉選單
     const yearSelect = document.getElementById('agg-filter-year');
@@ -522,14 +536,28 @@ function agg_render() {
     });
     
     document.getElementById('agg-kpi').innerHTML = `
-        <div class="bg-slate-800 p-4 rounded-lg"><div>機關數</div><div class="text-2xl font-bold text-blue-400">${stats.govs}</div></div>
-        <div class="bg-slate-800 p-4 rounded-lg"><div>基金數</div><div class="text-2xl font-bold text-green-400">${stats.funds}</div></div>
-        <div class="bg-slate-800 p-4 rounded-lg"><div>規模(億)</div><div class="text-2xl font-bold text-emerald-400">${(stats.totalRev / 100000).toFixed(2)}</div></div>
-        <div class="bg-slate-800 p-4 rounded-lg"><div>盈虧</div><div class="text-sm">盈: ${stats.profit}/虧: ${stats.loss}</div></div>
+        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #3b82f6; text-align: center;">
+            <div class="stats-number" style="font-size: 2.5rem; font-weight: 700; color: #3b82f6;">${stats.govs}</div>
+            <div class="text-sm text-slate-400 font-medium">機關數</div>
+        </div>
+        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #10b981; text-align: center;">
+            <div class="stats-number" style="font-size: 2.5rem; font-weight: 700; color: #10b981;">${stats.funds}</div>
+            <div class="text-sm text-slate-400 font-medium">基金數</div>
+        </div>
+        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #8b5cf6; text-align: center;">
+            <div class="stats-number" style="font-size: 2.5rem; font-weight: 700; color: #8b5cf6;">${(stats.totalRev / 100000).toFixed(2)}</div>
+            <div class="text-sm text-slate-400 font-medium">規模(億)</div>
+        </div>
+        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #f59e0b; text-align: center;">
+            <div class="stats-number" style="font-size: 1.5rem; font-weight: 700; color: #f59e0b;">盈: ${stats.profit} / 虧: ${stats.loss}</div>
+            <div class="text-sm text-slate-400 font-medium">盈虧統計</div>
+        </div>
     `;
     
-    // 根據篩選條件顯示列表
+    // Update display count and list
     const displayData = filterDataWithField.map(d => d.metadata.org).filter((v, i, a) => a.indexOf(v) === i);
+    document.getElementById('agg-display-count').textContent = displayData.length;
+    
     document.getElementById('agg-list-body').innerHTML = displayData.map((org, i) => `
         <tr class="border-b border-slate-700"><td class="p-3 text-slate-500">${i+1}</td><td class="p-3 font-bold text-blue-300">${org}</td><td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_removeByOrg('${org}')">移除</button></td></tr>
     `).join('');
