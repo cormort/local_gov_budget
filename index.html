@@ -65,7 +65,12 @@
         <h2 class="text-2xl font-bold">📊 匯整端</h2>
         <button id="btn-agg-clear" class="text-red-400 px-4 py-2 border border-red-400 rounded-lg text-sm hover:bg-red-900/30">🗑️ 清除全部</button>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+    <div id="agg-dropzone" class="drop-zone p-12 text-center cursor-pointer mb-8 rounded-xl">📥 拖曳 JSON 或 HTML 至此匯整</div>
+    <div id="agg-content" class="hidden space-y-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="agg-kpi"></div>
+        <div id="agg-list-area" class="bg-slate-800 p-6 rounded-xl border border-slate-700"><table class="w-full text-left text-sm"><tbody id="agg-list-body"></tbody></table></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div>
             <label class="text-xs font-bold text-slate-400 uppercase">年度</label>
             <select id="agg-filter-year" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-2 text-white">
@@ -96,11 +101,6 @@
                 <option value="">全部科目</option>
             </select>
         </div>
-    </div>
-    <div id="agg-dropzone" class="drop-zone p-12 text-center cursor-pointer mb-8 rounded-xl">📥 拖曳 JSON 或 HTML 至此匯整</div>
-    <div id="agg-content" class="hidden space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="agg-kpi"></div>
-        <div id="agg-list-area" class="bg-slate-800 p-6 rounded-xl border border-slate-700"><table class="w-full text-left text-sm"><tbody id="agg-list-body"></tbody></table></div>
     </div>
 </div>
 
