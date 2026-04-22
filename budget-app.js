@@ -400,7 +400,7 @@ function agg_processFile(file) {
                 let org = doc.querySelector('#mgr-org')?.value || '';
                 let year = doc.querySelector('#mgr-year')?.value || '';
                 let user = doc.querySelector('#mgr-user')?.value || '';
-                
+
                 if (!org) {
                      const titleH1 = doc.querySelector('h1.report-title');
                      if (titleH1) {
@@ -414,7 +414,7 @@ function agg_processFile(file) {
                     const el = row.querySelector('.v-'+f);
                     if (!el) return '';
                     let val = el.tagName === 'INPUT' ? el.value : el.textContent;
-                    return val.replace(/,/g, '').trim(); 
+                    return val.replace(/,/g, '').trim();
                 };
                 data = {
                     metadata: { org, year, user },
@@ -435,138 +435,296 @@ function agg_processFile(file) {
     reader.readAsText(file);
 }
 
+// 取得目前篩選後的扁平化明細列
+function agg_getFilteredRows() {
+    const yearSelect   = document.getElementById('agg-filter-year');
+    const orgSelect    = document.getElementById('filter-org');
+    const sectionSelect= document.getElementById('filter-section');
+    const nameSelect   = document.getElementById('filter-name');
+    const fieldSelect  = document.getElementById('filter-field');
+    const keyword      = (document.getElementById('agg-search-keyword')?.value || '').trim().toLowerCase();
+
+    const currentYear    = yearSelect?.value    || '';
+    const currentOrg     = orgSelect?.value     || '';
+    const currentSection = sectionSelect?.value || '';
+    const currentName    = nameSelect?.value    || '';
+    const currentField   = fieldSelect?.value   || '';
+
+    const rows = [];
+    const num = v => parseFloat(String(v).replace(/,/g,'')) || 0;
+
+    agg_data.forEach(d => {
+        const meta = d.metadata || {};
+        if (currentYear && meta.year !== currentYear) return;
+        if (currentOrg  && meta.org  !== currentOrg)  return;
+
+        (d.sections || []).forEach(section => {
+            if (currentSection && section.id !== currentSection) return;
+            const conf = sectionConfigs.find(c => c.id === section.id);
+            if (!conf) return;
+
+            (section.items || []).forEach(item => {
+                if (!item.name) return;
+                if (currentName && item.name !== currentName) return;
+
+                // keyword filter: match on org or fund name
+                if (keyword) {
+                    const haystack = (meta.org + ' ' + item.name).toLowerCase();
+                    if (!haystack.includes(keyword)) return;
+                }
+
+                // Build display fields
+                let displayFields = conf.fields.filter(f => f !== 'name');
+                if (currentField) displayFields = displayFields.filter(f => f === currentField);
+
+                displayFields.forEach(f => {
+                    rows.push({
+                        year: meta.year,
+                        org: meta.org,
+                        sectionTitle: conf.title,
+                        fundName: item.name,
+                        fieldLabel: getFieldLabel(section.id, f),
+                        rawValue: item[f] || '',
+                        numValue: num(item[f]),
+                    });
+                });
+            });
+        });
+    });
+    return rows;
+}
+
+// 取得彙總機關層級資料（for summary table）
+function agg_getSummaryData() {
+    const yearSelect   = document.getElementById('agg-filter-year');
+    const orgSelect    = document.getElementById('filter-org');
+    const sectionSelect= document.getElementById('filter-section');
+    const nameSelect   = document.getElementById('filter-name');
+    const keyword      = (document.getElementById('agg-search-keyword')?.value || '').trim().toLowerCase();
+
+    const currentYear    = yearSelect?.value    || '';
+    const currentOrg     = orgSelect?.value     || '';
+    const currentSection = sectionSelect?.value || '';
+    const currentName    = nameSelect?.value    || '';
+
+    const map = new Map(); // org+year -> { org, year, fundCount, profitCount, lossCount, totalRev }
+    const num = v => parseFloat(String(v).replace(/,/g,'')) || 0;
+
+    agg_data.forEach(d => {
+        const meta = d.metadata || {};
+        if (currentYear && meta.year !== currentYear) return;
+        if (currentOrg  && meta.org  !== currentOrg)  return;
+
+        const key = `${meta.year}__${meta.org}`;
+        if (!map.has(key)) map.set(key, { org: meta.org, year: meta.year, fundCount: 0, profitCount: 0, lossCount: 0, totalRev: 0 });
+        const entry = map.get(key);
+
+        (d.sections || []).forEach(section => {
+            if (currentSection && section.id !== currentSection) return;
+            (section.items || []).forEach(item => {
+                if (!item.name) return;
+                if (currentName && item.name !== currentName) return;
+                if (keyword) {
+                    const haystack = (meta.org + ' ' + item.name).toLowerCase();
+                    if (!haystack.includes(keyword)) return;
+                }
+                entry.fundCount++;
+                let rev = (section.id === 'op' || section.id === 'wk')
+                    ? (num(item.rev) + num(item.nonrev))
+                    : num(item.source);
+                let bal = num(item.net) || num(item.surplus);
+                entry.totalRev += rev;
+                if (bal >= 0) entry.profitCount++; else entry.lossCount++;
+            });
+        });
+    });
+    return [...map.values()];
+}
+
+function agg_hl(text, keyword) {
+    if (!keyword) return String(text).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const escaped = String(text).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const regex = new RegExp(`(${keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g,'\\$&')})`, 'gi');
+    return escaped.replace(regex, '<span class="agg-highlight">$1</span>');
+}
+
+function agg_fmt(n) {
+    if (n === '' || n === null || n === undefined) return '—';
+    const num = parseFloat(String(n).replace(/,/g,''));
+    if (isNaN(num)) return String(n) || '—';
+    return num.toLocaleString();
+}
+
 function agg_render() {
-    const container = document.getElementById('agg-content');
-    const emptyState = document.getElementById('agg-empty');
+    const container    = document.getElementById('agg-content');
+    const emptyState   = document.getElementById('agg-empty');
     const statsSection = document.getElementById('agg-stats');
-    const filterSection = document.getElementById('agg-filter');
-    
-    if (!agg_data.length) { 
+    const filterSection= document.getElementById('agg-filter');
+
+    if (!agg_data.length) {
         container.classList.add('hidden');
         statsSection.classList.add('hidden');
         filterSection.classList.add('hidden');
         emptyState.classList.remove('hidden');
-        return; 
+        return;
     }
-    
+
     emptyState.classList.add('hidden');
     container.classList.remove('hidden');
     statsSection.classList.remove('hidden');
     filterSection.classList.remove('hidden');
-    
-    // 更新 cascade 下拉選單
-    const yearSelect = document.getElementById('agg-filter-year');
-    const orgSelect = document.getElementById('filter-org');
+
+    // ---- Cascade dropdowns ----
+    const yearSelect    = document.getElementById('agg-filter-year');
+    const orgSelect     = document.getElementById('filter-org');
     const sectionSelect = document.getElementById('filter-section');
-    const nameSelect = document.getElementById('filter-name');
-    const fieldSelect = document.getElementById('filter-field');
-    
-    const currentYear = yearSelect.value;
-    const currentOrg = orgSelect.value;
+    const nameSelect    = document.getElementById('filter-name');
+    const fieldSelect   = document.getElementById('filter-field');
+
+    const currentYear    = yearSelect.value;
+    const currentOrg     = orgSelect.value;
     const currentSection = sectionSelect.value;
-    
-    // 年度
+    const currentField   = fieldSelect.value;
+
     const years = agg_getUniqueValues('year');
-    yearSelect.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
-    yearSelect.value = currentYear;
-    
-    // 機關（根據年度過濾）
+    yearSelect.innerHTML = '<option value="">全部年度</option>' + years.map(y => `<option value="${y}"${y===currentYear?' selected':''}>${y}</option>`).join('');
+
     const orgs = currentYear ? agg_getOrgsByYear(currentYear) : agg_getUniqueValues('org');
-    orgSelect.innerHTML = '<option value="">全部機關</option>' + orgs.map(o => `<option value="${o}">${o}</option>`).join('');
-    orgSelect.value = currentOrg;
-    
-    // 基金類型（根據年度+機關過濾）
+    orgSelect.innerHTML = '<option value="">全部機關</option>' + orgs.map(o => `<option value="${o}"${o===currentOrg?' selected':''}>${o}</option>`).join('');
+
     const sections = (currentYear && currentOrg) ? agg_getSectionsByYearAndOrg(currentYear, currentOrg) : [];
     sectionSelect.innerHTML = '<option value="">全部類型</option>' + sections.map(s => {
         const conf = sectionConfigs.find(c => c.id === s);
-        return conf ? `<option value="${s}">${conf.title}</option>` : '';
+        return conf ? `<option value="${s}"${s===currentSection?' selected':''}>${conf.title}</option>` : '';
     }).join('');
-    sectionSelect.value = currentSection;
-    
-    // 基金名稱（根據年度+機關+類型過濾）
+
     const names = (currentYear && currentOrg && currentSection) ? agg_getNamesByYearOrgSection(currentYear, currentOrg, currentSection) : [];
     nameSelect.innerHTML = '<option value="">全部基金</option>' + names.map(n => `<option value="${n}">${n}</option>`).join('');
-    
-    // 會計科目（根據基金類型過濾）
-    const fieldToFilter = fieldSelect.value;
+
     const fieldOptions = currentSection ? sectionConfigs.find(c => c.id === currentSection)?.fields.filter(f => f !== 'name') : [];
-    fieldSelect.innerHTML = '<option value="">全部科目</option>' + (fieldOptions || []).map(f => `<option value="${f}">${getFieldLabel(currentSection, f)}</option>`).join('');
-    fieldSelect.value = fieldToFilter;
-    
-    // 統計（根據篩選條件）
-    const filterData = agg_data.filter(d => {
-        if (currentYear && d.metadata?.year !== currentYear) return false;
-        if (currentOrg && d.metadata?.org !== currentOrg) return false;
-        return true;
-    }).flatMap(d => {
-        if (currentSection) {
-            const section = d.sections?.find(s => s.id === currentSection);
-            return section ? [{ section, metadata: d.metadata }] : [];
-        }
-        return d.sections?.map(section => ({ section, metadata: d.metadata })) || [];
-    }).filter(item => {
-        if (nameSelect.value && !item.section.items?.some(i => i.name === nameSelect.value)) return false;
-        return true;
-    });
-    
-    const filterDataWithField = fieldToFilter ? filterData.map(d => {
-        const section = d.section;
-        const filteredItems = section.items?.map(item => {
-            const obj = {};
-            if (fieldToFilter === 'name') {
-                obj.name = item.name;
-            } else {
-                obj[fieldToFilter] = item[fieldToFilter];
-            }
-            return obj;
-        });
-        return { ...d, section: { ...section, items: filteredItems } };
-    }) : filterData;
-    
-    let stats = { govs: new Set(filterDataWithField.map(d => d.metadata?.org)).size, funds: 0, totalRev: 0, profit: 0, loss: 0 };
-    const num = v => parseFloat(String(v).replace(/,/g,'')) || 0;
-    filterDataWithField.forEach(({ section }) => {
-        section.items?.forEach(item => {
-            stats.funds++;
-            let rev = (section.id === 'op' || section.id === 'wk') ? (num(item.rev) + num(item.nonrev)) : num(item.source);
-            let bal = num(item.net) || num(item.surplus);
-            stats.totalRev += rev;
-            if (bal >= 0) stats.profit++; else stats.loss++;
-        });
-    });
-    
+    fieldSelect.innerHTML = '<option value="">全部科目</option>' + (fieldOptions || []).map(f => `<option value="${f}"${f===currentField?' selected':''}>${getFieldLabel(currentSection, f)}</option>`).join('');
+
+    // ---- Summary data ----
+    const summaryData = agg_getSummaryData();
+    const totalFunds = summaryData.reduce((a,d) => a + d.fundCount, 0);
+    const totalRev   = summaryData.reduce((a,d) => a + d.totalRev, 0);
+    const totalProfit= summaryData.reduce((a,d) => a + d.profitCount, 0);
+    const totalLoss  = summaryData.reduce((a,d) => a + d.lossCount, 0);
+
+    // ---- KPI cards ----
     document.getElementById('agg-kpi').innerHTML = `
-        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #3b82f6; text-align: center;">
-            <div class="stats-number" style="font-size: 2.5rem; font-weight: 700; color: #3b82f6;">${stats.govs}</div>
-            <div class="text-sm text-slate-400 font-medium">機關數</div>
+        <div class="agg-kpi-card agg-fade-in" style="border-color: #3b82f6;">
+            <div class="agg-kpi-value" style="color:#60a5fa;">${summaryData.length}</div>
+            <div class="agg-kpi-label">機關數</div>
         </div>
-        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #10b981; text-align: center;">
-            <div class="stats-number" style="font-size: 2.5rem; font-weight: 700; color: #10b981;">${stats.funds}</div>
-            <div class="text-sm text-slate-400 font-medium">基金數</div>
+        <div class="agg-kpi-card agg-fade-in" style="border-color:#10b981; animation-delay:.05s">
+            <div class="agg-kpi-value" style="color:#34d399;">${totalFunds}</div>
+            <div class="agg-kpi-label">基金數</div>
         </div>
-        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #8b5cf6; text-align: center;">
-            <div class="stats-number" style="font-size: 2.5rem; font-weight: 700; color: #8b5cf6;">${(stats.totalRev / 100000).toFixed(2)}</div>
-            <div class="text-sm text-slate-400 font-medium">規模(億)</div>
+        <div class="agg-kpi-card agg-fade-in" style="border-color:#8b5cf6; animation-delay:.1s">
+            <div class="agg-kpi-value" style="color:#a78bfa;">${(totalRev/100000).toFixed(2)}</div>
+            <div class="agg-kpi-label">收入規模（億）</div>
         </div>
-        <div class="stats-card" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 1rem; padding: 1.5rem; border: 2px solid #f59e0b; text-align: center;">
-            <div class="stats-number" style="font-size: 1.5rem; font-weight: 700; color: #f59e0b;">盈: ${stats.profit} / 虧: ${stats.loss}</div>
-            <div class="text-sm text-slate-400 font-medium">盈虧統計</div>
+        <div class="agg-kpi-card agg-fade-in" style="border-color:#f59e0b; animation-delay:.15s">
+            <div class="agg-kpi-value" style="font-size:1.3rem; color:#fbbf24;">盈 ${totalProfit} / 虧 ${totalLoss}</div>
+            <div class="agg-kpi-label">盈虧統計</div>
         </div>
     `;
-    
-    // Update display count and list
-    const displayData = filterDataWithField.map(d => d.metadata.org).filter((v, i, a) => a.indexOf(v) === i);
-    document.getElementById('agg-display-count').textContent = displayData.length;
-    
-    document.getElementById('agg-list-body').innerHTML = displayData.map((org, i) => `
-        <tr class="border-b border-slate-700"><td class="p-3 text-slate-500">${i+1}</td><td class="p-3 font-bold text-blue-300">${org}</td><td class="p-3 text-right"><button class="text-red-400 text-sm" onclick="window.agg_removeByOrg('${org}')">移除</button></td></tr>
-    `).join('');
+
+    // ---- Summary table ----
+    const keyword = (document.getElementById('agg-search-keyword')?.value || '').trim().toLowerCase();
+    document.getElementById('agg-summary-body').innerHTML = summaryData.map((row, i) => `
+        <tr>
+            <td class="text-slate-500">${i+1}</td>
+            <td class="font-bold" style="color:#93c5fd;">${agg_hl(row.org, keyword)}</td>
+            <td>${row.year ? row.year+'年度' : '—'}</td>
+            <td class="text-center">${row.fundCount}</td>
+            <td>
+                <button class="agg-btn-danger" style="padding:0.3rem 0.8rem; font-size:0.75rem;" onclick="window.agg_removeByOrg('${row.org}')">移除</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;color:#475569;padding:2rem;">無符合資料</td></tr>';
+
+    // ---- Detail table ----
+    const detailRows = agg_getFilteredRows();
+    const totalRows  = agg_getTotalDetailRows();
+
+    document.getElementById('agg-display-count').textContent = detailRows.length;
+    document.getElementById('agg-total-count').textContent   = totalRows;
+
+    // Build header based on whether a specific field is selected
+    document.getElementById('agg-detail-thead').innerHTML = `
+        <tr>
+            <th>#</th>
+            <th>機關</th>
+            <th>年度</th>
+            <th>基金類型</th>
+            <th>基金名稱</th>
+            <th>科目</th>
+            <th style="text-align:right;">金額（千元）</th>
+        </tr>
+    `;
+
+    document.getElementById('agg-detail-body').innerHTML = detailRows.map((row, i) => {
+        const isNeg = row.numValue < 0;
+        const isPos = row.numValue > 0;
+        const numClass = isNeg ? 'agg-num negative' : isPos ? 'agg-num positive' : 'agg-num';
+        const fmtVal = row.rawValue === '' ? '—' : agg_fmt(row.numValue);
+        return `
+        <tr>
+            <td style="color:#475569;">${i+1}</td>
+            <td style="color:#93c5fd; font-weight:600;">${agg_hl(row.org, keyword)}</td>
+            <td>${row.year ? row.year+'年度' : '—'}</td>
+            <td style="color:#94a3b8; font-size:0.8rem;">${row.sectionTitle}</td>
+            <td style="font-weight:600;">${agg_hl(row.fundName, keyword)}</td>
+            <td style="color:#c4b5fd; font-size:0.85rem;">${row.fieldLabel}</td>
+            <td class="${numClass}">${fmtVal}</td>
+        </tr>
+        `;
+    }).join('') || '<tr><td colspan="7" style="text-align:center;color:#475569;padding:2rem;">無符合資料</td></tr>';
+}
+
+function agg_getTotalDetailRows() {
+    let count = 0;
+    agg_data.forEach(d => {
+        (d.sections || []).forEach(section => {
+            const conf = sectionConfigs.find(c => c.id === section.id);
+            if (!conf) return;
+            (section.items || []).forEach(item => {
+                if (!item.name) return;
+                count += conf.fields.filter(f => f !== 'name').length;
+            });
+        });
+    });
+    return count;
+}
+
+// ---- Export functions ----
+function agg_exportExcel() {
+    const rows = agg_getFilteredRows();
+    if (!rows.length) { alert('目前無資料可匯出'); return; }
+    const header = ['機關', '年度', '基金類型', '基金名稱', '科目', '金額（千元）'];
+    const data   = rows.map(r => [r.org, r.year ? r.year+'年度' : '', r.sectionTitle, r.fundName, r.fieldLabel, r.numValue]);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    ws['!cols'] = [{ wch:16 },{ wch:8 },{ wch:14 },{ wch:20 },{ wch:18 },{ wch:14 }];
+    XLSX.utils.book_append_sheet(wb, ws, '匯整資料');
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `預算匯整_${date}.xlsx`);
+}
+
+function agg_exportJson() {
+    const rows = agg_getFilteredRows();
+    if (!rows.length) { alert('目前無資料可匯出'); return; }
+    const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
+    const date = new Date().toISOString().split('T')[0];
+    saveAs(blob, `預算匯整_${date}.json`);
 }
 
 window.agg_remove = (idx) => { agg_data.splice(idx,1); agg_render(); };
-window.agg_removeByOrg = (org) => { 
-    agg_data = agg_data.filter(d => d.metadata?.org !== org); 
-    agg_render(); 
+window.agg_removeByOrg = (org) => {
+    agg_data = agg_data.filter(d => d.metadata?.org !== org);
+    agg_render();
 };
 
 // ========== 6. 基礎功能與事件 ==========
@@ -711,14 +869,40 @@ function bindEvents() {
     document.getElementById('btn-import').onclick = () => document.getElementById('mgr-import-file').click();
     document.getElementById('mgr-import-file').onchange = (e) => mgr_handleImport(e.target.files);
 
-    document.getElementById('btn-agg-clear').onclick = () => { agg_data = []; agg_render(); };
+    document.getElementById('btn-agg-clear').onclick = () => {
+        if (confirm('確定要清除所有已匯入的資料？')) { agg_data = []; agg_render(); }
+    };
+    document.getElementById('btn-agg-reset').onclick = () => {
+        document.getElementById('agg-filter-year').value = '';
+        document.getElementById('filter-org').value      = '';
+        document.getElementById('filter-section').value  = '';
+        document.getElementById('filter-name').value     = '';
+        document.getElementById('filter-field').value    = '';
+        document.getElementById('agg-search-keyword').value = '';
+        agg_render();
+    };
+    document.getElementById('btn-agg-export-excel').onclick = agg_exportExcel;
+    document.getElementById('btn-agg-export-json').onclick  = agg_exportJson;
+    document.getElementById('agg-search-keyword').oninput   = agg_render;
+
     document.getElementById('sections-container').onclick = e => {
         if (e.target.classList.contains('add-row-btn')) mgr_addRow(e.target.dataset.section);
         if (e.target.classList.contains('delete-btn')) { e.target.closest('tr').remove(); update(e.target.dataset.type); }
     };
     document.getElementById('sections-container').oninput = e => { const tbody = e.target.closest('tbody'); if (tbody) update(tbody.id.replace('tbody-', '')); };
     const dz = document.getElementById('agg-dropzone');
-    dz.onclick = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = e => Array.from(e.target.files).forEach(f => agg_processFile(f)); inp.click(); };
+    dz.onclick = () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.multiple = true; inp.accept = '.json,.html';
+        inp.onchange = e => Array.from(e.target.files).forEach(f => agg_processFile(f));
+        inp.click();
+    };
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => {
+        e.preventDefault(); dz.classList.remove('dragover');
+        Array.from(e.dataTransfer.files).forEach(f => agg_processFile(f));
+    });
     
     // Cascade dropdown 事件
     const yearSelect = document.getElementById('agg-filter-year');
