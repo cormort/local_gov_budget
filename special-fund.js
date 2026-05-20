@@ -7,9 +7,9 @@
 
 const COL = {
     // 內部 key 維持 dec112/dec113/bud114/apr114 以維持 autosave 相容；標籤對應新年度
-    dec112: { key: 'dec112', label: '114年度決算', type: 'number', td_class: 'sf-num' },
-    dec113: { key: 'dec113', label: '115年度決算', type: 'number', td_class: 'sf-num' },
-    bud114: { key: 'bud114', label: '116年度預算', type: 'number', td_class: 'sf-num' },
+    dec112: { key: 'dec112', label: '113年度決算', type: 'number', td_class: 'sf-num' },
+    dec113: { key: 'dec113', label: '114年度決算', type: 'number', td_class: 'sf-num' },
+    bud114: { key: 'bud114', label: '115年度預算', type: 'number', td_class: 'sf-num' },
     apr114: { key: 'apr114', label: '115年4月底在職', type: 'number', td_class: 'sf-num' },
     level:  { key: 'level',  label: '層級',         type: 'level',  td_class: 'sf-lv' },
     name:   { key: 'name',   label: '項目/科目名稱', type: 'text',   td_class: 'sf-name' },
@@ -383,7 +383,8 @@ const SAMPLES = {
         { name: '(二)帳面價值' },
         { name: '(三)資產處分利益' },
         { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' }
+        { name: '(一)購置無形資產' },
+        { name: '(二)補辦預算' }
     ]
 };
 
@@ -643,9 +644,9 @@ function buildTableDocHTML(tableId) {
         theadHTML = `
         <thead>
             <tr>
+                <th rowspan="2">113年度<br/>決算</th>
                 <th rowspan="2">114年度<br/>決算</th>
-                <th rowspan="2">115年度<br/>決算</th>
-                <th rowspan="2">116年度<br/>預算</th>
+                <th rowspan="2">115年度<br/>預算</th>
                 <th rowspan="2">115年4月底<br/>在職人員</th>
                 <th rowspan="2">項目</th>
                 <th rowspan="2">原編數</th>
@@ -662,9 +663,9 @@ function buildTableDocHTML(tableId) {
         theadHTML = `
         <thead>
             <tr>
+                <th rowspan="2">113年度<br/>決算</th>
                 <th rowspan="2">114年度<br/>決算</th>
-                <th rowspan="2">115年度<br/>決算</th>
-                <th rowspan="2">116年度<br/>預算</th>
+                <th rowspan="2">115年度<br/>預算</th>
                 <th rowspan="2">項目</th>
                 <th rowspan="2">原編金額</th>
                 <th colspan="2">主管機關</th>
@@ -680,9 +681,9 @@ function buildTableDocHTML(tableId) {
         theadHTML = `
         <thead>
             <tr>
+                <th rowspan="2">113年度<br/>決算數</th>
                 <th rowspan="2">114年度<br/>決算數</th>
-                <th rowspan="2">115年度<br/>決算數</th>
-                <th rowspan="2">116年度<br/>預算數</th>
+                <th rowspan="2">115年度<br/>預算數</th>
                 <th rowspan="2">項目</th>
                 <th rowspan="2">原編數</th>
                 <th colspan="2">主管機關</th>
