@@ -86,9 +86,8 @@ Object.assign(tableConfigs, {
     }
 });
 
-// 業務計畫表內部層級（甲/乙 已升格為表頭，不再佔層級）
-// 註：L2 在實際 Word 中常為「計畫名（無前綴）」，少數情況才以 (一)/(二) 標示
-const LEVEL_LABELS = { 0: '─', 1: '一、二、', 2: '計畫名 / (一)', 3: '1./2.', 4: '(1)/(2)' };
+// 業務計畫表層級：L0 為「甲/乙」區段標題列，置於各表最上方
+const LEVEL_LABELS = { 0: '甲/乙', 1: '一、二、', 2: '計畫名 / (一)', 3: '1./2.', 4: '(1)/(2)' };
 
 // ========== 2. 預設項目（依各分基金 Word 原表，數字留空） ==========
 const SAMPLES = {
@@ -420,12 +419,27 @@ function splitPlanRows(combinedRows) {
     (combinedRows || []).forEach(row => {
         const nm = (row.name || '').trim();
         const lv = parseInt(row.level) || 0;
-        if (lv === 2 && nm.startsWith('甲')) { cur = 'src'; return; }
-        if (lv === 2 && nm.startsWith('乙')) { cur = 'use'; return; }
+        if (lv === 2 && nm.startsWith('甲')) {
+            cur = 'src';
+            srcRows.push({ ...row, level: 0 });   // 保留為 L0 區段標題
+            return;
+        }
+        if (lv === 2 && nm.startsWith('乙')) {
+            cur = 'use';
+            useRows.push({ ...row, level: 0 });
+            return;
+        }
         const newRow = { ...row };
         newRow.level = adjustPlanLevel(nm, lv);
         (cur === 'src' ? srcRows : useRows).push(newRow);
     });
+    // 保險：若資料中無 甲/乙 標題（例如舊 v4 匯入），自動補上
+    if (!srcRows.length || !(srcRows[0].name || '').trim().startsWith('甲')) {
+        srcRows.unshift({ level: 0, name: '甲、基金來源：' });
+    }
+    if (!useRows.length || !(useRows[0].name || '').trim().startsWith('乙')) {
+        useRows.unshift({ level: 0, name: '乙、基金用途：' });
+    }
     return { src: srcRows, use: useRows };
 }
 // 初始化：把 SAMPLES.plan_agri 等拆成 plan_agri_src / plan_agri_use
@@ -806,14 +820,32 @@ function migratePlanSplit(data) {
     return result;
 }
 
+// 確保每個 plan_*_src/use 最上方有甲/乙標題列（舊 v4 匯入時補）
+function ensurePlanSectionHeaders(data) {
+    if (!data?.tables) return data;
+    PLAN_FUNDS.forEach(f => {
+        PLAN_SECTIONS.forEach(sec => {
+            const tid = `${f.id}_${sec.suffix}`;
+            const rows = data.tables[tid];
+            if (!Array.isArray(rows)) return;
+            const expected = sec.suffix === 'src' ? '甲' : '乙';
+            if (!rows.length || !(rows[0].name || '').trim().startsWith(expected)) {
+                rows.unshift({ level: 0, name: sec.label + '：' });
+            } else if (parseInt(rows[0].level) !== 0) {
+                rows[0].level = 0; // 強制 L0
+            }
+        });
+    });
+    return data;
+}
+
 // 統一資料正規化入口（任何讀進來的資料都先過這層）
 function normalizeData(data) {
     if (!data?.tables) return data;
-    // v1/v2: tables.plan 存在 → 先拆成 plan_agri/forest/...
     if (Array.isArray(data.tables.plan)) data = migrateOldPlan(data);
-    // v3: 若仍有 plan_agri（合併版）→ 再拆成 _src + _use
     const hasV3Plans = PLAN_FUNDS.some(f => Array.isArray(data.tables[f.id]));
     if (hasV3Plans) data = migratePlanSplit(data);
+    data = ensurePlanSectionHeaders(data);
     return data;
 }
 
@@ -1016,6 +1048,10 @@ function buildPlanFundDocHTML(fundId) {
 
     const renderRow = (r) => {
         const lv = parseInt(r.level) || 0;
+        // L0：甲/乙 區段標題，跨欄整列顯示
+        if (lv === 0) {
+            return `<tr><td colspan="9" style="background:#e8e8e8;font-weight:bold;text-align:left;padding:5pt;">${escapeHTML(r.name || '')}</td></tr>`;
+        }
         const indent = lv > 0 ? '&nbsp;'.repeat((lv-1)*4) : '';
         const weight = lv === 1 ? 'font-weight:bold;' : '';
         const numCell = (v) => `<td class="num"${numColor(v)}>${fmtNum(v) || '-'}</td>`;
@@ -1024,15 +1060,8 @@ function buildPlanFundDocHTML(fundId) {
         return `<tr>${numCell(r.dec113)}${numCell(r.bud114)}${nameCell}${descCell}${numCell(r.orig)}${numCell(r.dep_diff)}${numCell(r.dep_app)}${numCell(r.gov_diff)}${numCell(r.gov_app)}</tr>`;
     };
 
-    // 甲 / 乙 分隔列
-    const sectionRow = (label) => `<tr><td colspan="9" style="background:#e8e8e8;font-weight:bold;text-align:left;padding:5pt;">${escapeHTML(label)}</td></tr>`;
-
-    const tbodyContent = [
-        sectionRow('甲、基金來源：'),
-        ...srcRows.map(renderRow),
-        sectionRow('乙、基金用途：'),
-        ...useRows.map(renderRow)
-    ].join('');
+    // 直接讓資料中的 L0 列自己渲染為甲/乙標題
+    const tbodyContent = [...srcRows, ...useRows].map(renderRow).join('');
 
     const reviewBlock = reviews ? `
         <table class="review">

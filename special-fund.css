@@ -96,6 +96,20 @@
 .sf-table tr[data-level="1"] td:not(.sf-act) { background: #f5f3ff; }
 .sf-table tr[data-level="2"] td:not(.sf-act) { background: #faf5ff; }
 
+/* L0：甲/乙 區段標題列，更顯眼的紫色底色 */
+.sf-table tr[data-level="0"] td:not(.sf-act) {
+    background: #c4b5fd !important;
+    color: #4c1d95;
+    font-weight: 700;
+}
+.sf-table tr[data-level="0"] td.sf-name input {
+    background: transparent;
+    color: #4c1d95;
+    font-weight: 700;
+    padding-left: 4px;
+    font-size: 0.95rem;
+}
+
 /* 刪除按鈕 */
 .sf-row-btn {
     background: transparent;
