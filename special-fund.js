@@ -93,11 +93,11 @@ const LEVEL_LABELS = { 0: '甲/乙', 1: '一、二、', 2: '計畫名 / (一)', 
 const SAMPLES = {
     // === 業務計畫 — 農發基金（依「農發基金115-212業務計畫」）===
     plan_agri: [
-        { level: 2, name: '甲、基金來源：' },
+        { level: 2, name: '甲、基金來源：', bud114: 25088694 },
         { level: 3, name: '一、一般業務計畫' },
         { level: 3, name: '二、國庫撥補款' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 3, name: '一、提升農業經營及發展計畫' },
+        { level: 2, name: '乙、基金用途：', bud114: 26027696 },
+        { level: 3, name: '一、提升農業經營及發展計畫', bud114: 18683875 },
         { level: 4, name: '糧政業務計畫' },
         { level: 4, name: '1.收購糧食' },
         { level: 5, name: '(1)數量：公噸(稻穀)' },
@@ -108,12 +108,12 @@ const SAMPLES = {
         { level: 4, name: '穩定肥料及相關資材供需計畫' },
         { level: 4, name: '產銷調節計畫' },
         { level: 4, name: '家禽流行性感冒防疫計畫' },
-        { level: 3, name: '二、促進農地利用及農業競爭力計畫' },
+        { level: 3, name: '二、促進農地利用及農業競爭力計畫', bud114: 2053561 },
         { level: 4, name: '老農出租農地獎勵計畫' },
         { level: 4, name: '農地之生產環境整備及維護管理計畫' },
         { level: 4, name: '農業研究、實驗、技術改進計畫' },
         { level: 4, name: '農地對地給付計畫' },
-        { level: 3, name: '三、增進農民所得及福利計畫' },
+        { level: 3, name: '三、增進農民所得及福利計畫', bud114: 5079216 },
         { level: 4, name: '獎勵農漁民子女就學計畫' },
         { level: 4, name: '農業保險計畫' },
         { level: 4, name: '精進豬隻保險業務計畫' },
@@ -130,62 +130,62 @@ const SAMPLES = {
         { level: 4, name: '養豬新式設施(備)導入提供專案政策性農貸利息補貼' },
         { level: 4, name: '委託辦理政策性農業專案貸款業務及印製宣傳摺頁' },
         { level: 4, name: '辦理政策性農業專案貸款行政事務' },
-        { level: 3, name: '四、輔導菸農轉型與檳榔廢園轉作計畫' },
-        { level: 3, name: '五、處理農會漁會信用部計畫' },
+        { level: 3, name: '四、輔導菸農轉型與檳榔廢園轉作計畫', bud114: 85000 },
+        { level: 3, name: '五、處理農會漁會信用部計畫', bud114: 125002 },
         { level: 3, name: '六、一般行政管理計畫' }
     ],
     // === 業務計畫 — 林務基金（依「林務基金212-115」）===
     plan_forest: [
-        { level: 2, name: '甲、基金來源：' },
+        { level: 2, name: '甲、基金來源：', bud114: 1696479 },
         { level: 3, name: '一、一般業務計畫之基金來源合計' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 3, name: '一、獎勵輔導造林計畫' },
-        { level: 3, name: '二、森林遊樂及林業鐵路經營管理計畫' },
-        { level: 3, name: '三、山坡地開發利用回饋金繳交管理計畫' },
+        { level: 2, name: '乙、基金用途：', bud114: 1659962 },
+        { level: 3, name: '一、獎勵輔導造林計畫', bud114: 480117 },
+        { level: 3, name: '二、森林遊樂及林業鐵路經營管理計畫', bud114: 1153045 },
+        { level: 3, name: '三、山坡地開發利用回饋金繳交管理計畫', bud114: 26800 },
         { level: 3, name: '四、原住民保留地竹林更新獎勵計畫' }
     ],
     // === 業務計畫 — 農業天然災害救助基金 ===
     plan_disaster: [
-        { level: 2, name: '甲、基金來源：' },
+        { level: 2, name: '甲、基金來源：', bud114: 6215490 },
         { level: 3, name: '一般業務計畫' },
         { level: 3, name: '國庫撥補額' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 3, name: '農業天然災害救助計畫' }
+        { level: 2, name: '乙、基金用途：', bud114: 6215490 },
+        { level: 3, name: '農業天然災害救助計畫', bud114: 6215490 }
     ],
     // === 業務計畫 — 漁業基金（依「漁發基金115-212業務計畫」）===
     plan_fish: [
-        { level: 2, name: '甲、基金來源：' },
+        { level: 2, name: '甲、基金來源：', bud114: 980 },
         { level: 3, name: '財產收入' },
         { level: 3, name: '其他收入' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 3, name: '漁業發展補助計畫' }
+        { level: 2, name: '乙、基金用途：', bud114: 2300 },
+        { level: 3, name: '漁業發展補助計畫', bud114: 2300 }
     ],
     // === 業務計畫 — 農產品受進口損害救助基金（依「農損基金-212」）===
     plan_loss: [
-        { level: 2, name: '甲、基金來源：' },
+        { level: 2, name: '甲、基金來源：', bud114: 16095143 },
         { level: 3, name: '一、權利金收入' },
         { level: 3, name: '二、利息收入' },
         { level: 3, name: '三、公庫撥款收入' },
         { level: 3, name: '四、其他收入' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 3, name: '一、調整產業或防範措施計畫' },
-        { level: 3, name: '二、進口損害救助及穩價計畫' },
-        { level: 3, name: '三、農糧產業調整與轉型計畫(原「綠色環境給付計畫」)' },
-        { level: 3, name: '四、農產品進口管理計畫' }
+        { level: 2, name: '乙、基金用途：', bud114: 16695143 },
+        { level: 3, name: '一、調整產業或防範措施計畫', bud114: 3879115 },
+        { level: 3, name: '二、進口損害救助及穩價計畫', bud114: 1000 },
+        { level: 3, name: '三、農糧產業調整與轉型計畫(原「綠色環境給付計畫」)', bud114: 12759005 },
+        { level: 3, name: '四、農產品進口管理計畫', bud114: 56023 }
     ],
     // === 業務計畫 — 農村再生基金（依「農再基金-212」）===
     plan_renewal: [
-        { level: 2, name: '甲、基金來源：' },
+        { level: 2, name: '甲、基金來源：', bud114: 2913206 },
         { level: 3, name: '一、一般業務計畫' },
         { level: 3, name: '二、國庫撥補款' },
-        { level: 2, name: '乙、基金用途：' },
+        { level: 2, name: '乙、基金用途：', bud114: 17234940 },
         // 農再有 壹/貳 額外層，所以 壹/貳 對應 L1，下面 一/二/三 對應 L2，1./2. 對應 L3
-        { level: 3, name: '壹、農村再生規劃及人力培育計畫' },
+        { level: 3, name: '壹、農村再生規劃及人力培育計畫', bud114: 2185200 },
         { level: 4, name: '一、農村規劃及培力' },
         { level: 4, name: '1.農村人力及教育推廣' },
         { level: 4, name: '二、農業人才多元培育' },
         { level: 4, name: '三、農村農產業人力活化計畫' },
-        { level: 3, name: '貳、農村再生建設及發展計畫' },
+        { level: 3, name: '貳、農村再生建設及發展計畫', bud114: 15049740 },
         { level: 4, name: '一、農村再生社區發展及環境改善' },
         { level: 4, name: '1.農村再生跨域發展' },
         { level: 4, name: '2.社區農村再生計畫' },
@@ -334,55 +334,55 @@ const SAMPLES = {
         { name: '五、資本支出' }
     ],
     personnel_cost: [
-        { name: '一、正式員額薪資' },
+        { name: '一、正式員額薪資', bud114: 457 },
         { name: '　(一)編制內' },
         { name: '　(二)管理會委員' },
         { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資' },
+        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
         { name: '　(一)編制內' },
         { name: '　(二)兼職人員' },
         { name: '　(三)其他' },
-        { name: '三、加(夜)班費' },
-        { name: '　(一)延長工時加班費' },
+        { name: '三、加(夜)班費', bud114: 6132 },
+        { name: '　(一)延長工時加班費', bud114: 4200 },
         { name: '　(二)其他' },
-        { name: '四、津貼' },
-        { name: '五、獎金' },
-        { name: '六、退休及卹償金' },
+        { name: '四、津貼', bud114: 61 },
+        { name: '五、獎金', bud114: 86 },
+        { name: '六、退休及卹償金', bud114: 42 },
         { name: '七、資遣費' },
-        { name: '八、福利費' },
+        { name: '八、福利費', bud114: 81 },
         { name: '　(一)分擔員工保險費' },
         { name: '　(二)其他' },
-        { name: '九、提繳費' },
+        { name: '九、提繳費', bud114: 1 },
         { name: '合　　　　計' },
         { name: '資本支出' }
     ],
     control: [
-        { name: '一、水電費' },
-        { name: '二、國內旅費' },
-        { name: '三、國外旅費' },
+        { name: '一、水電費', bud114: 30091 },
+        { name: '二、國內旅費', bud114: 18409 },
+        { name: '三、國外旅費', bud114: 135 },
         { name: '(一)出國考察、訪問' },
         { name: '(二)參加國際會議、談判' },
         { name: '(三)出國進修、研究及實習計畫' },
         { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費' },
-        { name: '六、媒體政策及業務宣導費' },
-        { name: '七、推展費' },
-        { name: '八、一般服務費（不含計時與計件人員酬金）' },
+        { name: '五、印刷裝訂費', bud114: 43623 },
+        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
+        { name: '七、推展費', bud114: 228084 },
+        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
         { name: '(一)一般(不含體育活動費)' },
         { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）' },
+        { name: '九、契約勞力（約用人員）', bud114: 1380 },
         { name: '(一)工程管理費' },
         { name: '(二)一般服務費－計時與計件人員酬金' },
         { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費' },
+        { name: '十、委託調查研究費', bud114: 85972 },
         { name: '十一、公共關係費' },
         { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗' },
-        { name: '十四、其他費用' },
-        { name: '十五、補助與捐助' },
+        { name: '十三、用品消耗', bud114: 12580064 },
+        { name: '十四、其他費用', bud114: 11476160 },
+        { name: '十五、補助與捐助', bud114: 114566529 },
         { name: '(一)以前年度計畫' },
         { name: '(二)新興計畫' },
-        { name: '十六、公務車輛' },
+        { name: '十六、公務車輛', bud114: 61963 },
         { name: '(一)管理用車輛' },
         { name: '1.新購' },
         { name: '2.汰換' },
@@ -585,10 +585,19 @@ function recalcPlanTable(tableId) {
                     const v = parseNum(c.tr.querySelector(`[data-key="${k}"]`)?.value);
                     if (!isNaN(v)) { sum += v; has = true; }
                 });
-                el.value = (has && sum !== 0) ? formatNum(sum) : '';
-                el.readOnly = true;
-                el.classList.add('sf-auto-sum');
-                el.classList.toggle('negative-value', sum < 0);
+                if (has && sum !== 0) {
+                    // 子列有值 → 覆寫為加總，父列鎖定
+                    el.value = formatNum(sum);
+                    el.readOnly = true;
+                    el.classList.add('sf-auto-sum');
+                    el.classList.toggle('negative-value', sum < 0);
+                } else {
+                    // 子列皆無值 → 保留父列原值並開放手動編輯
+                    el.readOnly = false;
+                    el.classList.remove('sf-auto-sum');
+                    const own = parseNum(el.value);
+                    el.classList.toggle('negative-value', !isNaN(own) && own < 0);
+                }
             } else {
                 el.readOnly = false;
                 el.classList.remove('sf-auto-sum');
