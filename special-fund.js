@@ -415,19 +415,24 @@ function escapeHTML(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function addRow(tableId, data = {}) {
+function addRow(tableId, data = {}, beforeTr = null) {
     const cfg = tableConfigs[tableId];
-    if (!cfg) return;
+    if (!cfg) return null;
     const tbody = document.getElementById('sf-tbody-' + tableId);
     const tr = document.createElement('tr');
+    tr.setAttribute('draggable', 'true');
     const lvl = cfg.hasLevel ? (data.level ?? 0) : 0;
     if (cfg.hasLevel) tr.setAttribute('data-level', lvl);
     const actHTML = `<td class="sf-act">
-        <button class="sf-row-btn up" title="上移">▲</button><button class="sf-row-btn down" title="下移">▼</button><button class="sf-row-btn del" title="刪除">✕</button>
+        <div class="sf-insert-zone" title="在此插入一列"><span class="sf-insert-btn">＋</span></div>
+        <span class="sf-drag-handle" title="拖曳排序">☰</span>
+        <button class="sf-row-btn del" title="刪除">✕</button>
     </td>`;
     tr.innerHTML = actHTML + cfg.cols.map(c => cellHTML(c, data, tableId)).join('');
-    tbody.appendChild(tr);
+    if (beforeTr && beforeTr.parentNode === tbody) tbody.insertBefore(tr, beforeTr);
+    else tbody.appendChild(tr);
     recalcRow(tr);
+    return tr;
 }
 
 function recalcRow(tr) {
@@ -838,7 +843,8 @@ function exportDoc(scope) {
         if (main === 'plan') {
             const active = document.querySelector('.sf-subtab-btn.active')?.dataset.subtab;
             tables = [active || 'plan_agri'];
-        } else if (main === 'personnel') {
+        } else if (main === 'headcount' || main === 'personnel_cost') {
+            // 1-3 表：員額（甲）與用人費用（乙）匯出時始終一起
             tables = ['headcount', 'personnel_cost'];
         } else {
             tables = [main];
@@ -1208,26 +1214,31 @@ function bindEvents() {
         };
     });
 
-    // 行內事件委派：刪除、上下移、層級變更、輸入計算
+    // 行內事件委派：插入鈕、刪除、層級變更、輸入計算、拖曳排序
     Object.keys(tableConfigs).forEach(tid => {
         const tbody = document.getElementById('sf-tbody-' + tid);
+
         tbody.addEventListener('click', e => {
+            // 列上方插入鈕（在這列前插入一列新空白列）
+            const insertZone = e.target.closest('.sf-insert-zone');
+            if (insertZone) {
+                const tr = insertZone.closest('tr');
+                addRow(tid, {}, tr);
+                scheduleAutosave();
+                return;
+            }
+            // 刪除
             const btn = e.target.closest('.sf-row-btn');
             if (!btn) return;
             const tr = btn.closest('tr');
             if (btn.classList.contains('del')) {
                 if (tbody.children.length <= 1) {
-                    // 至少留一列，但清空
                     tr.querySelectorAll('input,textarea,select').forEach(el => el.value = '');
                     tr.setAttribute('data-level', 0);
                     recalcRow(tr);
                 } else tr.remove();
-            } else if (btn.classList.contains('up')) {
-                if (tr.previousElementSibling) tr.parentNode.insertBefore(tr, tr.previousElementSibling);
-            } else if (btn.classList.contains('down')) {
-                if (tr.nextElementSibling) tr.parentNode.insertBefore(tr.nextElementSibling, tr);
+                scheduleAutosave();
             }
-            scheduleAutosave();
         });
 
         tbody.addEventListener('change', e => {
@@ -1242,6 +1253,50 @@ function bindEvents() {
             const key = e.target.dataset.key;
             if (['orig','dep_diff','gov_diff'].includes(key)) recalcRow(tr);
             scheduleAutosave();
+        });
+
+        // ===== 拖曳排序 =====
+        let draggedTr = null;
+        tbody.addEventListener('dragstart', e => {
+            // 只允許從 .sf-drag-handle 或 .sf-act td 起始（避免 input 文字選取被誤觸發）
+            const t = e.target;
+            const tr = t.closest('tr');
+            if (!tr) return;
+            const fromHandle = t.closest('.sf-drag-handle') || (t.closest('td')?.classList.contains('sf-act') && !t.closest('input,textarea,select,button'));
+            if (!fromHandle) { e.preventDefault(); return; }
+            draggedTr = tr;
+            tr.classList.add('sf-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', tid);
+        });
+        tbody.addEventListener('dragover', e => {
+            if (!draggedTr) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const tr = e.target.closest('tr');
+            if (!tr || tr === draggedTr) return;
+            tbody.querySelectorAll('.sf-drop-above, .sf-drop-below').forEach(el =>
+                el.classList.remove('sf-drop-above', 'sf-drop-below'));
+            const rect = tr.getBoundingClientRect();
+            const above = e.clientY < rect.top + rect.height / 2;
+            tr.classList.add(above ? 'sf-drop-above' : 'sf-drop-below');
+        });
+        tbody.addEventListener('drop', e => {
+            if (!draggedTr) return;
+            e.preventDefault();
+            const tr = e.target.closest('tr');
+            if (!tr || tr === draggedTr) return;
+            const rect = tr.getBoundingClientRect();
+            const above = e.clientY < rect.top + rect.height / 2;
+            if (above) tbody.insertBefore(draggedTr, tr);
+            else tbody.insertBefore(draggedTr, tr.nextSibling);
+            scheduleAutosave();
+        });
+        tbody.addEventListener('dragend', () => {
+            if (draggedTr) draggedTr.classList.remove('sf-dragging');
+            tbody.querySelectorAll('.sf-drop-above, .sf-drop-below').forEach(el =>
+                el.classList.remove('sf-drop-above', 'sf-drop-below'));
+            draggedTr = null;
         });
     });
 
