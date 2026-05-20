@@ -1316,29 +1316,83 @@ function bindEvents() {
         const el = document.activeElement;
         if (!el || el.tagName !== 'INPUT' || el.readOnly) return;
         if (!el.closest('.sf-table')) return;
-        const text = (e.clipboardData || window.clipboardData).getData('text');
-        if (!text || (!text.includes('\t') && !text.includes('\n'))) return;
+
+        const cd = e.clipboardData || window.clipboardData;
+        const html = cd.getData('text/html');
+        const text = cd.getData('text/plain');
+
+        // 1) 優先解析 text/html 的 <table>（Word 表格複製保留結構，多行儲存格不會錯位）
+        let rowsData = parseClipboardTable(html);
+        // 2) 退回純文字（Excel 表格複製或單欄列表）
+        if (!rowsData) {
+            if (!text || (!text.includes('\t') && !text.includes('\n'))) return;
+            rowsData = text.split(/\r\n|\r|\n/).filter(r => r.length).map(r => r.split('\t'));
+        }
+        if (!rowsData.length) return;
+
         e.preventDefault();
-        const rows = text.split(/\r\n|\n|\r/).filter(r => r.length);
         const startTr = el.closest('tr');
         const tbody = startTr.parentNode;
         const tid = tbody.id.replace('sf-tbody-', '');
         const startCol = Array.from(startTr.children).indexOf(el.closest('td'));
         const startRowIdx = Array.from(tbody.children).indexOf(startTr);
-        rows.forEach((rowText, i) => {
+
+        rowsData.forEach((cells, i) => {
             let targetTr = tbody.children[startRowIdx + i];
             if (!targetTr) { addRow(tid); targetTr = tbody.lastElementChild; }
-            const cells = rowText.split('\t');
             cells.forEach((txt, j) => {
                 const td = targetTr.children[startCol + j];
                 if (!td) return;
                 const inp = td.querySelector('input:not([readonly]),textarea');
-                if (inp) inp.value = txt.trim().replace(/,/g, '');
+                if (!inp) return;
+                if (inp.tagName === 'TEXTAREA') {
+                    // 摘要欄保留換行
+                    inp.value = txt.replace(/\r\n?/g, '\n').trim();
+                } else if (inp.type === 'number') {
+                    // 數字欄：取第一行、去千分位逗號、去除非數字尾巴
+                    const firstLine = txt.split(/\r?\n/)[0].trim().replace(/,/g, '');
+                    const m = firstLine.match(/-?\d+(\.\d+)?/);
+                    inp.value = m ? m[0] : '';
+                } else {
+                    // 文字欄（項目名稱）：取第一行、去逗號
+                    inp.value = txt.split(/\r?\n/)[0].trim().replace(/,/g, '');
+                }
             });
             recalcRow(targetTr);
         });
         scheduleAutosave();
     });
+}
+
+// ===== 解析剪貼簿中的 HTML 表格 =====
+// 回傳 rowsData：cell 內的 <br>、<p>、<div> 邊界轉成 \n，其餘標籤剝除
+function parseClipboardTable(html) {
+    if (!html || !/<table[\s>]/i.test(html)) return null;
+    try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const table = tmp.querySelector('table');
+        if (!table) return null;
+        const rows = Array.from(table.querySelectorAll('tr')).map(tr =>
+            Array.from(tr.children).map(cell => {
+                // 把段落、區塊、換行 → \n；其餘標籤靠 textContent 自動剝除
+                const wrap = document.createElement('div');
+                wrap.innerHTML = cell.innerHTML
+                    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+                    .replace(/<\/\s*(p|div|h[1-6]|li)\s*>/gi, '\n');
+                return wrap.textContent
+                    .replace(/ /g, ' ')                  // &nbsp; → 一般空格
+                    .replace(/[ \t]+/g, ' ')                // 多空白/Tab → 1 空白
+                    .replace(/[ \t]*\n[ \t]*/g, '\n')     // 換行前後空白清掉
+                    .replace(/\n{2,}/g, '\n')              // 多重換行縮成 1 個
+                    .trim();
+            })
+        ).filter(r => r.length); // 跳過完全空列
+        return rows.length ? rows : null;
+    } catch (e) {
+        console.warn('parseClipboardTable failed', e);
+        return null;
+    }
 }
 
 // ========== 10. 啟動 ==========
