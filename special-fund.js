@@ -67,24 +67,45 @@ Object.assign(tableConfigs, {
         cols: ['dec112', 'dec113', 'bud114', 'apr114', 'name', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app', 'desc'],
         hasLevel: false,
         reviewKey: null // 員額表自身無審核意見
-    },
-    personnel_cost: {
-        title: '乙、用人費用',
+    }
+});
+
+// 為各基金分別建立 personnel_cost 和 control 配置
+PLAN_FUNDS.forEach(f => {
+    // personnel_cost_{fund}
+    tableConfigs[`personnel_cost_${f.id}`] = {
+        title: `${f.name} — 乙、用人費用`,
         sheetId: '1-3 下半部',
         unit: '新臺幣千元',
         cols: ['dec112', 'dec113', 'bud114', 'name', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app', 'desc'],
         hasLevel: false,
-        reviewKey: 'personnel'
-    },
-    control: {
-        title: '116 年度 其他管制性項目及重大事項預算表',
+        reviewKey: 'personnel',
+        fundId: f.id,
+        fundName: f.name,
+        fundShort: f.short
+    };
+
+    // control_{fund}
+    tableConfigs[`control_${f.id}`] = {
+        title: `${f.name} — 其他管制性項目及重大事項預算表`,
         sheetId: '1-4',
         unit: '新臺幣千元',
         cols: ['dec112', 'dec113', 'bud114', 'name', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app', 'desc'],
         hasLevel: false,
-        reviewKey: 'control'
-    }
+        reviewKey: 'control',
+        fundId: f.id,
+        fundName: f.name,
+        fundShort: f.short
+    };
 });
+
+// 辅助函数：识别表格类型
+function isPersonnelTable(tableId) {
+    return tableId === 'personnel_cost' || /^personnel_cost_/.test(tableId);
+}
+function isControlTable(tableId) {
+    return tableId === 'control' || /^control_/.test(tableId);
+}
 
 // 業務計畫表層級：L0 為「甲/乙」區段標題列，置於各表最上方
 const LEVEL_LABELS = { 0: '甲/乙', 1: '一、二、', 2: '計畫名 / (一)', 3: '1./2.', 4: '(1)/(2)' };
@@ -333,7 +354,8 @@ const SAMPLES = {
         { name: '四、兼任人員' },
         { name: '五、資本支出' }
     ],
-    personnel_cost: [
+    // === 員額用人費 — 農業發展基金 ===
+    personnel_cost_agri: [
         { name: '一、正式員額薪資', bud114: 457 },
         { name: '　(一)編制內' },
         { name: '　(二)管理會委員' },
@@ -356,7 +378,332 @@ const SAMPLES = {
         { name: '合　　　　計' },
         { name: '資本支出' }
     ],
-    control: [
+    control_agri: [
+        { name: '一、水電費', bud114: 30091 },
+        { name: '二、國內旅費', bud114: 18409 },
+        { name: '三、國外旅費', bud114: 135 },
+        { name: '(一)出國考察、訪問' },
+        { name: '(二)參加國際會議、談判' },
+        { name: '(三)出國進修、研究及實習計畫' },
+        { name: '四、大陸地區旅費' },
+        { name: '五、印刷裝訂費', bud114: 43623 },
+        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
+        { name: '七、推展費', bud114: 228084 },
+        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
+        { name: '(一)一般(不含體育活動費)' },
+        { name: '(二)體育活動費' },
+        { name: '九、契約勞力（約用人員）', bud114: 1380 },
+        { name: '(一)工程管理費' },
+        { name: '(二)一般服務費－計時與計件人員酬金' },
+        { name: '(三)專業服務費－專技人員酬金' },
+        { name: '十、委託調查研究費', bud114: 85972 },
+        { name: '十一、公共關係費' },
+        { name: '十二、員工慰勞費' },
+        { name: '十三、用品消耗', bud114: 12580064 },
+        { name: '十四、其他費用', bud114: 11476160 },
+        { name: '十五、補助與捐助', bud114: 114566529 },
+        { name: '(一)以前年度計畫' },
+        { name: '(二)新興計畫' },
+        { name: '十六、公務車輛', bud114: 61963 },
+        { name: '(一)管理用車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '(二)其他車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '十七、資產變賣' },
+        { name: '(一)變賣淨收入' },
+        { name: '(二)帳面價值' },
+        { name: '(三)資產處分利益' },
+        { name: '十八、其他重大事項' },
+        { name: '(一)購置無形資產' },
+        { name: '(二)補辦預算' }
+    ],
+    // === 員額用人費 — 漁業發展基金 ===
+    personnel_cost_fish: [
+        { name: '一、正式員額薪資', bud114: 457 },
+        { name: '　(一)編制內' },
+        { name: '　(二)管理會委員' },
+        { name: '　(三)顧問人員' },
+        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
+        { name: '　(一)編制內' },
+        { name: '　(二)兼職人員' },
+        { name: '　(三)其他' },
+        { name: '三、加(夜)班費', bud114: 6132 },
+        { name: '　(一)延長工時加班費', bud114: 4200 },
+        { name: '　(二)其他' },
+        { name: '四、津貼', bud114: 61 },
+        { name: '五、獎金', bud114: 86 },
+        { name: '六、退休及卹償金', bud114: 42 },
+        { name: '七、資遣費' },
+        { name: '八、福利費', bud114: 81 },
+        { name: '　(一)分擔員工保險費' },
+        { name: '　(二)其他' },
+        { name: '九、提繳費', bud114: 1 },
+        { name: '合　　　　計' },
+        { name: '資本支出' }
+    ],
+    control_fish: [
+        { name: '一、水電費', bud114: 30091 },
+        { name: '二、國內旅費', bud114: 18409 },
+        { name: '三、國外旅費', bud114: 135 },
+        { name: '(一)出國考察、訪問' },
+        { name: '(二)參加國際會議、談判' },
+        { name: '(三)出國進修、研究及實習計畫' },
+        { name: '四、大陸地區旅費' },
+        { name: '五、印刷裝訂費', bud114: 43623 },
+        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
+        { name: '七、推展費', bud114: 228084 },
+        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
+        { name: '(一)一般(不含體育活動費)' },
+        { name: '(二)體育活動費' },
+        { name: '九、契約勞力（約用人員）', bud114: 1380 },
+        { name: '(一)工程管理費' },
+        { name: '(二)一般服務費－計時與計件人員酬金' },
+        { name: '(三)專業服務費－專技人員酬金' },
+        { name: '十、委託調查研究費', bud114: 85972 },
+        { name: '十一、公共關係費' },
+        { name: '十二、員工慰勞費' },
+        { name: '十三、用品消耗', bud114: 12580064 },
+        { name: '十四、其他費用', bud114: 11476160 },
+        { name: '十五、補助與捐助', bud114: 114566529 },
+        { name: '(一)以前年度計畫' },
+        { name: '(二)新興計畫' },
+        { name: '十六、公務車輛', bud114: 61963 },
+        { name: '(一)管理用車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '(二)其他車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '十七、資產變賣' },
+        { name: '(一)變賣淨收入' },
+        { name: '(二)帳面價值' },
+        { name: '(三)資產處分利益' },
+        { name: '十八、其他重大事項' },
+        { name: '(一)購置無形資產' },
+        { name: '(二)補辦預算' }
+    ],
+    // === 員額用人費 — 林務發展及造林基金 ===
+    personnel_cost_forest: [
+        { name: '一、正式員額薪資', bud114: 457 },
+        { name: '　(一)編制內' },
+        { name: '　(二)管理會委員' },
+        { name: '　(三)顧問人員' },
+        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
+        { name: '　(一)編制內' },
+        { name: '　(二)兼職人員' },
+        { name: '　(三)其他' },
+        { name: '三、加(夜)班費', bud114: 6132 },
+        { name: '　(一)延長工時加班費', bud114: 4200 },
+        { name: '　(二)其他' },
+        { name: '四、津貼', bud114: 61 },
+        { name: '五、獎金', bud114: 86 },
+        { name: '六、退休及卹償金', bud114: 42 },
+        { name: '七、資遣費' },
+        { name: '八、福利費', bud114: 81 },
+        { name: '　(一)分擔員工保險費' },
+        { name: '　(二)其他' },
+        { name: '九、提繳費', bud114: 1 },
+        { name: '合　　　　計' },
+        { name: '資本支出' }
+    ],
+    control_forest: [
+        { name: '一、水電費', bud114: 30091 },
+        { name: '二、國內旅費', bud114: 18409 },
+        { name: '三、國外旅費', bud114: 135 },
+        { name: '(一)出國考察、訪問' },
+        { name: '(二)參加國際會議、談判' },
+        { name: '(三)出國進修、研究及實習計畫' },
+        { name: '四、大陸地區旅費' },
+        { name: '五、印刷裝訂費', bud114: 43623 },
+        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
+        { name: '七、推展費', bud114: 228084 },
+        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
+        { name: '(一)一般(不含體育活動費)' },
+        { name: '(二)體育活動費' },
+        { name: '九、契約勞力（約用人員）', bud114: 1380 },
+        { name: '(一)工程管理費' },
+        { name: '(二)一般服務費－計時與計件人員酬金' },
+        { name: '(三)專業服務費－專技人員酬金' },
+        { name: '十、委託調查研究費', bud114: 85972 },
+        { name: '十一、公共關係費' },
+        { name: '十二、員工慰勞費' },
+        { name: '十三、用品消耗', bud114: 12580064 },
+        { name: '十四、其他費用', bud114: 11476160 },
+        { name: '十五、補助與捐助', bud114: 114566529 },
+        { name: '(一)以前年度計畫' },
+        { name: '(二)新興計畫' },
+        { name: '十六、公務車輛', bud114: 61963 },
+        { name: '(一)管理用車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '(二)其他車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '十七、資產變賣' },
+        { name: '(一)變賣淨收入' },
+        { name: '(二)帳面價值' },
+        { name: '(三)資產處分利益' },
+        { name: '十八、其他重大事項' },
+        { name: '(一)購置無形資產' },
+        { name: '(二)補辦預算' }
+    ],
+    // === 員額用人費 — 農業天然災害救助基金 ===
+    personnel_cost_disaster: [
+        { name: '一、正式員額薪資', bud114: 457 },
+        { name: '　(一)編制內' },
+        { name: '　(二)管理會委員' },
+        { name: '　(三)顧問人員' },
+        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
+        { name: '　(一)編制內' },
+        { name: '　(二)兼職人員' },
+        { name: '　(三)其他' },
+        { name: '三、加(夜)班費', bud114: 6132 },
+        { name: '　(一)延長工時加班費', bud114: 4200 },
+        { name: '　(二)其他' },
+        { name: '四、津貼', bud114: 61 },
+        { name: '五、獎金', bud114: 86 },
+        { name: '六、退休及卹償金', bud114: 42 },
+        { name: '七、資遣費' },
+        { name: '八、福利費', bud114: 81 },
+        { name: '　(一)分擔員工保險費' },
+        { name: '　(二)其他' },
+        { name: '九、提繳費', bud114: 1 },
+        { name: '合　　　　計' },
+        { name: '資本支出' }
+    ],
+    control_disaster: [
+        { name: '一、水電費', bud114: 30091 },
+        { name: '二、國內旅費', bud114: 18409 },
+        { name: '三、國外旅費', bud114: 135 },
+        { name: '(一)出國考察、訪問' },
+        { name: '(二)參加國際會議、談判' },
+        { name: '(三)出國進修、研究及實習計畫' },
+        { name: '四、大陸地區旅費' },
+        { name: '五、印刷裝訂費', bud114: 43623 },
+        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
+        { name: '七、推展費', bud114: 228084 },
+        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
+        { name: '(一)一般(不含體育活動費)' },
+        { name: '(二)體育活動費' },
+        { name: '九、契約勞力（約用人員）', bud114: 1380 },
+        { name: '(一)工程管理費' },
+        { name: '(二)一般服務費－計時與計件人員酬金' },
+        { name: '(三)專業服務費－專技人員酬金' },
+        { name: '十、委託調查研究費', bud114: 85972 },
+        { name: '十一、公共關係費' },
+        { name: '十二、員工慰勞費' },
+        { name: '十三、用品消耗', bud114: 12580064 },
+        { name: '十四、其他費用', bud114: 11476160 },
+        { name: '十五、補助與捐助', bud114: 114566529 },
+        { name: '(一)以前年度計畫' },
+        { name: '(二)新興計畫' },
+        { name: '十六、公務車輛', bud114: 61963 },
+        { name: '(一)管理用車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '(二)其他車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '十七、資產變賣' },
+        { name: '(一)變賣淨收入' },
+        { name: '(二)帳面價值' },
+        { name: '(三)資產處分利益' },
+        { name: '十八、其他重大事項' },
+        { name: '(一)購置無形資產' },
+        { name: '(二)補辦預算' }
+    ],
+    // === 員額用人費 — 農產品受進口損害救助基金 ===
+    personnel_cost_loss: [
+        { name: '一、正式員額薪資', bud114: 457 },
+        { name: '　(一)編制內' },
+        { name: '　(二)管理會委員' },
+        { name: '　(三)顧問人員' },
+        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
+        { name: '　(一)編制內' },
+        { name: '　(二)兼職人員' },
+        { name: '　(三)其他' },
+        { name: '三、加(夜)班費', bud114: 6132 },
+        { name: '　(一)延長工時加班費', bud114: 4200 },
+        { name: '　(二)其他' },
+        { name: '四、津貼', bud114: 61 },
+        { name: '五、獎金', bud114: 86 },
+        { name: '六、退休及卹償金', bud114: 42 },
+        { name: '七、資遣費' },
+        { name: '八、福利費', bud114: 81 },
+        { name: '　(一)分擔員工保險費' },
+        { name: '　(二)其他' },
+        { name: '九、提繳費', bud114: 1 },
+        { name: '合　　　　計' },
+        { name: '資本支出' }
+    ],
+    control_loss: [
+        { name: '一、水電費', bud114: 30091 },
+        { name: '二、國內旅費', bud114: 18409 },
+        { name: '三、國外旅費', bud114: 135 },
+        { name: '(一)出國考察、訪問' },
+        { name: '(二)參加國際會議、談判' },
+        { name: '(三)出國進修、研究及實習計畫' },
+        { name: '四、大陸地區旅費' },
+        { name: '五、印刷裝訂費', bud114: 43623 },
+        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
+        { name: '七、推展費', bud114: 228084 },
+        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
+        { name: '(一)一般(不含體育活動費)' },
+        { name: '(二)體育活動費' },
+        { name: '九、契約勞力（約用人員）', bud114: 1380 },
+        { name: '(一)工程管理費' },
+        { name: '(二)一般服務費－計時與計件人員酬金' },
+        { name: '(三)專業服務費－專技人員酬金' },
+        { name: '十、委託調查研究費', bud114: 85972 },
+        { name: '十一、公共關係費' },
+        { name: '十二、員工慰勞費' },
+        { name: '十三、用品消耗', bud114: 12580064 },
+        { name: '十四、其他費用', bud114: 11476160 },
+        { name: '十五、補助與捐助', bud114: 114566529 },
+        { name: '(一)以前年度計畫' },
+        { name: '(二)新興計畫' },
+        { name: '十六、公務車輛', bud114: 61963 },
+        { name: '(一)管理用車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '(二)其他車輛' },
+        { name: '1.新購' },
+        { name: '2.汰換' },
+        { name: '十七、資產變賣' },
+        { name: '(一)變賣淨收入' },
+        { name: '(二)帳面價值' },
+        { name: '(三)資產處分利益' },
+        { name: '十八、其他重大事項' },
+        { name: '(一)購置無形資產' },
+        { name: '(二)補辦預算' }
+    ],
+    // === 員額用人費 — 農村再生基金 ===
+    personnel_cost_renewal: [
+        { name: '一、正式員額薪資', bud114: 457 },
+        { name: '　(一)編制內' },
+        { name: '　(二)管理會委員' },
+        { name: '　(三)顧問人員' },
+        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
+        { name: '　(一)編制內' },
+        { name: '　(二)兼職人員' },
+        { name: '　(三)其他' },
+        { name: '三、加(夜)班費', bud114: 6132 },
+        { name: '　(一)延長工時加班費', bud114: 4200 },
+        { name: '　(二)其他' },
+        { name: '四、津貼', bud114: 61 },
+        { name: '五、獎金', bud114: 86 },
+        { name: '六、退休及卹償金', bud114: 42 },
+        { name: '七、資遣費' },
+        { name: '八、福利費', bud114: 81 },
+        { name: '　(一)分擔員工保險費' },
+        { name: '　(二)其他' },
+        { name: '九、提繳費', bud114: 1 },
+        { name: '合　　　　計' },
+        { name: '資本支出' }
+    ],
+    control_renewal: [
         { name: '一、水電費', bud114: 30091 },
         { name: '二、國內旅費', bud114: 18409 },
         { name: '三、國外旅費', bud114: 135 },
@@ -808,9 +1155,16 @@ function migrateOldPlan(data) {
         newTables[current].push(newRow);
     });
     const result = { ...data, tables: { ...newTables } };
-    ['headcount','personnel_cost','control'].forEach(k => {
+    ['headcount'].forEach(k => {
         if (data.tables[k]) result.tables[k] = data.tables[k];
     });
+    // 遷移舊版的全局 personnel_cost 和 control 到第一個基金（agri）
+    if (data.tables['personnel_cost'] && !result.tables['personnel_cost_agri']) {
+        result.tables['personnel_cost_agri'] = data.tables['personnel_cost'];
+    }
+    if (data.tables['control'] && !result.tables['control_agri']) {
+        result.tables['control_agri'] = data.tables['control'];
+    }
     return result;
 }
 
@@ -952,7 +1306,7 @@ function buildTableDocHTML(tableId) {
                 <th>請增減(-)員額</th><th>擬核列員額</th>
             </tr>
         </thead>`;
-    } else if (tableId === 'personnel_cost') {
+    } else if (isPersonnelTable(tableId)) {
         theadHTML = `
         <thead>
             <tr>
@@ -1100,7 +1454,10 @@ function exportDoc(scope) {
 
     let tables;
     if (scope === 'all') {
-        tables = [...planFundIds, 'headcount', 'personnel_cost', 'control'];
+        // 導出所有表：6個基金的業務計畫 + 員額 + 各基金的用人費與管制項目
+        const personnelTables = planFundIds.map(f => `personnel_cost_${f}`);
+        const controlTables = planFundIds.map(f => `control_${f}`);
+        tables = [...planFundIds, 'headcount', ...personnelTables, ...controlTables];
     } else if (scope === 'plan_all') {
         tables = planFundIds;
     } else {
@@ -1109,7 +1466,12 @@ function exportDoc(scope) {
             const active = document.querySelector('.sf-subtab-btn.active')?.dataset.subtab;
             tables = [active || 'plan_agri']; // 該基金的 src+use 合併
         } else if (main === 'personnel') {
-            tables = ['headcount', 'personnel_cost'];
+            // 員額 + 所有基金的用人費
+            const personnelTables = planFundIds.map(f => `personnel_cost_${f}`);
+            tables = ['headcount', ...personnelTables];
+        } else if (main === 'control') {
+            // 所有基金的管制項目
+            tables = planFundIds.map(f => `control_${f}`);
         } else {
             tables = [main];
         }
@@ -1187,12 +1549,22 @@ function renderMergeList() {
         const meta = f.data.meta || {};
         const t    = f.data.tables || {};
         const cnt  = (tid) => (t[tid] || []).length;
+        const cntMulti = (pattern) => {
+            let total = 0;
+            Object.keys(t).forEach(k => {
+                if (new RegExp(pattern).test(k)) total += (t[k] || []).length;
+            });
+            return total;
+        };
+        const planCnt = cntMulti('plan_');
+        const personnelCnt = cntMulti('personnel_cost_');
+        const controlCnt = cntMulti('control_');
         return `<div class="border border-slate-200 rounded p-3 flex justify-between items-center bg-white">
             <div class="flex-1">
                 <div class="font-bold text-slate-800">${escapeHTML(meta.fund || '(未命名基金)')}</div>
                 <div class="text-xs text-slate-500 mt-1">
                     📄 ${escapeHTML(f.fileName)} ・ ${escapeHTML(meta.year || '?')}年度 ・
-                    計畫 <b>${cnt('plan')}</b> 列 / 員額 <b>${cnt('headcount')}</b> / 用人費 <b>${cnt('personnel_cost')}</b> / 管制 <b>${cnt('control')}</b>
+                    計畫 <b>${planCnt}</b> 列 / 員額 <b>${cnt('headcount')}</b> / 用人費 <b>${personnelCnt}</b> / 管制 <b>${controlCnt}</b>
                 </div>
             </div>
             <button class="sf-merge-remove text-red-500 text-sm font-bold px-3 py-1 hover:bg-red-50 rounded" data-idx="${i}">移除</button>
@@ -1237,8 +1609,12 @@ function computeMerged() {
             user: document.getElementById('sf-user')?.value || ''
         },
         tables: (() => {
-            const t = { headcount: [], personnel_cost: [], control: [] };
-            PLAN_FUNDS.forEach(f => PLAN_SECTIONS.forEach(s => t[`${f.id}_${s.suffix}`] = []));
+            const t = { headcount: [] };
+            PLAN_FUNDS.forEach(f => {
+                PLAN_SECTIONS.forEach(s => t[`${f.id}_${s.suffix}`] = []);
+                t[`personnel_cost_${f.id}`] = [];
+                t[`control_${f.id}`] = [];
+            });
             return t;
         })(),
         reviews: {
@@ -1263,8 +1639,8 @@ function computeMerged() {
             });
         });
 
-        // === 其他三表：以 name 為 key 加總 ===
-        ['headcount','personnel_cost','control'].forEach(tid => {
+        // === 員額表：以 name 為 key 加總 ===
+        ['headcount'].forEach(tid => {
             (t[tid] || []).forEach(row => {
                 const name = (row.name || '').trim();
                 if (!name) return;
@@ -1281,12 +1657,68 @@ function computeMerged() {
                     const prev = parseFloat(match[k]);
                     match[k] = (isNaN(prev) ? 0 : prev) + v;
                 });
-                // desc 串接（含來源基金前綴）
                 if (row.desc && row.desc.trim()) {
                     const tag = `【${f.data.meta?.fund || f.fileName}】`;
                     match.desc = (match.desc ? match.desc + '\n' : '') + tag + row.desc.trim();
                 }
             });
+        });
+
+        // === 基金特定的用人費與管制項目：為每基金加總 ===
+        PLAN_FUNDS.forEach(pf => {
+            ['personnel_cost','control'].forEach(typeKey => {
+                const tid = `${typeKey}_${pf.id}`;
+                (t[tid] || []).forEach(row => {
+                    const name = (row.name || '').trim();
+                    if (!name) return;
+                    let match = out.tables[tid].find(r => (r.name || '').trim() === name);
+                    if (!match) {
+                        match = { name: row.name };
+                        out.tables[tid].push(match);
+                    }
+                    MERGE_SUM_FIELDS.forEach(k => {
+                        const raw = row[k];
+                        if (raw === undefined || raw === '' || raw === null) return;
+                        const v = parseFloat(raw);
+                        if (isNaN(v)) return;
+                        const prev = parseFloat(match[k]);
+                        match[k] = (isNaN(prev) ? 0 : prev) + v;
+                    });
+                    if (row.desc && row.desc.trim()) {
+                        const tag = `【${f.data.meta?.fund || f.fileName}】`;
+                        match.desc = (match.desc ? match.desc + '\n' : '') + tag + row.desc.trim();
+                    }
+                });
+            });
+        });
+
+        // 向下相容：舊版的全局 personnel_cost/control 合併到 agri（第一個基金）
+        ['personnel_cost','control'].forEach(typeKey => {
+            const oldTid = typeKey;
+            const newTid = `${typeKey}_agri`;
+            if (t[oldTid]) {
+                (t[oldTid] || []).forEach(row => {
+                    const name = (row.name || '').trim();
+                    if (!name) return;
+                    let match = out.tables[newTid].find(r => (r.name || '').trim() === name);
+                    if (!match) {
+                        match = { name: row.name };
+                        out.tables[newTid].push(match);
+                    }
+                    MERGE_SUM_FIELDS.forEach(k => {
+                        const raw = row[k];
+                        if (raw === undefined || raw === '' || raw === null) return;
+                        const v = parseFloat(raw);
+                        if (isNaN(v)) return;
+                        const prev = parseFloat(match[k]);
+                        match[k] = (isNaN(prev) ? 0 : prev) + v;
+                    });
+                    if (row.desc && row.desc.trim()) {
+                        const tag = `【${f.data.meta?.fund || f.fileName}(舊版)】`;
+                        match.desc = (match.desc ? match.desc + '\n' : '') + tag + row.desc.trim();
+                    }
+                });
+            }
         });
 
         // 合併 reviews（串接，附來源前綴）
