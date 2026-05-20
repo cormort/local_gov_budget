@@ -512,14 +512,98 @@ function exportJSON() {
     saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), fname);
 }
 
+// 中文欄位別名 → 內部 key（用於 patch 模式）
+const FIELD_ALIASES = {
+    // 三年表（員額/用人費/管制）
+    '113決算': 'dec112', '113年度決算': 'dec112', '113年度決算數': 'dec112',
+    '114決算': 'dec113', '114年度決算': 'dec113', '114年度決算數': 'dec113',
+    '115預算': 'bud114', '115年度預算': 'bud114', '115年度預算數': 'bud114',
+    '115年4月底': 'apr114', '115年4月底在職': 'apr114', '115年4月底在職人員': 'apr114',
+    // 共用
+    '原編': 'orig', '原編數': 'orig', '原編金額': 'orig', '原編員額': 'orig',
+    '主管增減': 'dep_diff', '主管請增減': 'dep_diff', '主管增減數': 'dep_diff',
+    '院擬增減': 'gov_diff', '院增減': 'gov_diff', '院請增減': 'gov_diff', '行政院初審擬增減': 'gov_diff', '行政院初審增減': 'gov_diff',
+    '說明': 'desc', '摘要': 'desc', '編列說明': 'desc',
+    '層級': 'level', 'level': 'level',
+    '項目': 'name', '項目名稱': 'name', '科目': 'name', '科目名稱': 'name', '計畫名稱': 'name', '科目或計畫名稱': 'name'
+};
+
+function normalizeEntryKeys(entry) {
+    const out = {};
+    Object.keys(entry).forEach(k => {
+        const trimmed = k.trim();
+        const mapped = FIELD_ALIASES[trimmed] || trimmed;
+        // 自動計算欄位略過（避免覆蓋）
+        if (mapped === 'dep_app' || mapped === 'gov_app') return;
+        out[mapped] = entry[k];
+    });
+    return out;
+}
+
+function isFullExportFormat(data) {
+    return data && typeof data === 'object' && data.tables && typeof data.tables === 'object' && !Array.isArray(data.tables);
+}
+
+// 數值 patch 模式：按 name 比對，找到就更新，找不到就新增列
+function patchData(patch) {
+    const current = collectData();
+    let totalUpdates = 0, notFoundAdded = 0;
+
+    Object.keys(patch).forEach(tid => {
+        if (!tableConfigs[tid]) {
+            console.warn('未知的表格 ID：', tid);
+            return;
+        }
+        const tableData = patch[tid];
+        // 兩種輸入格式皆接受：陣列 [{name, ...}] 或 物件 { name1: {...}, name2: {...} }
+        const entries = Array.isArray(tableData)
+            ? tableData
+            : Object.entries(tableData).map(([name, fields]) => ({ name, ...fields }));
+
+        const rows = current.tables[tid] || (current.tables[tid] = []);
+        const lookup = new Map();
+        rows.forEach((r, i) => {
+            const nm = (r.name || '').trim();
+            if (nm && !lookup.has(nm)) lookup.set(nm, i);
+        });
+
+        entries.forEach(entry => {
+            const norm = normalizeEntryKeys(entry);
+            const name = (norm.name || '').trim();
+            if (!name) return;
+            const idx = lookup.get(name);
+            if (idx !== undefined) {
+                Object.assign(rows[idx], norm);
+            } else {
+                rows.push(norm);
+                lookup.set(name, rows.length - 1);
+                notFoundAdded++;
+            }
+            totalUpdates++;
+        });
+    });
+
+    applyData(current);
+    return { totalUpdates, notFoundAdded };
+}
+
 function handleImport(file) {
     const reader = new FileReader();
     reader.onload = e => {
         try {
-            const data = normalizeData(JSON.parse(e.target.result));
-            applyData(data);
-            scheduleAutosave();
-            flashAutosave('✓ 匯入成功');
+            const raw = JSON.parse(e.target.result);
+            if (isFullExportFormat(raw)) {
+                // 完整匯出格式 → 整批替換
+                const data = normalizeData(raw);
+                applyData(data);
+                scheduleAutosave();
+                flashAutosave('✓ JSON 匯入成功（整批替換）');
+            } else {
+                // Patch 格式（依項目名稱比對）
+                const { totalUpdates, notFoundAdded } = patchData(raw);
+                scheduleAutosave();
+                flashAutosave(`✓ 數值匯入完成：更新／新增 ${totalUpdates} 項${notFoundAdded ? `（其中 ${notFoundAdded} 項為新增）` : ''}`);
+            }
         } catch (err) {
             alert('匯入失敗：' + err.message);
         }
