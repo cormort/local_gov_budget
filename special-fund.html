@@ -101,7 +101,7 @@
 
     <!-- ========== TAB 2: 員額及用人費用 ========== -->
     <section id="sf-tab-personnel" class="sf-tab-panel hidden">
-        <!-- 甲、員額 -->
+        <!-- 員額表（全基金共用） -->
         <div class="section-card">
             <div class="flex justify-between items-center mb-3">
                 <div>
@@ -140,94 +140,53 @@
             </div>
         </div>
 
-        <!-- 乙、用人費用 -->
-        <div class="section-card">
-            <div class="flex justify-between items-center mb-3">
-                <div>
-                    <h3 class="text-xl font-bold text-purple-700">乙、用人費用 <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h3>
-                    <p class="text-xs text-slate-500 mt-1">表號：1-3 下半部</p>
-                </div>
-                <div class="flex gap-2">
-                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="personnel_cost">＋ 新增列</button>
-                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="personnel_cost">重置為 Word 預設項目</button>
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="sf-table" id="sf-table-personnel_cost">
-                    <thead>
-                        <tr>
-                            <th rowspan="2" class="sf-col-act">操作</th>
-                            <th rowspan="2">113年度<br>決算</th>
-                            <th rowspan="2">114年度<br>決算</th>
-                            <th rowspan="2">115年度<br>預算</th>
-                            <th rowspan="2" class="sf-col-name">項目</th>
-                            <th rowspan="2">原編<br>金額</th>
-                            <th colspan="2" class="sf-col-group">主管機關</th>
-                            <th colspan="2" class="sf-col-group">行政院初審</th>
-                            <th rowspan="2" class="sf-col-desc">編列說明</th>
-                        </tr>
-                        <tr>
-                            <th>增減(-)數</th>
-                            <th class="sf-col-auto">核列數</th>
-                            <th>擬增減(-)數</th>
-                            <th class="sf-col-auto">擬核列數</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sf-tbody-personnel_cost"></tbody>
-                </table>
-            </div>
-            <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded">
-                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">審核意見 — 主管機關</label>
-                <textarea id="sf-personnel-review-org" class="w-full p-2 border rounded text-sm" rows="2" placeholder="例：詳各分基金員額及用人費用預算表。"></textarea>
-                <label class="text-xs font-bold text-slate-500 uppercase block mb-1 mt-3">審核意見 — 先期審查機關</label>
-                <textarea id="sf-personnel-review-gov" class="w-full p-2 border rounded text-sm" rows="2"></textarea>
-            </div>
+        <!-- 乙、用人費用 — 子選項卡（各基金） -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 mt-6 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
+            <button data-subtab="personnel_cost_agri"     class="sf-personnel-subtab-btn active">壹、農發基金</button>
+            <button data-subtab="personnel_cost_forest"   class="sf-personnel-subtab-btn">貳、林務基金</button>
+            <button data-subtab="personnel_cost_disaster" class="sf-personnel-subtab-btn">叁、天災基金</button>
+            <button data-subtab="personnel_cost_fish"     class="sf-personnel-subtab-btn">肆、漁業基金</button>
+            <button data-subtab="personnel_cost_loss"     class="sf-personnel-subtab-btn">伍、農損基金</button>
+            <button data-subtab="personnel_cost_renewal"  class="sf-personnel-subtab-btn">陸、農再基金</button>
+        </div>
+
+        <!-- 6 個子面板，由 JS 渲染 -->
+        <div id="sf-personnel-subpanels"></div>
+
+        <!-- 共用審核意見 -->
+        <div class="section-card mt-6">
+            <h4 class="text-sm font-bold text-slate-600 mb-2">審核意見（六個基金共用）</h4>
+            <label class="text-xs font-bold text-slate-500 uppercase block mb-1">主管機關</label>
+            <textarea id="sf-personnel-review-org" class="w-full p-2 border rounded text-sm" rows="2" placeholder="例：詳各分基金員額及用人費用預算表。"></textarea>
+            <label class="text-xs font-bold text-slate-500 uppercase block mb-1 mt-3">先期審查機關</label>
+            <textarea id="sf-personnel-review-gov" class="w-full p-2 border rounded text-sm" rows="2"></textarea>
         </div>
     </section>
 
     <!-- ========== TAB 3: 管制項目 ========== -->
     <section id="sf-tab-control" class="sf-tab-panel hidden">
-        <div class="section-card">
-            <div class="flex justify-between items-center mb-3">
-                <div>
-                    <h3 class="text-xl font-bold text-purple-700">116 年度 其他管制性項目及重大事項預算表 <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h3>
-                    <p class="text-xs text-slate-500 mt-1">表號：1-4</p>
-                </div>
-                <div class="flex gap-2">
-                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="control">＋ 新增列</button>
-                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="control">重置為 Word 預設項目</button>
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="sf-table" id="sf-table-control">
-                    <thead>
-                        <tr>
-                            <th rowspan="2" class="sf-col-act">操作</th>
-                            <th rowspan="2">113年度<br>決算數</th>
-                            <th rowspan="2">114年度<br>決算數</th>
-                            <th rowspan="2">115年度<br>預算數</th>
-                            <th rowspan="2" class="sf-col-name">項目</th>
-                            <th rowspan="2">原編數</th>
-                            <th colspan="2" class="sf-col-group">主管機關</th>
-                            <th colspan="2" class="sf-col-group">行政院初審</th>
-                            <th rowspan="2" class="sf-col-desc">編列說明</th>
-                        </tr>
-                        <tr>
-                            <th>增減(-)數</th>
-                            <th class="sf-col-auto">核列數</th>
-                            <th>擬增減(-)數</th>
-                            <th class="sf-col-auto">擬核列數</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sf-tbody-control"></tbody>
-                </table>
-            </div>
-            <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded">
-                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">審核意見 — 主管機關</label>
-                <textarea id="sf-control-review-org" class="w-full p-2 border rounded text-sm" rows="2" placeholder="例：詳各分基金其他管制性項目及重大事項預算表。"></textarea>
-                <label class="text-xs font-bold text-slate-500 uppercase block mb-1 mt-3">審核意見 — 先期審查機關</label>
-                <textarea id="sf-control-review-gov" class="w-full p-2 border rounded text-sm" rows="2"></textarea>
-            </div>
+        <!-- 子選項卡（各基金） -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
+            <button data-subtab="control_agri"     class="sf-control-subtab-btn active">壹、農發基金</button>
+            <button data-subtab="control_forest"   class="sf-control-subtab-btn">貳、林務基金</button>
+            <button data-subtab="control_disaster" class="sf-control-subtab-btn">叁、天災基金</button>
+            <button data-subtab="control_fish"     class="sf-control-subtab-btn">肆、漁業基金</button>
+            <button data-subtab="control_loss"     class="sf-control-subtab-btn">伍、農損基金</button>
+            <button data-subtab="control_renewal"  class="sf-control-subtab-btn">陸、農再基金</button>
+        </div>
+
+        <!-- 6 個子面板，由 JS 渲染 -->
+        <div id="sf-control-subpanels"></div>
+
+        <!-- 共用審核意見 -->
+        <div class="section-card mt-6">
+            <h4 class="text-sm font-bold text-slate-600 mb-2">審核意見（六個基金共用）</h4>
+            <label class="text-xs font-bold text-slate-500 uppercase block mb-1">主管機關</label>
+            <textarea id="sf-control-review-org" class="w-full p-2 border rounded text-sm" rows="2" placeholder="例：詳各分基金其他管制性項目及重大事項預算表。"></textarea>
+            <label class="text-xs font-bold text-slate-500 uppercase block mb-1 mt-3">先期審查機關</label>
+            <textarea id="sf-control-review-gov" class="w-full p-2 border rounded text-sm" rows="2"></textarea>
         </div>
     </section>
 

@@ -1860,6 +1860,118 @@ function switchPlanSubtab(fundId) {
     });
 }
 
+// 渲染員額用人費子面板（各基金）
+function renderPersonnelSubpanels() {
+    const container = document.getElementById('sf-personnel-subpanels');
+    if (!container) return;
+    container.innerHTML = PLAN_FUNDS.map((f, idx) => {
+        const tid = `personnel_cost_${f.id}`;
+        return `
+        <div class="sf-personnel-subpanel section-card" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+            <div class="flex justify-between items-center mb-3">
+                <div>
+                    <h4 class="text-lg font-bold text-purple-700">乙、用人費用 — ${escapeHTML(f.name)} <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h4>
+                    <p class="text-xs text-slate-500 mt-1">表號：1-3 下半部</p>
+                </div>
+                <div class="flex gap-2">
+                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="${tid}">＋ 新增列</button>
+                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="${tid}">重置為 Word 預設項目</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="sf-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" class="sf-col-act">操作</th>
+                            <th rowspan="2">113年度<br>決算</th>
+                            <th rowspan="2">114年度<br>決算</th>
+                            <th rowspan="2">115年度<br>預算</th>
+                            <th rowspan="2" class="sf-col-name">項目</th>
+                            <th rowspan="2">原編<br>金額</th>
+                            <th colspan="2" class="sf-col-group">主管機關</th>
+                            <th colspan="2" class="sf-col-group">行政院初審</th>
+                            <th rowspan="2" class="sf-col-desc">編列說明</th>
+                        </tr>
+                        <tr>
+                            <th>增減(-)數</th>
+                            <th class="sf-col-auto">核列數</th>
+                            <th>擬增減(-)數</th>
+                            <th class="sf-col-auto">擬核列數</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sf-tbody-${tid}"></tbody>
+                </table>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// 切換員額用人費子選項卡
+function switchPersonnelSubtab(fundId) {
+    document.querySelectorAll('.sf-personnel-subtab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.subtab.startsWith(fundId));
+    });
+    document.querySelectorAll('.sf-personnel-subpanel').forEach(p => {
+        p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
+    });
+}
+
+// 渲染管制項目子面板（各基金）
+function renderControlSubpanels() {
+    const container = document.getElementById('sf-control-subpanels');
+    if (!container) return;
+    container.innerHTML = PLAN_FUNDS.map((f, idx) => {
+        const tid = `control_${f.id}`;
+        return `
+        <div class="sf-control-subpanel section-card" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+            <div class="flex justify-between items-center mb-3">
+                <div>
+                    <h3 class="text-lg font-bold text-purple-700">${escapeHTML(f.name)} — 其他管制性項目及重大事項預算表 <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h3>
+                    <p class="text-xs text-slate-500 mt-1">表號：1-4</p>
+                </div>
+                <div class="flex gap-2">
+                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="${tid}">＋ 新增列</button>
+                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="${tid}">重置為 Word 預設項目</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="sf-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" class="sf-col-act">操作</th>
+                            <th rowspan="2">113年度<br>決算數</th>
+                            <th rowspan="2">114年度<br>決算數</th>
+                            <th rowspan="2">115年度<br>預算數</th>
+                            <th rowspan="2" class="sf-col-name">項目</th>
+                            <th rowspan="2">原編數</th>
+                            <th colspan="2" class="sf-col-group">主管機關</th>
+                            <th colspan="2" class="sf-col-group">行政院初審</th>
+                            <th rowspan="2" class="sf-col-desc">編列說明</th>
+                        </tr>
+                        <tr>
+                            <th>增減(-)數</th>
+                            <th class="sf-col-auto">核列數</th>
+                            <th>擬增減(-)數</th>
+                            <th class="sf-col-auto">擬核列數</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sf-tbody-${tid}"></tbody>
+                </table>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// 切換管制項目子選項卡
+function switchControlSubtab(fundId) {
+    document.querySelectorAll('.sf-control-subtab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.subtab.startsWith(fundId));
+    });
+    document.querySelectorAll('.sf-control-subpanel').forEach(p => {
+        p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
+    });
+}
+
 // ========== 8. 分頁切換 ==========
 function getActiveTab() {
     return document.querySelector('.sf-tab-btn.active')?.dataset.tab || 'plan';
@@ -1886,6 +1998,22 @@ function bindEvents() {
     // 業務計畫子 tab（六基金）
     document.querySelectorAll('.sf-subtab-btn').forEach(b => {
         b.onclick = () => switchPlanSubtab(b.dataset.subtab);
+    });
+
+    // 員額用人費子 tab（六基金）
+    document.querySelectorAll('.sf-personnel-subtab-btn').forEach(b => {
+        b.onclick = () => {
+            const fundId = b.dataset.subtab.split('_')[2]; // personnel_cost_agri → agri
+            switchPersonnelSubtab(fundId);
+        };
+    });
+
+    // 管制項目子 tab（六基金）
+    document.querySelectorAll('.sf-control-subtab-btn').forEach(b => {
+        b.onclick = () => {
+            const fundId = b.dataset.subtab.split('_')[1]; // control_agri → agri
+            switchControlSubtab(fundId);
+        };
     });
 
     // 工具列
@@ -2194,8 +2322,10 @@ function loadAllSamples() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 先渲染 6 個業務計畫子面板（建立 tbody 與按鈕），再綁事件
+    // 先渲染 6 個基金的子面板（建立 tbody 與按鈕），再綁事件
     renderPlanSubpanels();
+    renderPersonnelSubpanels();
+    renderControlSubpanels();
     bindEvents();
     if (loadAutosave()) {
         flashAutosave('✓ 已還原上次資料');
