@@ -87,7 +87,8 @@ Object.assign(tableConfigs, {
 });
 
 // 業務計畫表內部層級（甲/乙 已升格為表頭，不再佔層級）
-const LEVEL_LABELS = { 0: '─', 1: '一、二、', 2: '(一)/(二)', 3: '1./2.', 4: '(1)/(2)' };
+// 註：L2 在實際 Word 中常為「計畫名（無前綴）」，少數情況才以 (一)/(二) 標示
+const LEVEL_LABELS = { 0: '─', 1: '一、二、', 2: '計畫名 / (一)', 3: '1./2.', 4: '(1)/(2)' };
 
 // ========== 2. 預設項目（依各分基金 Word 原表，數字留空） ==========
 const SAMPLES = {
@@ -406,10 +407,10 @@ function adjustPlanLevel(name, oldLevel) {
     const nm = (name || '').trim();
     const lv = parseInt(oldLevel) || 0;
     let newLv = lv >= 3 ? lv - 2 : 0;
-    // 數字編號 (1./2./3.) 比同層級的「計畫名」深一層
+    // 阿拉伯數字編號 (1./2./3.) 比同層級的「計畫名」深一層
     if (/^\d+\./.test(nm)) newLv++;
-    // 括弧編號 ((1)/(2)/(一)/...) 同樣再深一層
-    else if (/^\([0-9一二三四五六七八九十]+\)/.test(nm)) newLv++;
+    // 阿拉伯數字括弧 ((1)/(2)) 再深一層；中文數字括弧 (一)/(二) 屬同 L2 不再 bump
+    else if (/^\(\d+\)/.test(nm)) newLv++;
     return Math.min(Math.max(newLv, 0), 4);
 }
 function splitPlanRows(combinedRows) {
