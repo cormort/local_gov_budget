@@ -1,0 +1,161 @@
+/* ===== special-fund 專用樣式 ===== */
+
+.sf-tab-btn.active {
+    background: #fff;
+    color: #7c3aed;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+
+.bg-purple-600 { background-color: #7c3aed; }
+.bg-purple-600:hover, .hover\:bg-purple-700:hover { background-color: #6d28d9; }
+.bg-indigo-600 { background-color: #4f46e5; }
+.hover\:bg-indigo-700:hover { background-color: #4338ca; }
+.text-purple-700 { color: #6d28d9; }
+
+/* 三表共用表格樣式 */
+.sf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+.sf-table th {
+    background: #ede9fe;
+    color: #4c1d95;
+    border: 1px solid #c4b5fd;
+    padding: 6px 4px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.25;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.sf-table th.sf-col-group {
+    background: #ddd6fe;
+}
+.sf-table th.sf-col-auto {
+    background: #fde68a;
+    color: #78350f;
+}
+.sf-table td {
+    border: 1px solid #cbd5e1;
+    padding: 2px;
+    vertical-align: top;
+    background: #fff;
+}
+.sf-table td.sf-num    { min-width: 90px; }
+.sf-table td.sf-name   { min-width: 200px; }
+.sf-table td.sf-desc   { min-width: 280px; }
+.sf-table td.sf-lv     { width: 76px; }
+.sf-table td.sf-act    { width: 70px; text-align: center; white-space: nowrap; }
+
+.sf-table input,
+.sf-table textarea,
+.sf-table select {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    font-size: 0.85rem;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.sf-table input[type=number] { text-align: right; }
+.sf-table input:focus,
+.sf-table textarea:focus,
+.sf-table select:focus {
+    outline: none;
+    border-color: #7c3aed;
+    background: #faf5ff;
+}
+.sf-table input[readonly] {
+    background: #fef3c7;
+    font-weight: 700;
+    color: #92400e;
+    cursor: not-allowed;
+}
+.sf-table textarea {
+    resize: vertical;
+    min-height: 50px;
+    line-height: 1.4;
+}
+
+/* 階層縮排：根據 level 自動縮排「項目/科目名稱」欄位內的輸入 */
+.sf-table tr[data-level="1"] td.sf-name input { font-weight: 700; padding-left: 4px; }
+.sf-table tr[data-level="2"] td.sf-name input { font-weight: 700; padding-left: 18px; }
+.sf-table tr[data-level="3"] td.sf-name input { padding-left: 32px; }
+.sf-table tr[data-level="4"] td.sf-name input { padding-left: 46px; color: #475569; }
+.sf-table tr[data-level="5"] td.sf-name input { padding-left: 60px; color: #64748b; font-size: 0.8rem; }
+
+/* 階層列底色微妙區分 */
+.sf-table tr[data-level="1"] td:not(.sf-act) { background: #f5f3ff; }
+.sf-table tr[data-level="2"] td:not(.sf-act) { background: #faf5ff; }
+
+/* 刪除/移動按鈕 */
+.sf-row-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+.sf-row-btn:hover { background: #f1f5f9; color: #475569; }
+.sf-row-btn.del:hover { background: #fee2e2; color: #dc2626; }
+
+.sf-level-select {
+    padding: 2px;
+    font-size: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+}
+
+.negative-value { color: #dc2626 !important; font-weight: 700; }
+
+/* tab panel transitions */
+.sf-tab-panel { animation: sfFadeIn 0.25s ease-out; }
+@keyframes sfFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* button color helpers */
+.bg-indigo-600       { background-color: #4f46e5; color: #fff; }
+.hover\:bg-indigo-700:hover { background-color: #4338ca; }
+.hover\:bg-purple-700:hover { background-color: #6d28d9; }
+.bg-slate-600       { background-color: #475569; color: #fff; }
+.hover\:bg-slate-700:hover { background-color: #334155; }
+
+/* 彙整模式 dropzone */
+.sf-dropzone {
+    border: 2px dashed #c4b5fd;
+    background: #faf5ff;
+    color: #475569;
+    transition: all 0.2s;
+}
+.sf-dropzone:hover {
+    border-color: #7c3aed;
+    background: #f3e8ff;
+}
+.sf-dropzone.dragover {
+    border-color: #6d28d9;
+    background: #ede9fe;
+    transform: scale(1.01);
+}
+
+/* 彙整 panel 顏色 */
+.bg-purple-50      { background-color: #faf5ff; }
+.border-purple-200 { border-color: #e9d5ff; }
+.focus\:border-purple-500:focus { border-color: #8b5cf6; }
+
+/* 彙整預覽卡 */
+.sf-merge-card {
+    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+    border: 1px solid #c4b5fd;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+.sf-merge-card .label { font-size: 0.75rem; color: #6b21a8; font-weight: 700; }
+.sf-merge-card .value { font-size: 1.5rem; color: #4c1d95; font-weight: 700; line-height: 1.2; }
+.sf-merge-card .sub   { font-size: 0.7rem; color: #6b7280; }

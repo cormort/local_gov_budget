@@ -187,3 +187,9 @@
     font-weight: 700;
     padding: 0 2px;
 }
+
+/* Purple palette for special-fund entry button */
+.bg-purple-100   { background-color: #f3e8ff; }
+.text-purple-700 { color: #6d28d9; }
+.border-purple-200 { border-color: #e9d5ff; }
+.hover\:bg-purple-200:hover { background-color: #e9d5ff; }
