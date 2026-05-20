@@ -21,15 +21,36 @@ const COL = {
     gov_app: { key: 'gov_app', label: '院擬核列',   type: 'number', td_class: 'sf-num', auto: 'gov_app' }
 };
 
-const tableConfigs = {
-    plan: {
-        title: '116年度 主要業務計畫預算表',
-        sheetId: '1-2',
-        unit: '新臺幣千元',
-        cols: ['level', 'dec113', 'bud114', 'name', 'desc', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app'],
-        hasLevel: true,
-        reviewKey: 'plan'
-    },
+// 業務計畫表共用結構（6 個基金子 tab 共用同一組欄位）
+const PLAN_BASE = {
+    sheetId: '1-2',
+    unit: '新臺幣千元',
+    cols: ['level', 'dec113', 'bud114', 'name', 'desc', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app'],
+    hasLevel: true,
+    reviewKey: 'plan',
+    isPlan: true
+};
+// 6 個基金代號 + 顯示名稱
+const PLAN_FUNDS = [
+    { id: 'plan_agri',     name: '農業發展基金',         short: '農發',    rank: 1 },
+    { id: 'plan_forest',   name: '林務發展及造林基金',     short: '林務',    rank: 2 },
+    { id: 'plan_disaster', name: '農業天然災害救助基金',   short: '天災',    rank: 3 },
+    { id: 'plan_fish',     name: '漁業發展基金',         short: '漁業',    rank: 4 },
+    { id: 'plan_loss',     name: '農產品受進口損害救助基金', short: '農損',  rank: 5 },
+    { id: 'plan_renewal',  name: '農村再生基金',         short: '農再',    rank: 6 }
+];
+
+const tableConfigs = {};
+PLAN_FUNDS.forEach(f => {
+    tableConfigs[f.id] = {
+        ...PLAN_BASE,
+        title: `${f.name} 116年度 主要業務計畫預算表`,
+        fundShort: f.short,
+        fundName: f.name,
+        rank: f.rank
+    };
+});
+Object.assign(tableConfigs, {
     headcount: {
         title: '甲、員額',
         sheetId: '1-3 上半部',
@@ -54,13 +75,131 @@ const tableConfigs = {
         hasLevel: false,
         reviewKey: 'control'
     }
-};
+});
 
 const LEVEL_LABELS = { 0: '─', 1: '壹/貳', 2: '甲/乙', 3: '一/二', 4: '(一)/(二)', 5: '項目' };
 
-// ========== 2. 預設項目（依 Word 原表骨架，數字留空） ==========
+// ========== 2. 預設項目（依各分基金 Word 原表，數字留空） ==========
 const SAMPLES = {
-    plan: [
+    // === 業務計畫 — 農發基金（依「農發基金115-212業務計畫」）===
+    plan_agri: [
+        { level: 2, name: '甲、基金來源：' },
+        { level: 3, name: '一、一般業務計畫' },
+        { level: 3, name: '二、國庫撥補款' },
+        { level: 2, name: '乙、基金用途：' },
+        { level: 3, name: '一、提升農業經營及發展計畫' },
+        { level: 4, name: '糧政業務計畫' },
+        { level: 4, name: '1.收購糧食' },
+        { level: 5, name: '(1)數量：公噸(稻穀)' },
+        { level: 5, name: '(2)單位成本：元' },
+        { level: 4, name: '2.糧食銷售(主產品)' },
+        { level: 5, name: '(1)銷售量：公噸(折糙)' },
+        { level: 5, name: '(2)單位成本：元' },
+        { level: 4, name: '穩定肥料及相關資材供需計畫' },
+        { level: 4, name: '產銷調節計畫' },
+        { level: 4, name: '家禽流行性感冒防疫計畫' },
+        { level: 3, name: '二、促進農地利用及農業競爭力計畫' },
+        { level: 4, name: '老農出租農地獎勵計畫' },
+        { level: 4, name: '農地之生產環境整備及維護管理計畫' },
+        { level: 4, name: '農業研究、實驗、技術改進計畫' },
+        { level: 4, name: '農地對地給付計畫' },
+        { level: 3, name: '三、增進農民所得及福利計畫' },
+        { level: 4, name: '獎勵農漁民子女就學計畫' },
+        { level: 4, name: '農業保險計畫' },
+        { level: 4, name: '精進豬隻保險業務計畫' },
+        { level: 4, name: '精進乳牛保險業務計畫' },
+        { level: 4, name: '家禽禽流感保險計畫' },
+        { level: 4, name: '農產業保險計畫' },
+        { level: 4, name: '漁產業保險計畫' },
+        { level: 4, name: '農業保險推動及輔導計畫' },
+        { level: 4, name: '農業貸款利息差額補貼' },
+        { level: 4, name: '農機貸款' },
+        { level: 4, name: '加速農村建設貸款' },
+        { level: 4, name: '擴大家庭農場經營規模協助農民購買耕地貸款' },
+        { level: 4, name: '各類專案性農業貸款利息補貼' },
+        { level: 4, name: '養豬新式設施(備)導入提供專案政策性農貸利息補貼' },
+        { level: 4, name: '委託辦理政策性農業專案貸款業務及印製宣傳摺頁' },
+        { level: 4, name: '辦理政策性農業專案貸款行政事務' },
+        { level: 3, name: '四、輔導菸農轉型與檳榔廢園轉作計畫' },
+        { level: 3, name: '五、處理農會漁會信用部計畫' },
+        { level: 3, name: '六、一般行政管理計畫' }
+    ],
+    // === 業務計畫 — 林務基金（依「林務基金212-115」）===
+    plan_forest: [
+        { level: 2, name: '甲、基金來源：' },
+        { level: 3, name: '一、一般業務計畫之基金來源合計' },
+        { level: 2, name: '乙、基金用途：' },
+        { level: 3, name: '一、獎勵輔導造林計畫' },
+        { level: 3, name: '二、森林遊樂及林業鐵路經營管理計畫' },
+        { level: 3, name: '三、山坡地開發利用回饋金繳交管理計畫' },
+        { level: 3, name: '四、原住民保留地竹林更新獎勵計畫' }
+    ],
+    // === 業務計畫 — 農業天然災害救助基金 ===
+    plan_disaster: [
+        { level: 2, name: '甲、基金來源：' },
+        { level: 3, name: '一般業務計畫' },
+        { level: 3, name: '國庫撥補額' },
+        { level: 2, name: '乙、基金用途：' },
+        { level: 3, name: '農業天然災害救助計畫' }
+    ],
+    // === 業務計畫 — 漁業基金（未上傳 Word；採彙整版預設）===
+    plan_fish: [
+        { level: 2, name: '甲、基金來源：' },
+        { level: 3, name: '財產收入' },
+        { level: 3, name: '其他收入' },
+        { level: 2, name: '乙、基金用途：' },
+        { level: 3, name: '漁業發展補助計畫' }
+    ],
+    // === 業務計畫 — 農產品受進口損害救助基金（依「農損基金-212」）===
+    plan_loss: [
+        { level: 2, name: '甲、基金來源：' },
+        { level: 3, name: '一、權利金收入' },
+        { level: 3, name: '二、利息收入' },
+        { level: 3, name: '三、公庫撥款收入' },
+        { level: 3, name: '四、其他收入' },
+        { level: 2, name: '乙、基金用途：' },
+        { level: 3, name: '一、調整產業或防範措施計畫' },
+        { level: 3, name: '二、進口損害救助及穩價計畫' },
+        { level: 3, name: '三、農糧產業調整與轉型計畫(原「綠色環境給付計畫」)' },
+        { level: 3, name: '四、農產品進口管理計畫' }
+    ],
+    // === 業務計畫 — 農村再生基金（依「農再基金-212」）===
+    plan_renewal: [
+        { level: 2, name: '甲、基金來源：' },
+        { level: 3, name: '一、一般業務計畫' },
+        { level: 3, name: '二、國庫撥補款' },
+        { level: 2, name: '乙、基金用途：' },
+        { level: 3, name: '壹、農村再生規劃及人力培育計畫' },
+        { level: 4, name: '一、農村規劃及培力' },
+        { level: 5, name: '1.農村人力及教育推廣' },
+        { level: 4, name: '二、農業人才多元培育' },
+        { level: 4, name: '三、農村農產業人力活化計畫' },
+        { level: 3, name: '貳、農村再生建設及發展計畫' },
+        { level: 4, name: '一、農村再生社區發展及環境改善' },
+        { level: 5, name: '1.農村再生跨域發展' },
+        { level: 5, name: '2.社區農村再生計畫' },
+        { level: 5, name: '3.農村社區土地重劃及發展規劃' },
+        { level: 4, name: '二、農村發展及活化' },
+        { level: 5, name: '1.提升農村農糧產業競爭力' },
+        { level: 5, name: '2.發展健康永續的有機產業' },
+        { level: 5, name: '3.農村社區畜牧場環境改善及資源利用' },
+        { level: 5, name: '4.建設休閒農業優質環境' },
+        { level: 5, name: '5.友善漁業生產環境及漁村產業活動推廣' },
+        { level: 5, name: '6.山村綠色經濟永續發展計畫' },
+        { level: 5, name: '7.農產加工整合服務體系發展' },
+        { level: 5, name: '8.運用資通訊技術(ICT)強化農業發展及推廣計畫' },
+        { level: 5, name: '9.優化農業推廣教育訓練場域' },
+        { level: 5, name: '10.推動化學農藥減量模式促進農村生產環境永續發展' },
+        { level: 5, name: '11.農村水資源韌性公共設施建設' },
+        { level: 5, name: '12.推動農會經濟事業發展，振興農村產業' },
+        { level: 5, name: '13.改善農村金融服務品質' },
+        { level: 5, name: '14.農業旅遊創新發展及市場拓展' },
+        { level: 4, name: '三、擴大豬場導入新式整合型設施(備)' },
+        { level: 4, name: '四、建構農糧產業機械示範體系與營造多元服務價值鏈' },
+        { level: 4, name: '五、智能防災設施型農業計畫' }
+    ],
+    // === 舊版整合用 plan 已移除，向下相容透過 normalizeData() 自動 migrate ===
+    _legacy_plan_DELETED: [
         { level: 1, name: '壹、農業發展基金' },
         { level: 2, name: '甲、基金來源：' },
         { level: 3, name: '一、一般業務計畫' },
@@ -376,8 +515,9 @@ function handleImport(file) {
     const reader = new FileReader();
     reader.onload = e => {
         try {
-            const data = JSON.parse(e.target.result);
+            const data = normalizeData(JSON.parse(e.target.result));
             applyData(data);
+            scheduleAutosave();
             flashAutosave('✓ 匯入成功');
         } catch (err) {
             alert('匯入失敗：' + err.message);
@@ -387,7 +527,44 @@ function handleImport(file) {
 }
 
 // ========== 6. 自動儲存 ==========
-const STORE_KEY = 'sf_special_fund_v2'; // v2: 預設載入完整 Word 項目骨架
+const STORE_KEY = 'sf_special_fund_v3'; // v3: 業務計畫拆成 6 個基金子 tab
+const LEGACY_KEYS = ['sf_special_fund_v2', 'sf_special_fund_v1'];
+
+// 向下相容：把舊版 tables.plan（一張大表）依 L1 編號拆到 6 個 plan_* 表
+function migrateOldPlan(data) {
+    if (!data?.tables?.plan) return data;
+    const mapping = { '壹': 'plan_agri', '貳': 'plan_forest', '叁': 'plan_disaster', '參': 'plan_disaster', '肆': 'plan_fish', '伍': 'plan_loss', '陸': 'plan_renewal' };
+    const newTables = { plan_agri: [], plan_forest: [], plan_disaster: [], plan_fish: [], plan_loss: [], plan_renewal: [] };
+    let current = 'plan_agri';
+    (data.tables.plan || []).forEach(row => {
+        const lv = parseInt(row.level) || 0;
+        const nm = (row.name || '').trim();
+        if (lv === 1 && nm) {
+            const ch = nm[0];
+            if (mapping[ch]) current = mapping[ch];
+            return; // 不保留 L1 列本身
+        }
+        const newRow = { ...row };
+        // 各 plan_* 的內部最大層級從 2 起算 → 整體 -1
+        if (newRow.level && parseInt(newRow.level) > 1) newRow.level = parseInt(newRow.level) - 1;
+        newTables[current].push(newRow);
+    });
+    const result = { ...data, tables: { ...newTables } };
+    ['headcount','personnel_cost','control'].forEach(k => {
+        if (data.tables[k]) result.tables[k] = data.tables[k];
+    });
+    return result;
+}
+
+// 統一資料正規化入口（任何讀進來的資料都先過這層）
+function normalizeData(data) {
+    if (!data?.tables) return data;
+    const hasOldPlan = Array.isArray(data.tables.plan);
+    const hasSubPlans = PLAN_FUNDS.some(f => Array.isArray(data.tables[f.id]));
+    if (hasOldPlan && !hasSubPlans) return migrateOldPlan(data);
+    return data;
+}
+
 let autosaveTimer = null;
 function scheduleAutosave() {
     clearTimeout(autosaveTimer);
@@ -400,11 +577,20 @@ function scheduleAutosave() {
 }
 function loadAutosave() {
     try {
-        const raw = localStorage.getItem(STORE_KEY);
+        // 先讀 v3
+        let raw = localStorage.getItem(STORE_KEY);
+        // v3 沒有 → 嘗試遷移舊版
+        if (!raw) {
+            for (const k of LEGACY_KEYS) {
+                const old = localStorage.getItem(k);
+                if (old) { raw = old; break; }
+            }
+        }
         if (!raw) return false;
-        applyData(JSON.parse(raw));
+        const data = normalizeData(JSON.parse(raw));
+        applyData(data);
         return true;
-    } catch (e) { return false; }
+    } catch (e) { console.warn('loadAutosave failed', e); return false; }
 }
 function flashAutosave(msg) {
     const el = document.getElementById('sf-autosave-indicator');
@@ -436,7 +622,7 @@ function buildTableDocHTML(tableId) {
 
     // header build
     let theadHTML = '';
-    if (tableId === 'plan') {
+    if (tableId === 'plan' || tableId.startsWith('plan_')) {
         theadHTML = `
         <thead>
             <tr>
@@ -554,16 +740,36 @@ function exportDoc(scope) {
     const data = collectData();
     const fund = data.meta.fund || '特別收入基金';
     const year = data.meta.year || '';
-    const tables = scope === 'all'
-        ? ['plan','headcount','personnel_cost','control']
-        : [getActiveTab() === 'personnel' ? ['headcount','personnel_cost'] : [getActiveTab()]].flat();
+    const planIds = PLAN_FUNDS.map(f => f.id);
 
-    // 員額頁是雙表，但若 scope == 'all' 已經包含
+    let tables;
+    if (scope === 'all') {
+        tables = [...planIds, 'headcount', 'personnel_cost', 'control'];
+    } else if (scope === 'plan_all') {
+        // 6 個基金的業務計畫合併匯出
+        tables = planIds;
+    } else {
+        const main = getActiveTab();
+        if (main === 'plan') {
+            const active = document.querySelector('.sf-subtab-btn.active')?.dataset.subtab;
+            tables = [active || 'plan_agri'];
+        } else if (main === 'personnel') {
+            tables = ['headcount', 'personnel_cost'];
+        } else {
+            tables = [main];
+        }
+    }
+
     const uniqueTables = [...new Set(tables)];
     const body = uniqueTables.map(t => buildTableDocHTML(t)).join('');
-    const fname = scope === 'all'
-        ? `${fund}_${year}_細項預算_全部.doc`
-        : `${fund}_${year}_${tableConfigs[uniqueTables[0]].title}.doc`;
+    let fname;
+    if (scope === 'all') {
+        fname = `${fund}_${year}_細項預算_全部.doc`;
+    } else if (scope === 'plan_all') {
+        fname = `${fund}_${year}_業務計畫_六基金合併.doc`;
+    } else {
+        fname = `${fund}_${year}_${tableConfigs[uniqueTables[0]].title}.doc`;
+    }
 
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
@@ -675,7 +881,11 @@ function computeMerged() {
             org:  document.getElementById('sf-org')?.value  || '',
             user: document.getElementById('sf-user')?.value || ''
         },
-        tables: { plan: [], headcount: [], personnel_cost: [], control: [] },
+        tables: (() => {
+            const t = { headcount: [], personnel_cost: [], control: [] };
+            PLAN_FUNDS.forEach(f => t[f.id] = []);
+            return t;
+        })(),
         reviews: {
             plan:      { org: '', gov: '' },
             personnel: { org: '', gov: '' },
@@ -686,10 +896,14 @@ function computeMerged() {
     };
 
     mergeFunds.forEach(f => {
-        const t = f.data.tables || {};
+        // 自動正規化舊版資料（單一 plan → 6 個 plan_*）
+        const normData = normalizeData(f.data);
+        const t = normData.tables || {};
 
-        // === 計畫表：向下追加（保留每基金所有列）===
-        (t.plan || []).forEach(row => out.tables.plan.push({ ...row }));
+        // === 業務計畫 6 個基金表：向下追加（保留每基金所有列）===
+        PLAN_FUNDS.forEach(pf => {
+            (t[pf.id] || []).forEach(row => out.tables[pf.id].push({ ...row }));
+        });
 
         // === 其他三表：以 name 為 key 加總 ===
         ['headcount','personnel_cost','control'].forEach(tid => {
@@ -748,11 +962,13 @@ function renderMergePreview() {
     const cards= document.getElementById('sf-merge-preview-cards');
     if (!wrap || !cards) return;
     const c = (tid) => (data.tables[tid] || []).length;
+    const planTotal = PLAN_FUNDS.reduce((a, f) => a + c(f.id), 0);
+    const planBreakdown = PLAN_FUNDS.map(f => `${f.short} ${c(f.id)}`).join(' / ');
     cards.innerHTML = `
         <div class="sf-merge-card">
-            <div class="label">業務計畫</div>
-            <div class="value">${c('plan')}</div>
-            <div class="sub">列（追加）</div>
+            <div class="label">業務計畫（六基金）</div>
+            <div class="value">${planTotal}</div>
+            <div class="sub">列（追加）<br/><span style="font-size:0.65rem">${planBreakdown}</span></div>
         </div>
         <div class="sf-merge-card">
             <div class="label">員額</div>
@@ -790,6 +1006,59 @@ function applyMergedToTables() {
     switchTab('plan');
 }
 
+// ========== 7.6 業務計畫子 tab（6 個基金）==========
+function renderPlanSubpanels() {
+    const container = document.getElementById('sf-plan-subpanels');
+    if (!container) return;
+    container.innerHTML = PLAN_FUNDS.map((f, idx) => `
+        <div class="sf-plan-subpanel section-card" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+            <div class="flex justify-between items-center mb-3">
+                <div>
+                    <h3 class="text-xl font-bold text-purple-700">${escapeHTML(f.name)}</h3>
+                    <p class="text-xs text-slate-500 mt-1">116年度 主要業務計畫預算表 · 表號 1-2 · 單位：新臺幣千元</p>
+                </div>
+                <div class="flex gap-2">
+                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="${f.id}">＋ 新增列</button>
+                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="${f.id}">重置為 Word 預設項目</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="sf-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" class="sf-col-act">操作</th>
+                            <th rowspan="2" class="sf-col-lv">層級</th>
+                            <th rowspan="2">114年度<br>決算數</th>
+                            <th rowspan="2">115年度<br>預算數</th>
+                            <th rowspan="2" class="sf-col-name">科目或計畫名稱</th>
+                            <th rowspan="2" class="sf-col-desc">政策目標、計畫實施內容(或工作項目)<br>及預期效益摘要</th>
+                            <th rowspan="2">原編數</th>
+                            <th colspan="2" class="sf-col-group">主管機關</th>
+                            <th colspan="2" class="sf-col-group">行政院初審</th>
+                        </tr>
+                        <tr>
+                            <th>增減(-)數</th>
+                            <th class="sf-col-auto">核列數</th>
+                            <th>擬增減(-)數</th>
+                            <th class="sf-col-auto">擬核列數</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sf-tbody-${f.id}"></tbody>
+                </table>
+            </div>
+        </div>
+    `).join('');
+}
+
+function switchPlanSubtab(fundId) {
+    document.querySelectorAll('.sf-subtab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.subtab === fundId);
+    });
+    document.querySelectorAll('.sf-plan-subpanel').forEach(p => {
+        p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
+    });
+}
+
 // ========== 8. 分頁切換 ==========
 function getActiveTab() {
     return document.querySelector('.sf-tab-btn.active')?.dataset.tab || 'plan';
@@ -808,9 +1077,14 @@ function switchTab(tab) {
 
 // ========== 9. 事件綁定 ==========
 function bindEvents() {
-    // tab switch
+    // tab switch（主分頁）
     document.querySelectorAll('.sf-tab-btn').forEach(b => {
         b.onclick = () => switchTab(b.dataset.tab);
+    });
+
+    // 業務計畫子 tab（六基金）
+    document.querySelectorAll('.sf-subtab-btn').forEach(b => {
+        b.onclick = () => switchPlanSubtab(b.dataset.subtab);
     });
 
     // 工具列
@@ -993,8 +1267,9 @@ function loadAllSamples() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 先渲染 6 個業務計畫子面板（建立 tbody 與按鈕），再綁事件
+    renderPlanSubpanels();
     bindEvents();
-    // 先嘗試還原 autosave；若無，自動載入 Word 預設項目
     if (loadAutosave()) {
         flashAutosave('✓ 已還原上次資料');
     } else {
@@ -1002,4 +1277,5 @@ document.addEventListener('DOMContentLoaded', () => {
         flashAutosave('✓ 已載入 Word 預設項目');
     }
     switchTab('plan');
+    switchPlanSubtab('plan_agri');
 });

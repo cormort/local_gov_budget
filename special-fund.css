@@ -113,6 +113,26 @@
 
 .negative-value { color: #dc2626 !important; font-weight: 700; }
 
+/* 業務計畫子 tab 樣式 */
+.sf-subtab-btn {
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #64748b;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.sf-subtab-btn:hover { background: #ede9fe; color: #6d28d9; }
+.sf-subtab-btn.active {
+    background: #7c3aed;
+    color: #fff;
+    border-color: #6d28d9;
+    box-shadow: 0 1px 3px rgba(124,58,237,0.3);
+}
+
 /* tab panel transitions */
 .sf-tab-panel { animation: sfFadeIn 0.25s ease-out; }
 @keyframes sfFadeIn {

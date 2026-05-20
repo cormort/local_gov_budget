@@ -73,49 +73,29 @@
         <span><b>操作提示：</b>所有金額欄為千元（員額表甲為人數）。<b>核列數會自動計算</b>（核列＝原編＋增減）。可在表中按 <kbd class="bg-white px-1 border rounded">Enter</kbd> 移到下一列；<kbd class="bg-white px-1 border rounded">Ctrl+V</kbd> 從 Excel 貼上整塊資料。</span>
     </div>
 
-    <!-- ========== TAB 1: 業務計畫表 ========== -->
+    <!-- ========== TAB 1: 業務計畫表（6 個基金子 tab）========== -->
     <section id="sf-tab-plan" class="sf-tab-panel">
+        <!-- 子 tab 列 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
+            <button data-subtab="plan_agri"     class="sf-subtab-btn active">壹、農發基金</button>
+            <button data-subtab="plan_forest"   class="sf-subtab-btn">貳、林務基金</button>
+            <button data-subtab="plan_disaster" class="sf-subtab-btn">叁、天災基金</button>
+            <button data-subtab="plan_fish"     class="sf-subtab-btn">肆、漁業基金</button>
+            <button data-subtab="plan_loss"     class="sf-subtab-btn">伍、農損基金</button>
+            <button data-subtab="plan_renewal"  class="sf-subtab-btn">陸、農再基金</button>
+        </div>
+
+        <!-- 6 個子面板，由 JS 渲染 -->
+        <div id="sf-plan-subpanels"></div>
+
+        <!-- 共用審核意見（一份就好） -->
         <div class="section-card">
-            <div class="flex justify-between items-center mb-3">
-                <div>
-                    <h3 class="text-xl font-bold text-purple-700">116年度 主要業務計畫預算表 <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h3>
-                    <p class="text-xs text-slate-500 mt-1">表號：1-2</p>
-                </div>
-                <div class="flex gap-2">
-                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="plan">＋ 新增列</button>
-                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="plan">重置為 Word 預設項目</button>
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="sf-table" id="sf-table-plan">
-                    <thead>
-                        <tr>
-                            <th rowspan="2" class="sf-col-act">操作</th>
-                            <th rowspan="2" class="sf-col-lv">層級</th>
-                            <th rowspan="2">114年度<br>決算數</th>
-                            <th rowspan="2">115年度<br>預算數</th>
-                            <th rowspan="2" class="sf-col-name">科目或計畫名稱</th>
-                            <th rowspan="2" class="sf-col-desc">政策目標、計畫實施內容(或工作項目)<br>及預期效益摘要</th>
-                            <th rowspan="2">原編數</th>
-                            <th colspan="2" class="sf-col-group">主管機關</th>
-                            <th colspan="2" class="sf-col-group">行政院初審</th>
-                        </tr>
-                        <tr>
-                            <th>增減(-)數</th>
-                            <th class="sf-col-auto">核列數</th>
-                            <th>擬增減(-)數</th>
-                            <th class="sf-col-auto">擬核列數</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sf-tbody-plan"></tbody>
-                </table>
-            </div>
-            <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded">
-                <label class="text-xs font-bold text-slate-500 uppercase block mb-1">審核意見 — 主管機關</label>
-                <textarea id="sf-plan-review-org" class="w-full p-2 border rounded text-sm" rows="2" placeholder="例：詳各分基金主要業務計畫預算表。"></textarea>
-                <label class="text-xs font-bold text-slate-500 uppercase block mb-1 mt-3">審核意見 — 先期審查機關</label>
-                <textarea id="sf-plan-review-gov" class="w-full p-2 border rounded text-sm" rows="2" placeholder=""></textarea>
-            </div>
+            <h4 class="text-sm font-bold text-slate-600 mb-2">審核意見（六個基金共用）</h4>
+            <label class="text-xs font-bold text-slate-500 uppercase block mb-1">主管機關</label>
+            <textarea id="sf-plan-review-org" class="w-full p-2 border rounded text-sm" rows="2" placeholder="例：詳各分基金主要業務計畫預算表。"></textarea>
+            <label class="text-xs font-bold text-slate-500 uppercase block mb-1 mt-3">先期審查機關</label>
+            <textarea id="sf-plan-review-gov" class="w-full p-2 border rounded text-sm" rows="2" placeholder=""></textarea>
         </div>
     </section>
 
