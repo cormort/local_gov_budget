@@ -73,6 +73,12 @@
     color: #92400e;
     cursor: not-allowed;
 }
+/* 業務計畫合計：父列數字 = Σ 子列，視覺與一般 auto-calc 區隔（綠色） */
+.sf-table input.sf-auto-sum {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+    font-weight: 700;
+}
 .sf-table textarea {
     resize: vertical;
     min-height: 50px;

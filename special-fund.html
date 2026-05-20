@@ -25,10 +25,9 @@
             </div>
         </div>
         <div class="tab-pill-container bg-slate-100 p-1 rounded-full flex gap-1">
-            <button data-tab="plan"            class="sf-tab-btn px-4 py-2 rounded-full font-bold text-sm transition active bg-white shadow-sm">📋 業務計畫</button>
-            <button data-tab="headcount"       class="sf-tab-btn px-4 py-2 rounded-full font-bold text-sm transition text-slate-500">👥 甲、員額</button>
-            <button data-tab="personnel_cost"  class="sf-tab-btn px-4 py-2 rounded-full font-bold text-sm transition text-slate-500">💰 乙、用人費用</button>
-            <button data-tab="control"         class="sf-tab-btn px-4 py-2 rounded-full font-bold text-sm transition text-slate-500">📊 管制項目</button>
+            <button data-tab="plan"      class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition active bg-white shadow-sm">📋 業務計畫</button>
+            <button data-tab="personnel" class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition text-slate-500">👥 員額用人費</button>
+            <button data-tab="control"   class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition text-slate-500">📊 管制項目</button>
             <button data-tab="merge"     class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition text-slate-500">📥 彙整模式</button>
         </div>
     </div>
@@ -101,7 +100,7 @@
     </section>
 
     <!-- ========== TAB 2: 員額及用人費用 ========== -->
-    <section id="sf-tab-headcount" class="sf-tab-panel hidden">
+    <section id="sf-tab-personnel" class="sf-tab-panel hidden">
         <!-- 甲、員額 -->
         <div class="section-card">
             <div class="flex justify-between items-center mb-3">
@@ -140,10 +139,8 @@
                 </table>
             </div>
         </div>
-    </section>
 
-    <!-- ========== TAB 3: 乙、用人費用 ========== -->
-    <section id="sf-tab-personnel_cost" class="sf-tab-panel hidden">
+        <!-- 乙、用人費用 -->
         <div class="section-card">
             <div class="flex justify-between items-center mb-3">
                 <div>

@@ -21,7 +21,7 @@ const COL = {
     gov_app: { key: 'gov_app', label: '院擬核列',   type: 'number', td_class: 'sf-num', auto: 'gov_app' }
 };
 
-// 業務計畫表共用結構（6 個基金子 tab 共用同一組欄位）
+// 業務計畫表共用結構（6 基金 × 甲/乙 = 12 表，共用同一組欄位）
 const PLAN_BASE = {
     sheetId: '1-2',
     unit: '新臺幣千元',
@@ -30,7 +30,6 @@ const PLAN_BASE = {
     reviewKey: 'plan',
     isPlan: true
 };
-// 6 個基金代號 + 顯示名稱
 const PLAN_FUNDS = [
     { id: 'plan_agri',     name: '農業發展基金',         short: '農發',    rank: 1 },
     { id: 'plan_forest',   name: '林務發展及造林基金',     short: '林務',    rank: 2 },
@@ -39,16 +38,26 @@ const PLAN_FUNDS = [
     { id: 'plan_loss',     name: '農產品受進口損害救助基金', short: '農損',  rank: 5 },
     { id: 'plan_renewal',  name: '農村再生基金',         short: '農再',    rank: 6 }
 ];
+const PLAN_SECTIONS = [
+    { suffix: 'src', label: '甲、基金來源' },
+    { suffix: 'use', label: '乙、基金用途' }
+];
 
 const tableConfigs = {};
 PLAN_FUNDS.forEach(f => {
-    tableConfigs[f.id] = {
-        ...PLAN_BASE,
-        title: `${f.name} 116年度 主要業務計畫預算表`,
-        fundShort: f.short,
-        fundName: f.name,
-        rank: f.rank
-    };
+    PLAN_SECTIONS.forEach(sec => {
+        const tid = `${f.id}_${sec.suffix}`;
+        tableConfigs[tid] = {
+            ...PLAN_BASE,
+            title: `${f.name} 116年度 主要業務計畫預算表 — ${sec.label}`,
+            fundId: f.id,
+            fundName: f.name,
+            fundShort: f.short,
+            section: sec.suffix,
+            sectionLabel: sec.label,
+            rank: f.rank
+        };
+    });
 });
 Object.assign(tableConfigs, {
     headcount: {
@@ -77,7 +86,8 @@ Object.assign(tableConfigs, {
     }
 });
 
-const LEVEL_LABELS = { 0: '─', 1: '壹/貳', 2: '甲/乙', 3: '一/二', 4: '(一)/(二)', 5: '項目' };
+// 業務計畫表內部層級（甲/乙 已升格為表頭，不再佔層級）
+const LEVEL_LABELS = { 0: '─', 1: '一、二、', 2: '(一)/(二)', 3: '1./2.', 4: '(1)/(2)' };
 
 // ========== 2. 預設項目（依各分基金 Word 原表，數字留空） ==========
 const SAMPLES = {
@@ -388,12 +398,64 @@ const SAMPLES = {
     ]
 };
 
+// ========== 2.5 業務計畫 列拆解輔助（甲/乙 與層級調整）==========
+// 業務計畫的層級規則（甲/乙 升格為表頭後）：
+//   L1 = 一、二、…    L2 = (一)/(二) 或無編號計畫名
+//   L3 = 1./2./…      L4 = (1)/(2)/(一)…
+function adjustPlanLevel(name, oldLevel) {
+    const nm = (name || '').trim();
+    const lv = parseInt(oldLevel) || 0;
+    let newLv = lv >= 3 ? lv - 2 : 0;
+    // 數字編號 (1./2./3.) 比同層級的「計畫名」深一層
+    if (/^\d+\./.test(nm)) newLv++;
+    // 括弧編號 ((1)/(2)/(一)/...) 同樣再深一層
+    else if (/^\([0-9一二三四五六七八九十]+\)/.test(nm)) newLv++;
+    return Math.min(Math.max(newLv, 0), 4);
+}
+function splitPlanRows(combinedRows) {
+    const srcRows = [], useRows = [];
+    let cur = 'src';
+    (combinedRows || []).forEach(row => {
+        const nm = (row.name || '').trim();
+        const lv = parseInt(row.level) || 0;
+        if (lv === 2 && nm.startsWith('甲')) { cur = 'src'; return; }
+        if (lv === 2 && nm.startsWith('乙')) { cur = 'use'; return; }
+        const newRow = { ...row };
+        newRow.level = adjustPlanLevel(nm, lv);
+        (cur === 'src' ? srcRows : useRows).push(newRow);
+    });
+    return { src: srcRows, use: useRows };
+}
+// 初始化：把 SAMPLES.plan_agri 等拆成 plan_agri_src / plan_agri_use
+PLAN_FUNDS.forEach(f => {
+    const combined = SAMPLES[f.id];
+    if (Array.isArray(combined)) {
+        const { src, use } = splitPlanRows(combined);
+        SAMPLES[`${f.id}_src`] = src;
+        SAMPLES[`${f.id}_use`] = use;
+        delete SAMPLES[f.id];
+    }
+});
+delete SAMPLES._legacy_plan_DELETED;
+
 // ========== 3. 行渲染 ==========
+// 數值轉「千分號」字串；空值/非數值原樣
+function formatNum(v) {
+    if (v === '' || v === null || v === undefined) return '';
+    const n = parseFloat(String(v).replace(/,/g, '').trim());
+    if (isNaN(n)) return String(v);
+    return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+function parseNum(v) {
+    if (v === '' || v === null || v === undefined) return NaN;
+    return parseFloat(String(v).replace(/,/g, '').trim());
+}
+
 function cellHTML(col, data, tableId) {
     const def = COL[col];
     const val = data?.[col] ?? '';
     if (def.type === 'level') {
-        const opts = [0,1,2,3,4,5].map(n => `<option value="${n}" ${String(val)===String(n)?'selected':''}>${LEVEL_LABELS[n]}</option>`).join('');
+        const opts = Object.keys(LEVEL_LABELS).map(n => `<option value="${n}" ${String(val)===String(n)?'selected':''}>${LEVEL_LABELS[n]}</option>`).join('');
         return `<td class="sf-lv"><select class="sf-level-select" data-key="level">${opts}</select></td>`;
     }
     if (def.type === 'textarea') {
@@ -402,9 +464,10 @@ function cellHTML(col, data, tableId) {
     if (def.type === 'text') {
         return `<td class="${def.td_class}"><input type="text" data-key="${col}" value="${escapeAttr(val)}"></td>`;
     }
-    // number
+    // number → 改用 type=text 以便顯示千分號（HTML number 不允許逗號）
     const isAuto = !!def.auto;
-    return `<td class="${def.td_class}"><input type="number" data-key="${col}" value="${val !== '' && val !== null ? val : ''}" ${isAuto ? 'readonly' : ''}></td>`;
+    const displayVal = val !== '' && val !== null ? formatNum(val) : '';
+    return `<td class="${def.td_class}"><input type="text" inputmode="numeric" data-key="${col}" data-numeric="1" value="${escapeAttr(displayVal)}" ${isAuto ? 'readonly' : ''}></td>`;
 }
 
 function escapeAttr(s) {
@@ -436,17 +499,88 @@ function addRow(tableId, data = {}, beforeTr = null) {
 }
 
 function recalcRow(tr) {
-    const get = k => parseFloat(tr.querySelector(`[data-key="${k}"]`)?.value) || 0;
+    const get = k => {
+        const v = parseNum(tr.querySelector(`[data-key="${k}"]`)?.value);
+        return isNaN(v) ? 0 : v;
+    };
     const set = (k, v) => {
         const el = tr.querySelector(`[data-key="${k}"]`);
         if (!el) return;
-        el.value = (v === 0 ? '' : v);
+        el.value = v === 0 ? '' : formatNum(v);
         el.classList.toggle('negative-value', v < 0);
     };
     const depApp = get('orig') + get('dep_diff');
     set('dep_app', depApp);
     const govApp = depApp + get('gov_diff');
     set('gov_app', govApp);
+}
+
+// 把列上所有數值欄重新套千分號（focus 出去後）
+function reformatNumericCells(tr) {
+    tr.querySelectorAll('input[data-numeric]').forEach(el => {
+        const raw = parseNum(el.value);
+        if (!isNaN(raw)) el.value = formatNum(raw);
+    });
+}
+
+// === 業務計畫 合計邏輯（父列 = Σ 子列）===
+// 例外：「收購糧食」「糧食銷售」之類含子列但子列為數量/單位成本者，不適用合計
+const NO_AUTO_SUM_KEYWORDS = ['收購糧食', '糧食銷售'];
+function shouldAutoSum(name) {
+    const nm = String(name || '');
+    return !NO_AUTO_SUM_KEYWORDS.some(k => nm.includes(k));
+}
+
+const PLAN_SUM_KEYS = ['dec113', 'bud114', 'orig', 'dep_diff', 'gov_diff'];
+
+function recalcPlanTable(tableId) {
+    if (!tableId || !tableId.startsWith('plan_')) return;
+    const tbody = document.getElementById('sf-tbody-' + tableId);
+    if (!tbody) return;
+    const rows = Array.from(tbody.children);
+    const nodes = rows.map(tr => ({
+        tr,
+        level: parseInt(tr.getAttribute('data-level')) || 0,
+        name:  tr.querySelector('[data-key="name"]')?.value || '',
+        children: [],
+        parent: null
+    }));
+    // 建層級樹
+    nodes.forEach((node, i) => {
+        for (let j = i - 1; j >= 0; j--) {
+            if (nodes[j].level < node.level) {
+                nodes[j].children.push(node);
+                node.parent = nodes[j];
+                break;
+            }
+        }
+    });
+
+    function process(node) {
+        node.children.forEach(process);
+        const hasKids = node.children.length > 0;
+        const autoSum = hasKids && shouldAutoSum(node.name);
+        PLAN_SUM_KEYS.forEach(k => {
+            const el = node.tr.querySelector(`[data-key="${k}"]`);
+            if (!el) return;
+            if (autoSum) {
+                let sum = 0, has = false;
+                node.children.forEach(c => {
+                    const v = parseNum(c.tr.querySelector(`[data-key="${k}"]`)?.value);
+                    if (!isNaN(v)) { sum += v; has = true; }
+                });
+                el.value = (has && sum !== 0) ? formatNum(sum) : '';
+                el.readOnly = true;
+                el.classList.add('sf-auto-sum');
+                el.classList.toggle('negative-value', sum < 0);
+            } else {
+                el.readOnly = false;
+                el.classList.remove('sf-auto-sum');
+            }
+        });
+        recalcRow(node.tr);
+    }
+    nodes.filter(n => !n.parent).forEach(process);
 }
 
 // ========== 4. 收集 / 還原資料 ==========
@@ -474,7 +608,15 @@ function collectData() {
             if (cfg.hasLevel) item.level = parseInt(tr.getAttribute('data-level')) || 0;
             cfg.cols.forEach(c => {
                 const el = tr.querySelector(`[data-key="${c}"]`);
-                if (el) item[c] = el.value;
+                if (!el) return;
+                const def = COL[c];
+                let v = el.value;
+                if (def && def.type === 'number') {
+                    // 數字欄：JSON 內存「無千分號」字串
+                    const n = parseNum(v);
+                    v = isNaN(n) ? '' : String(n);
+                }
+                item[c] = v;
             });
             return item;
         });
@@ -505,6 +647,7 @@ function applyData(data) {
         tbody.innerHTML = '';
         const items = data.tables?.[tid] || [];
         if (items.length) items.forEach(it => addRow(tid, it));
+        if (tid.startsWith('plan_')) recalcPlanTable(tid);
     });
 }
 
@@ -617,8 +760,8 @@ function handleImport(file) {
 }
 
 // ========== 6. 自動儲存 ==========
-const STORE_KEY = 'sf_special_fund_v3'; // v3: 業務計畫拆成 6 個基金子 tab
-const LEGACY_KEYS = ['sf_special_fund_v2', 'sf_special_fund_v1'];
+const STORE_KEY = 'sf_special_fund_v4'; // v4: 業務計畫每基金拆 甲/乙 上下表
+const LEGACY_KEYS = ['sf_special_fund_v3', 'sf_special_fund_v2', 'sf_special_fund_v1'];
 
 // 向下相容：把舊版 tables.plan（一張大表）依 L1 編號拆到 6 個 plan_* 表
 function migrateOldPlan(data) {
@@ -646,12 +789,29 @@ function migrateOldPlan(data) {
     return result;
 }
 
+// v3 → v4: 把 plan_agri (合併) 拆成 plan_agri_src + plan_agri_use
+function migratePlanSplit(data) {
+    if (!data?.tables) return data;
+    const result = { ...data, tables: { ...data.tables } };
+    PLAN_FUNDS.forEach(f => {
+        const old = result.tables[f.id];
+        if (!Array.isArray(old)) return;
+        const { src, use } = splitPlanRows(old);
+        result.tables[`${f.id}_src`] = src;
+        result.tables[`${f.id}_use`] = use;
+        delete result.tables[f.id];
+    });
+    return result;
+}
+
 // 統一資料正規化入口（任何讀進來的資料都先過這層）
 function normalizeData(data) {
     if (!data?.tables) return data;
-    const hasOldPlan = Array.isArray(data.tables.plan);
-    const hasSubPlans = PLAN_FUNDS.some(f => Array.isArray(data.tables[f.id]));
-    if (hasOldPlan && !hasSubPlans) return migrateOldPlan(data);
+    // v1/v2: tables.plan 存在 → 先拆成 plan_agri/forest/...
+    if (Array.isArray(data.tables.plan)) data = migrateOldPlan(data);
+    // v3: 若仍有 plan_agri（合併版）→ 再拆成 _src + _use
+    const hasV3Plans = PLAN_FUNDS.some(f => Array.isArray(data.tables[f.id]));
+    if (hasV3Plans) data = migratePlanSplit(data);
     return data;
 }
 
@@ -692,19 +852,20 @@ function flashAutosave(msg) {
 }
 
 // ========== 7. Word 匯出（HTML-as-Word .doc） ==========
-function fmtNum(v) {
-    if (v === '' || v === null || v === undefined) return '';
-    const n = parseFloat(v);
-    if (isNaN(n)) return escapeHTML(String(v));
-    return n.toLocaleString();
-}
+// fmtNum / parseNum 已於上方定義（formatNum + parseNum）。Word 匯出沿用 formatNum 與 numColor
+const fmtNum = formatNum;
 function numColor(v) {
-    const n = parseFloat(v);
+    const n = parseNum(v);
     return (!isNaN(n) && n < 0) ? ' style="color:#c00"' : '';
 }
 
 function buildTableDocHTML(tableId) {
+    // 基金級 ID（plan_agri…）→ 合併 src+use 為單一表（中間插入「甲、基金來源」「乙、基金用途」分隔列）
+    if (PLAN_FUNDS.some(f => f.id === tableId)) {
+        return buildPlanFundDocHTML(tableId);
+    }
     const cfg = tableConfigs[tableId];
+    if (!cfg) return '';
     const data = collectData();
     const meta = data.meta;
     const rows = data.tables[tableId] || [];
@@ -826,25 +987,88 @@ function buildTableDocHTML(tableId) {
     </div>`;
 }
 
+// 基金級匯出：把該基金的 _src 與 _use 合併成一個完整 1-2 表
+function buildPlanFundDocHTML(fundId) {
+    const fund = PLAN_FUNDS.find(f => f.id === fundId);
+    const data = collectData();
+    const meta = data.meta;
+    const srcRows = data.tables[`${fundId}_src`] || [];
+    const useRows = data.tables[`${fundId}_use`] || [];
+    const reviews = data.reviews?.plan;
+
+    const theadHTML = `<thead>
+        <tr>
+            <th rowspan="2">114年度<br/>決算數</th>
+            <th rowspan="2">115年度<br/>預算數</th>
+            <th rowspan="2">科目或計畫名稱</th>
+            <th rowspan="2">政策目標、計畫實施內容(或工作項目)<br/>及預期效益摘要</th>
+            <th rowspan="2">原編數</th>
+            <th colspan="2">主管機關</th>
+            <th colspan="2">行政院初審</th>
+        </tr>
+        <tr>
+            <th>增減(-)數</th><th>核列數</th>
+            <th>擬增減(-)數</th><th>擬核列數</th>
+        </tr>
+    </thead>`;
+
+    const renderRow = (r) => {
+        const lv = parseInt(r.level) || 0;
+        const indent = lv > 0 ? '&nbsp;'.repeat((lv-1)*4) : '';
+        const weight = lv === 1 ? 'font-weight:bold;' : '';
+        const numCell = (v) => `<td class="num"${numColor(v)}>${fmtNum(v) || '-'}</td>`;
+        const nameCell = `<td class="name" style="${weight}">${indent}${escapeHTML(r.name || '')}</td>`;
+        const descCell = `<td class="desc">${escapeHTML(r.desc || '').replace(/\n/g,'<br/>')}</td>`;
+        return `<tr>${numCell(r.dec113)}${numCell(r.bud114)}${nameCell}${descCell}${numCell(r.orig)}${numCell(r.dep_diff)}${numCell(r.dep_app)}${numCell(r.gov_diff)}${numCell(r.gov_app)}</tr>`;
+    };
+
+    // 甲 / 乙 分隔列
+    const sectionRow = (label) => `<tr><td colspan="9" style="background:#e8e8e8;font-weight:bold;text-align:left;padding:5pt;">${escapeHTML(label)}</td></tr>`;
+
+    const tbodyContent = [
+        sectionRow('甲、基金來源：'),
+        ...srcRows.map(renderRow),
+        sectionRow('乙、基金用途：'),
+        ...useRows.map(renderRow)
+    ].join('');
+
+    const reviewBlock = reviews ? `
+        <table class="review">
+            <tr><th colspan="2">審 核 意 見</th></tr>
+            <tr><td class="lbl">主管機關</td><td>${escapeHTML(reviews.org || '').replace(/\n/g,'<br/>')}</td></tr>
+            <tr><td class="lbl">先期審查機關</td><td>${escapeHTML(reviews.gov || '').replace(/\n/g,'<br/>')}</td></tr>
+        </table>` : '';
+
+    return `
+    <div class="page">
+        <div class="word-header">
+            ${escapeHTML(meta.fund || '')} ${escapeHTML(meta.year || '')}年度 ${escapeHTML(fund.name)} 主要業務計畫預算表
+            <span class="unit">單位：新臺幣千元</span>
+        </div>
+        <table class="data-table">${theadHTML}<tbody>${tbodyContent}</tbody></table>
+        ${reviewBlock}
+        <div class="word-footer">1-2</div>
+    </div>`;
+}
+
 function exportDoc(scope) {
     const data = collectData();
     const fund = data.meta.fund || '特別收入基金';
     const year = data.meta.year || '';
-    const planIds = PLAN_FUNDS.map(f => f.id);
+    // 「基金級」ID：plan_agri 等，由 buildTableDocHTML 自動合併該基金的 _src + _use
+    const planFundIds = PLAN_FUNDS.map(f => f.id);
 
     let tables;
     if (scope === 'all') {
-        tables = [...planIds, 'headcount', 'personnel_cost', 'control'];
+        tables = [...planFundIds, 'headcount', 'personnel_cost', 'control'];
     } else if (scope === 'plan_all') {
-        // 6 個基金的業務計畫合併匯出
-        tables = planIds;
+        tables = planFundIds;
     } else {
         const main = getActiveTab();
         if (main === 'plan') {
             const active = document.querySelector('.sf-subtab-btn.active')?.dataset.subtab;
-            tables = [active || 'plan_agri'];
-        } else if (main === 'headcount' || main === 'personnel_cost') {
-            // 1-3 表：員額（甲）與用人費用（乙）匯出時始終一起
+            tables = [active || 'plan_agri']; // 該基金的 src+use 合併
+        } else if (main === 'personnel') {
             tables = ['headcount', 'personnel_cost'];
         } else {
             tables = [main];
@@ -974,7 +1198,7 @@ function computeMerged() {
         },
         tables: (() => {
             const t = { headcount: [], personnel_cost: [], control: [] };
-            PLAN_FUNDS.forEach(f => t[f.id] = []);
+            PLAN_FUNDS.forEach(f => PLAN_SECTIONS.forEach(s => t[`${f.id}_${s.suffix}`] = []));
             return t;
         })(),
         reviews: {
@@ -991,9 +1215,12 @@ function computeMerged() {
         const normData = normalizeData(f.data);
         const t = normData.tables || {};
 
-        // === 業務計畫 6 個基金表：向下追加（保留每基金所有列）===
+        // === 業務計畫 12 表（6 基金 × 甲/乙）：向下追加 ===
         PLAN_FUNDS.forEach(pf => {
-            (t[pf.id] || []).forEach(row => out.tables[pf.id].push({ ...row }));
+            PLAN_SECTIONS.forEach(sec => {
+                const tid = `${pf.id}_${sec.suffix}`;
+                (t[tid] || []).forEach(row => out.tables[tid].push({ ...row }));
+            });
         });
 
         // === 其他三表：以 name 為 key 加總 ===
@@ -1053,8 +1280,8 @@ function renderMergePreview() {
     const cards= document.getElementById('sf-merge-preview-cards');
     if (!wrap || !cards) return;
     const c = (tid) => (data.tables[tid] || []).length;
-    const planTotal = PLAN_FUNDS.reduce((a, f) => a + c(f.id), 0);
-    const planBreakdown = PLAN_FUNDS.map(f => `${f.short} ${c(f.id)}`).join(' / ');
+    const planTotal = PLAN_FUNDS.reduce((a, f) => a + c(`${f.id}_src`) + c(`${f.id}_use`), 0);
+    const planBreakdown = PLAN_FUNDS.map(f => `${f.short} ${c(`${f.id}_src`) + c(`${f.id}_use`)}`).join(' / ');
     cards.innerHTML = `
         <div class="sf-merge-card">
             <div class="label">業務計畫（六基金）</div>
@@ -1097,48 +1324,59 @@ function applyMergedToTables() {
     switchTab('plan');
 }
 
-// ========== 7.6 業務計畫子 tab（6 個基金）==========
+// ========== 7.6 業務計畫子 tab（6 基金，每基金 甲/乙 兩表）==========
+function planThead() {
+    return `<thead>
+        <tr>
+            <th rowspan="2" class="sf-col-act">操作</th>
+            <th rowspan="2" class="sf-col-lv">層級</th>
+            <th rowspan="2">114年度<br>決算數</th>
+            <th rowspan="2">115年度<br>預算數</th>
+            <th rowspan="2" class="sf-col-name">科目或計畫名稱</th>
+            <th rowspan="2" class="sf-col-desc">政策目標、計畫實施內容(或工作項目)<br>及預期效益摘要</th>
+            <th rowspan="2">原編數</th>
+            <th colspan="2" class="sf-col-group">主管機關</th>
+            <th colspan="2" class="sf-col-group">行政院初審</th>
+        </tr>
+        <tr>
+            <th>增減(-)數</th>
+            <th class="sf-col-auto">核列數</th>
+            <th>擬增減(-)數</th>
+            <th class="sf-col-auto">擬核列數</th>
+        </tr>
+    </thead>`;
+}
 function renderPlanSubpanels() {
     const container = document.getElementById('sf-plan-subpanels');
     if (!container) return;
-    container.innerHTML = PLAN_FUNDS.map((f, idx) => `
-        <div class="sf-plan-subpanel section-card" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
-            <div class="flex justify-between items-center mb-3">
-                <div>
-                    <h3 class="text-xl font-bold text-purple-700">${escapeHTML(f.name)}</h3>
-                    <p class="text-xs text-slate-500 mt-1">116年度 主要業務計畫預算表 · 表號 1-2 · 單位：新臺幣千元</p>
+    container.innerHTML = PLAN_FUNDS.map((f, idx) => {
+        const sectionHTML = PLAN_SECTIONS.map(sec => {
+            const tid = `${f.id}_${sec.suffix}`;
+            return `
+            <div class="section-card sf-plan-section" data-section="${sec.suffix}">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-lg font-bold text-purple-700">${escapeHTML(sec.label)}</h4>
+                    <div class="flex gap-2">
+                        <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="${tid}">＋ 新增列</button>
+                        <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="${tid}">重置為 Word 預設項目</button>
+                    </div>
                 </div>
-                <div class="flex gap-2">
-                    <button class="sf-add-row bg-purple-600 text-white px-3 py-1 rounded text-sm" data-table="${f.id}">＋ 新增列</button>
-                    <button class="sf-load-sample bg-slate-200 text-slate-700 px-3 py-1 rounded text-sm" data-table="${f.id}">重置為 Word 預設項目</button>
+                <div class="overflow-x-auto">
+                    <table class="sf-table">
+                        ${planThead()}
+                        <tbody id="sf-tbody-${tid}"></tbody>
+                    </table>
                 </div>
+            </div>`;
+        }).join('');
+        return `<div class="sf-plan-subpanel" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+            <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+                <h3 class="text-lg font-bold text-purple-700">${escapeHTML(f.name)}</h3>
+                <p class="text-xs text-slate-600 mt-1">116年度 主要業務計畫預算表 · 表號 1-2 · 單位：新臺幣千元</p>
             </div>
-            <div class="overflow-x-auto">
-                <table class="sf-table">
-                    <thead>
-                        <tr>
-                            <th rowspan="2" class="sf-col-act">操作</th>
-                            <th rowspan="2" class="sf-col-lv">層級</th>
-                            <th rowspan="2">114年度<br>決算數</th>
-                            <th rowspan="2">115年度<br>預算數</th>
-                            <th rowspan="2" class="sf-col-name">科目或計畫名稱</th>
-                            <th rowspan="2" class="sf-col-desc">政策目標、計畫實施內容(或工作項目)<br>及預期效益摘要</th>
-                            <th rowspan="2">原編數</th>
-                            <th colspan="2" class="sf-col-group">主管機關</th>
-                            <th colspan="2" class="sf-col-group">行政院初審</th>
-                        </tr>
-                        <tr>
-                            <th>增減(-)數</th>
-                            <th class="sf-col-auto">核列數</th>
-                            <th>擬增減(-)數</th>
-                            <th class="sf-col-auto">擬核列數</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sf-tbody-${f.id}"></tbody>
-                </table>
-            </div>
-        </div>
-    `).join('');
+            ${sectionHTML}
+        </div>`;
+    }).join('');
 }
 
 function switchPlanSubtab(fundId) {
@@ -1209,7 +1447,8 @@ function bindEvents() {
             const tid = btn.dataset.table;
             if (!confirm(`將清除「${tableConfigs[tid].title}」目前所有列並重新載入 Word 預設項目？`)) return;
             document.getElementById('sf-tbody-' + tid).innerHTML = '';
-            SAMPLES[tid].forEach(r => addRow(tid, r));
+            (SAMPLES[tid] || []).forEach(r => addRow(tid, r));
+            if (tid.startsWith('plan_')) recalcPlanTable(tid);
             scheduleAutosave();
         };
     });
@@ -1218,12 +1457,19 @@ function bindEvents() {
     Object.keys(tableConfigs).forEach(tid => {
         const tbody = document.getElementById('sf-tbody-' + tid);
 
+        const isPlan = tid.startsWith('plan_');
+        const triggerRecalc = (tr) => {
+            if (isPlan) recalcPlanTable(tid);
+            else recalcRow(tr);
+        };
+
         tbody.addEventListener('click', e => {
             // 列上方插入鈕（在這列前插入一列新空白列）
             const insertZone = e.target.closest('.sf-insert-zone');
             if (insertZone) {
                 const tr = insertZone.closest('tr');
                 addRow(tid, {}, tr);
+                if (isPlan) recalcPlanTable(tid);
                 scheduleAutosave();
                 return;
             }
@@ -1237,6 +1483,7 @@ function bindEvents() {
                     tr.setAttribute('data-level', 0);
                     recalcRow(tr);
                 } else tr.remove();
+                if (isPlan) recalcPlanTable(tid);
                 scheduleAutosave();
             }
         });
@@ -1244,6 +1491,7 @@ function bindEvents() {
         tbody.addEventListener('change', e => {
             if (e.target.dataset.key === 'level') {
                 e.target.closest('tr').setAttribute('data-level', e.target.value);
+                if (isPlan) recalcPlanTable(tid);
             }
         });
 
@@ -1251,8 +1499,19 @@ function bindEvents() {
             const tr = e.target.closest('tr');
             if (!tr) return;
             const key = e.target.dataset.key;
-            if (['orig','dep_diff','gov_diff'].includes(key)) recalcRow(tr);
+            if (['orig','dep_diff','gov_diff','dec112','dec113','bud114','apr114'].includes(key)) {
+                triggerRecalc(tr);
+            }
             scheduleAutosave();
+        });
+
+        // 數字欄 blur 重新套用千分號
+        tbody.addEventListener('focusout', e => {
+            const el = e.target;
+            if (el.matches && el.matches('input[data-numeric]:not([readonly])')) {
+                const n = parseNum(el.value);
+                if (!isNaN(n) && el.value.trim() !== '') el.value = formatNum(n);
+            }
         });
 
         // ===== 拖曳排序 =====
@@ -1290,6 +1549,7 @@ function bindEvents() {
             const above = e.clientY < rect.top + rect.height / 2;
             if (above) tbody.insertBefore(draggedTr, tr);
             else tbody.insertBefore(draggedTr, tr.nextSibling);
+            if (isPlan) recalcPlanTable(tid);
             scheduleAutosave();
         });
         tbody.addEventListener('dragend', () => {
@@ -1457,6 +1717,7 @@ function loadAllSamples() {
         if (!tbody) return;
         tbody.innerHTML = '';
         (SAMPLES[tid] || []).forEach(r => addRow(tid, r));
+        if (tid.startsWith('plan_')) recalcPlanTable(tid);
     });
 }
 
