@@ -1,0 +1,235 @@
+{
+  "meta": {
+    "fund": "農損基金（模擬）",
+    "year": "116",
+    "org": "農業部",
+    "user": "測試用戶"
+  },
+  "tables": {
+    "plan_loss_src": [
+      {
+        "name": "甲-項目一",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "甲-項目二",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "甲-項目三",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "甲-項目四",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "甲-項目五",
+        "bud114": 100,
+        "level": 1
+      }
+    ],
+    "plan_loss_use": [
+      {
+        "name": "乙-項目一",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "乙-項目二",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "乙-項目三",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "乙-項目四",
+        "bud114": 100,
+        "level": 1
+      },
+      {
+        "name": "乙-項目五",
+        "bud114": 100,
+        "level": 1
+      }
+    ],
+    "headcount": [
+      {
+        "name": "員額-項目一",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "員額-項目二",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "員額-項目三",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "員額-項目四",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "員額-項目五",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      }
+    ],
+    "personnel_cost_loss": [
+      {
+        "name": "用人費-薪資",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "用人費-津貼",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "用人費-獎金",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "用人費-福利費",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "用人費-其他",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      }
+    ],
+    "control_loss": [
+      {
+        "name": "管制項目-水電費",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "管制項目-旅費",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "管制項目-印刷費",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "管制項目-服務費",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      },
+      {
+        "name": "管制項目-其他費用",
+        "dec112": 100,
+        "dec113": 100,
+        "bud114": 100,
+        "orig": 100,
+        "dep_diff": 100,
+        "dep_app": 100,
+        "gov_diff": 100,
+        "gov_app": 100
+      }
+    ]
+  }
+}
