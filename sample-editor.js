@@ -131,40 +131,121 @@ function buildPreviewForControl(parsed, col, existing) {
 function renderPreview(preview, col) {
   const area = $('#preview-area');
   if (!preview || !preview.rows?.length) {
-    area.innerHTML = '<p class="hint">尚無資料；請先載入 JSON 並貼上資料按「預覽影響」。</p>';
+    area.innerHTML = '<p class="hint">尚無資料；請先載入 JSON 並貼上資料按「預覽影響」。</p>'
+      + '<div class="preview-edit-toolbar"><button class="btn" id="btn-add-row" disabled>＋ 新增列</button></div>';
     return;
   }
   const showCol = COL_LABELS[col];
-  const hdrs = isPlanTarget()
-    ? ['Lv', '項目名稱', '113決算', '114決算', '115預算']
-    : ['項目名稱', '113決算', '114決算', '115預算'];
+  const isPlan = isPlanTarget();
+  const hdrs = isPlan
+    ? ['Lv', '項目名稱', '113決算', '114決算', '115預算', '']
+    : ['項目名稱', '113決算', '114決算', '115預算', ''];
 
-  const rowHTML = preview.rows.map(r => {
-    const lvClass = isPlanTarget() ? `lv-${r.level ?? 1}` : '';
+  const lvOpts = (cur) => [0,1,2,3,4]
+    .map(lv => `<option value="${lv}"${String(cur ?? 1)===String(lv)?' selected':''}>L${lv}</option>`)
+    .join('');
+
+  const rowHTML = preview.rows.map((r, idx) => {
+    const lvClass = isPlan ? `lv-${r.level ?? 1}` : '';
     const stClass = r._status === 'updated' ? 'updated' : (r._status === 'added' ? 'added' : '');
     const cls = [lvClass, stClass].filter(Boolean).join(' ');
-    const cells = isPlanTarget()
-      ? [
-          `<td>L${r.level ?? 1}</td>`,
-          `<td>${esc(r.name)}</td>`,
-          `<td class="num">${esc(fmtNum(r.dec112))}</td>`,
-          `<td class="num">${esc(fmtNum(r.dec113))}</td>`,
-          `<td class="num">${esc(fmtNum(r.bud114))}</td>`,
-        ]
-      : [
-          `<td>${esc(r.name)}</td>`,
-          `<td class="num">${esc(fmtNum(r.dec112))}</td>`,
-          `<td class="num">${esc(fmtNum(r.dec113))}</td>`,
-          `<td class="num">${esc(fmtNum(r.bud114))}</td>`,
-        ];
-    return `<tr class="${cls}">${cells.join('')}</tr>`;
+    const nameCell = `<td><input type="text" data-key="name" data-row="${idx}" value="${esc(r.name ?? '')}"></td>`;
+    const numCell = (k) => `<td class="num"><input type="text" inputmode="numeric" class="cell-num" data-key="${k}" data-row="${idx}" value="${esc(fmtNum(r[k]))}"></td>`;
+    const opCell = `<td class="ops"><button type="button" class="btn-del" data-action="del" data-row="${idx}" title="刪除此列">✕</button></td>`;
+    const lvCell = `<td><select class="cell-lv" data-key="level" data-row="${idx}">${lvOpts(r.level)}</select></td>`;
+    const cells = isPlan
+      ? [lvCell, nameCell, numCell('dec112'), numCell('dec113'), numCell('bud114'), opCell]
+      : [nameCell, numCell('dec112'), numCell('dec113'), numCell('bud114'), opCell];
+    return `<tr class="${cls}" data-row="${idx}">${cells.join('')}</tr>`;
   }).join('');
 
   const summary = preview.mode === 'replace'
     ? `<p class="hint">模式：<b>覆蓋整張表</b>，共 ${preview.rows.length} 列。寫入欄：<b>${showCol}</b>。</p>`
     : `<p class="hint">模式：<b>依名稱寫值</b>，更新 ${preview.updated} 列、新增 ${preview.added} 列、保留 ${preview.rows.length - preview.updated - preview.added} 列。寫入欄：<b>${showCol}</b>。</p>`;
 
-  area.innerHTML = summary + `<table class="preview-table"><thead><tr>${hdrs.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rowHTML}</tbody></table>`;
+  area.innerHTML = summary
+    + `<table class="preview-table editable"><thead><tr>${hdrs.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rowHTML}</tbody></table>`
+    + `<div class="preview-edit-toolbar"><button class="btn" id="btn-add-row">＋ 新增列</button><span class="hint">編輯／新增／刪除後請按「✏️ 套用到記憶中」儲存到匯出資料。</span></div>`;
+
+  // Wire up inline-edit handlers
+  area.querySelectorAll('input[data-key], select[data-key]').forEach(el => {
+    el.addEventListener('input', onCellEdit);
+    if (el.tagName === 'SELECT') el.addEventListener('change', onCellEdit);
+    if (el.classList.contains('cell-num')) el.addEventListener('blur', onCellNumBlur);
+  });
+  area.querySelectorAll('button[data-action="del"]').forEach(btn => {
+    btn.addEventListener('click', () => deleteRow(parseInt(btn.dataset.row, 10)));
+  });
+  const addBtn = $('#btn-add-row');
+  if (addBtn) addBtn.addEventListener('click', addRow);
+}
+
+function markRowStatus(idx, status) {
+  if (!pendingPreview?.rows?.[idx]) return;
+  // 不覆寫 'added' 標記（新增列維持綠底）
+  const cur = pendingPreview.rows[idx]._status;
+  if (cur === 'added') return;
+  if (status === 'updated' && cur === 'unchanged') {
+    pendingPreview.rows[idx]._status = 'updated';
+    const tr = document.querySelector(`tr[data-row="${idx}"]`);
+    if (tr) { tr.classList.remove('unchanged'); tr.classList.add('updated'); }
+  }
+}
+
+function onCellEdit(e) {
+  if (!pendingPreview) return;
+  const el = e.target;
+  const idx = parseInt(el.dataset.row, 10);
+  const key = el.dataset.key;
+  if (isNaN(idx) || !key) return;
+  const row = pendingPreview.rows[idx];
+  if (!row) return;
+  if (key === 'level') {
+    row.level = parseInt(el.value, 10) || 0;
+    // 重新渲染以更新 lv-X class 與縮排
+    renderPreview(pendingPreview, $('#sel-col').value);
+    return;
+  }
+  if (key === 'name') {
+    row.name = el.value;
+  } else {
+    // 數字欄：存「無千分號」字串（與其他資料一致）
+    const n = parseNum(el.value);
+    row[key] = n == null ? '' : String(n);
+  }
+  markRowStatus(idx, 'updated');
+}
+
+function onCellNumBlur(e) {
+  const el = e.target;
+  const n = parseNum(el.value);
+  el.value = n == null ? '' : fmtNum(n);
+}
+
+function deleteRow(idx) {
+  if (!pendingPreview?.rows?.[idx]) return;
+  pendingPreview.rows.splice(idx, 1);
+  // 重新計算 merge 模式的統計
+  if (pendingPreview.mode === 'merge') {
+    pendingPreview.updated = pendingPreview.rows.filter(r => r._status === 'updated').length;
+    pendingPreview.added   = pendingPreview.rows.filter(r => r._status === 'added').length;
+  }
+  renderPreview(pendingPreview, $('#sel-col').value);
+}
+
+function addRow() {
+  if (!pendingPreview) return;
+  const newRow = isPlanTarget()
+    ? { level: 1, name: '', _status: 'added' }
+    : { name: '', _status: 'added' };
+  pendingPreview.rows.push(newRow);
+  if (pendingPreview.mode === 'merge') {
+    pendingPreview.added = (pendingPreview.added || 0) + 1;
+  }
+  renderPreview(pendingPreview, $('#sel-col').value);
+  // 將焦點移到新列的名稱欄
+  const newTr = document.querySelector(`tr[data-row="${pendingPreview.rows.length - 1}"]`);
+  newTr?.querySelector('input[data-key="name"]')?.focus();
 }
 
 function refreshPreview() {
@@ -241,6 +322,79 @@ function loadFromFile(file) {
   reader.readAsText(file);
 }
 
+// 共用：把 parsed 結果套用到 loadedData 的當前基金 src/use
+function _applyParsedToCurrentFund(parsed, fileNameLabel) {
+  const fund = currentFund();
+  const fundId = fund.id; // plan_agri / plan_forest / ...
+  const fundData = parsed.funds[fundId];
+  if (!fundData) {
+    setStatus('load-status', `${fileNameLabel} 中找不到 ${fund.name} 的資料`, 'err');
+    return false;
+  }
+  if (!loadedData) loadedData = { tables: {} };
+  if (!loadedData.tables) loadedData.tables = {};
+  loadedData.tables[`${fundId}_src`] = fundData.src;
+  loadedData.tables[`${fundId}_use`] = fundData.use;
+  if (parsed.reviews?.plan?.org || parsed.reviews?.plan?.gov) {
+    if (!loadedData.reviews) loadedData.reviews = {};
+    loadedData.reviews.plan = { ...(loadedData.reviews.plan || {}), ...parsed.reviews.plan };
+  }
+  const total = parsed.counts[fundId] || 0;
+  const warn = parsed.warnings?.length ? `（${parsed.warnings.length} 條警告，見 console）` : '';
+  if (parsed.warnings?.length) console.warn(`${fileNameLabel} 警告：\n` + parsed.warnings.join('\n'));
+  if (parsed.docxMessages?.length) console.info('mammoth messages:', parsed.docxMessages);
+  setStatus('load-status', `✓ 已套用 ${fund.short} (src+use 共 ${total} 列) ${warn}`, 'ok');
+  pendingPreview = null;
+  refreshPreview();
+  return true;
+}
+
+// 從 word_table_to_json_converter 的 JSON 輸出載入
+async function loadFromConverterJSON(file) {
+  if (typeof parseWordConverterJSON !== 'function') {
+    setStatus('load-status', '找不到 parseWordConverterJSON（word-converter.js 未載入）', 'err');
+    return;
+  }
+  if (!loadedData) {
+    try { await loadFromProject(); } catch (e) { /* ignore */ }
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    let parsed;
+    try {
+      const raw = JSON.parse(ev.target.result);
+      parsed = parseWordConverterJSON(raw);
+    } catch (err) {
+      setStatus('load-status', `轉換 JSON 載入失敗：${err.message}`, 'err');
+      return;
+    }
+    _applyParsedToCurrentFund(parsed, 'Word 轉換 JSON');
+  };
+  reader.readAsText(file);
+}
+
+// 直接從 .docx 載入（mammoth.js）
+async function loadFromDocxFile(file) {
+  if (typeof parseDocxFile !== 'function') {
+    setStatus('load-status', '找不到 parseDocxFile（word-converter.js 未載入）', 'err');
+    return;
+  }
+  if (typeof mammoth === 'undefined') {
+    setStatus('load-status', 'mammoth.js 未載入，無法解析 .docx', 'err');
+    return;
+  }
+  if (!loadedData) {
+    try { await loadFromProject(); } catch (e) { /* ignore */ }
+  }
+  setStatus('load-status', '⏳ 解析 .docx 中…');
+  try {
+    const parsed = await parseDocxFile(file);
+    _applyParsedToCurrentFund(parsed, `.docx（${file.name}）`);
+  } catch (err) {
+    setStatus('load-status', `.docx 解析失敗：${err.message}`, 'err');
+  }
+}
+
 function doDownload() {
   if (!loadedData) { setStatus('dl-status', '尚未載入資料', 'err'); return; }
   const f = currentFund();
@@ -276,6 +430,18 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#file-input').addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
     loadFromFile(f);
+    e.target.value = '';
+  });
+  $('#btn-load-converter').addEventListener('click', () => $('#file-input-converter').click());
+  $('#file-input-converter').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    loadFromConverterJSON(f);
+    e.target.value = '';
+  });
+  $('#btn-load-docx').addEventListener('click', () => $('#file-input-docx').click());
+  $('#file-input-docx').addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return;
+    loadFromDocxFile(f);
     e.target.value = '';
   });
 

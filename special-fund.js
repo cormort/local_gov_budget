@@ -1090,6 +1090,8 @@ function applyTabData(tab, data) {
         if (tid.startsWith('plan_')) recalcPlanTable(tid);
         applied++;
     });
+    // 若正在顯示彙編子面板，重新計算
+    if (typeof refreshActiveAggregate === 'function') refreshActiveAggregate();
     return applied;
 }
 
@@ -1185,6 +1187,90 @@ function handleTabImport(tab, file) {
         }
     };
     reader.readAsText(file);
+}
+
+// ========== 5.1 Word 轉換器 JSON / .docx 匯入（業務計畫專用）==========
+function _applyConverterParsedToPlan(parsed, sourceLabel) {
+    const summary = PLAN_FUNDS.map(f => {
+        const n = parsed.counts[f.id] || 0;
+        return `${f.short}：${n} 列`;
+    }).join('、');
+    const total = Object.values(parsed.counts).reduce((a, b) => a + b, 0);
+    if (!confirm(`將以${sourceLabel}覆蓋業務計畫 6 基金資料（共 ${total} 列）：\n${summary}\n（建議先「匯出 JSON」備份）`)) return false;
+
+    PLAN_FUNDS.forEach(f => {
+        const fundData = parsed.funds[f.id];
+        if (!fundData) return;
+        PLAN_SECTIONS.forEach(sec => {
+            const tid = `${f.id}_${sec.suffix}`;
+            const tbody = document.getElementById('sf-tbody-' + tid);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            (fundData[sec.suffix] || []).forEach(r => addRow(tid, r));
+            recalcPlanTable(tid);
+        });
+    });
+
+    if (parsed.reviews?.plan?.org) {
+        const el = document.getElementById('sf-plan-review-org');
+        if (el) el.value = parsed.reviews.plan.org;
+    }
+    if (parsed.reviews?.plan?.gov) {
+        const el = document.getElementById('sf-plan-review-gov');
+        if (el) el.value = parsed.reviews.plan.gov;
+    }
+
+    if (parsed.warnings?.length) {
+        console.warn(`${sourceLabel}警告：\n` + parsed.warnings.join('\n'));
+    }
+    if (parsed.docxMessages?.length) {
+        console.info('mammoth messages:', parsed.docxMessages);
+    }
+
+    refreshActiveAggregate();
+    scheduleAutosave();
+    flashAutosave(`✓ 已載入${sourceLabel}（${total} 列）`);
+    return true;
+}
+
+function handleWordConverterImport(file) {
+    if (typeof parseWordConverterJSON !== 'function') {
+        alert('找不到 parseWordConverterJSON。請確認 word-converter.js 已載入。');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+        let parsed;
+        try {
+            const raw = JSON.parse(e.target.result);
+            parsed = parseWordConverterJSON(raw);
+        } catch (err) {
+            alert('Word 轉換 JSON 載入失敗：' + err.message);
+            return;
+        }
+        _applyConverterParsedToPlan(parsed, 'Word 轉換 JSON');
+    };
+    reader.readAsText(file);
+}
+
+async function handleDocxImport(file) {
+    if (typeof parseDocxFile !== 'function') {
+        alert('找不到 parseDocxFile。請確認 word-converter.js 已載入。');
+        return;
+    }
+    if (typeof mammoth === 'undefined') {
+        alert('mammoth.js 未載入，無法解析 .docx。');
+        return;
+    }
+    flashAutosave('⏳ 解析 .docx 中…');
+    let parsed;
+    try {
+        parsed = await parseDocxFile(file);
+    } catch (err) {
+        alert('.docx 解析失敗：' + err.message);
+        return;
+    }
+    _applyConverterParsedToPlan(parsed, `.docx（${file.name}）`);
 }
 
 function handleTabMergeImport(tab, files) {
@@ -1303,6 +1389,7 @@ function scheduleAutosave() {
             localStorage.setItem(STORE_KEY, JSON.stringify(collectData()));
             flashAutosave('✓ 已自動儲存');
         } catch (e) { /* quota? */ }
+        if (typeof refreshActiveAggregate === 'function') refreshActiveAggregate();
     }, 800);
 }
 function loadAutosave() {
@@ -1705,7 +1792,7 @@ function planThead() {
 function renderPlanSubpanels() {
     const container = document.getElementById('sf-plan-subpanels');
     if (!container) return;
-    container.innerHTML = PLAN_FUNDS.map((f, idx) => {
+    const fundsHTML = PLAN_FUNDS.map((f, idx) => {
         const sectionHTML = PLAN_SECTIONS.map(sec => {
             const tid = `${f.id}_${sec.suffix}`;
             return `
@@ -1733,6 +1820,22 @@ function renderPlanSubpanels() {
             ${sectionHTML}
         </div>`;
     }).join('');
+    const aggregateHTML = `
+        <div class="sf-plan-subpanel sf-subpanel-hidden" data-fund="plan_aggregate">
+            <div class="sf-aggregate-card">
+                <h3>柒、彙編 — 主要業務計畫預算表</h3>
+                <p class="meta">六分基金垂直串接（即時彙整、唯讀）· 表號 1-2 · 單位：新臺幣千元</p>
+            </div>
+            <div class="section-card">
+                <div class="overflow-x-auto">
+                    <table class="sf-aggregate-table" id="sf-plan-aggregate-table">
+                        ${planAggregateThead()}
+                        <tbody id="sf-plan-aggregate-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+    container.innerHTML = fundsHTML + aggregateHTML;
 }
 
 function switchPlanSubtab(fundId) {
@@ -1742,13 +1845,14 @@ function switchPlanSubtab(fundId) {
     document.querySelectorAll('.sf-plan-subpanel').forEach(p => {
         p.classList.toggle('sf-subpanel-hidden', p.dataset.fund !== fundId);
     });
+    if (fundId === 'plan_aggregate') renderPlanAggregate();
 }
 
 // 渲染員額用人費子面板（各基金）
 function renderPersonnelSubpanels() {
     const container = document.getElementById('sf-personnel-subpanels');
     if (!container) return;
-    container.innerHTML = PLAN_FUNDS.map((f, idx) => {
+    const fundsHTML = PLAN_FUNDS.map((f, idx) => {
         const tid = `personnel_cost_${f.code}`;
         return `
         <div class="sf-personnel-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.code}">
@@ -1788,6 +1892,22 @@ function renderPersonnelSubpanels() {
             </div>
         </div>`;
     }).join('');
+    const aggregateHTML = `
+        <div class="sf-personnel-subpanel sf-subpanel-hidden" data-fund="aggregate">
+            <div class="sf-aggregate-card">
+                <h3>柒、彙編 — 乙、用人費用</h3>
+                <p class="meta">依項目名稱跨六分基金加總（即時彙整、唯讀）· 表號 1-3 下半部 · 單位：新臺幣千元</p>
+            </div>
+            <div class="section-card">
+                <div class="overflow-x-auto">
+                    <table class="sf-aggregate-table" id="sf-personnel-aggregate-table">
+                        ${personnelAggregateThead()}
+                        <tbody id="sf-personnel-aggregate-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+    container.innerHTML = fundsHTML + aggregateHTML;
 }
 
 // 切換員額用人費子選項卡
@@ -1798,13 +1918,14 @@ function switchPersonnelSubtab(fundId) {
     document.querySelectorAll('.sf-personnel-subpanel').forEach(p => {
         p.classList.toggle('sf-subpanel-hidden', p.dataset.fund !== fundId);
     });
+    if (fundId === 'aggregate') renderPersonnelAggregate();
 }
 
 // 渲染管制項目子面板（各基金）
 function renderControlSubpanels() {
     const container = document.getElementById('sf-control-subpanels');
     if (!container) return;
-    container.innerHTML = PLAN_FUNDS.map((f, idx) => {
+    const fundsHTML = PLAN_FUNDS.map((f, idx) => {
         const tid = `control_${f.code}`;
         return `
         <div class="sf-control-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.code}">
@@ -1844,6 +1965,22 @@ function renderControlSubpanels() {
             </div>
         </div>`;
     }).join('');
+    const aggregateHTML = `
+        <div class="sf-control-subpanel sf-subpanel-hidden" data-fund="aggregate">
+            <div class="sf-aggregate-card">
+                <h3>柒、彙編 — 其他管制性項目及重大事項預算表</h3>
+                <p class="meta">依項目名稱跨六分基金加總（即時彙整、唯讀）· 表號 1-4 · 單位：新臺幣千元</p>
+            </div>
+            <div class="section-card">
+                <div class="overflow-x-auto">
+                    <table class="sf-aggregate-table" id="sf-control-aggregate-table">
+                        ${controlAggregateThead()}
+                        <tbody id="sf-control-aggregate-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
+    container.innerHTML = fundsHTML + aggregateHTML;
 }
 
 // 切換管制項目子選項卡
@@ -1854,6 +1991,161 @@ function switchControlSubtab(fundId) {
     document.querySelectorAll('.sf-control-subpanel').forEach(p => {
         p.classList.toggle('sf-subpanel-hidden', p.dataset.fund !== fundId);
     });
+    if (fundId === 'aggregate') renderControlAggregate();
+}
+
+// ========== 7.7 彙編子 tab（讀取六分基金即時彙整、唯讀） ==========
+function planAggregateThead() {
+    return `<thead>
+        <tr>
+            <th rowspan="2">114年度<br>決算數</th>
+            <th rowspan="2">115年度<br>預算數</th>
+            <th rowspan="2">科目或計畫名稱</th>
+            <th rowspan="2">政策目標、計畫實施內容(或工作項目)<br>及預期效益摘要</th>
+            <th rowspan="2">原編數</th>
+            <th colspan="2">主管機關</th>
+            <th colspan="2">行政院初審</th>
+        </tr>
+        <tr>
+            <th>增減(-)數</th><th>核列數</th>
+            <th>擬增減(-)數</th><th>擬核列數</th>
+        </tr>
+    </thead>`;
+}
+
+function personnelAggregateThead() {
+    return `<thead>
+        <tr>
+            <th rowspan="2">113年度<br>決算</th>
+            <th rowspan="2">114年度<br>決算</th>
+            <th rowspan="2">115年度<br>預算</th>
+            <th rowspan="2">項目</th>
+            <th rowspan="2">原編<br>金額</th>
+            <th colspan="2">主管機關</th>
+            <th colspan="2">行政院初審</th>
+            <th rowspan="2">編列說明</th>
+        </tr>
+        <tr>
+            <th>增減(-)數</th><th>核列數</th>
+            <th>擬增減(-)數</th><th>擬核列數</th>
+        </tr>
+    </thead>`;
+}
+
+function controlAggregateThead() {
+    return `<thead>
+        <tr>
+            <th rowspan="2">113年度<br>決算數</th>
+            <th rowspan="2">114年度<br>決算數</th>
+            <th rowspan="2">115年度<br>預算數</th>
+            <th rowspan="2">項目</th>
+            <th rowspan="2">原編數</th>
+            <th colspan="2">主管機關</th>
+            <th colspan="2">行政院初審</th>
+            <th rowspan="2">編列說明</th>
+        </tr>
+        <tr>
+            <th>增減(-)數</th><th>核列數</th>
+            <th>擬增減(-)數</th><th>擬核列數</th>
+        </tr>
+    </thead>`;
+}
+
+// 業務計畫彙編列：依 level 縮排、L0 顯示為甲/乙分隔列
+function renderPlanAggRowHTML(r) {
+    const lv = parseInt(r.level) || 0;
+    if (lv === 0) {
+        return `<tr class="sf-section-header"><td colspan="9">${escapeHTML(r.name || '')}</td></tr>`;
+    }
+    const indent = lv > 1 ? '&nbsp;'.repeat((lv - 1) * 4) : '';
+    const weight = lv === 1 ? 'font-weight:bold;' : '';
+    const numCell = (v) => `<td class="sf-agg-num"${numColor(v)}>${fmtNum(v) || '-'}</td>`;
+    const nameCell = `<td class="sf-agg-name" style="${weight}">${indent}${escapeHTML(r.name || '')}</td>`;
+    const descCell = `<td class="sf-agg-desc">${escapeHTML(r.desc || '').replace(/\n/g, '<br>')}</td>`;
+    return `<tr>${numCell(r.dec113)}${numCell(r.bud114)}${nameCell}${descCell}${numCell(r.orig)}${numCell(r.dep_diff)}${numCell(r.dep_app)}${numCell(r.gov_diff)}${numCell(r.gov_app)}</tr>`;
+}
+
+function renderPlanAggregate() {
+    const body = document.getElementById('sf-plan-aggregate-body');
+    if (!body) return;
+    const data = collectData();
+    const bodyHTML = PLAN_FUNDS.map((f, idx) => {
+        const label = `${FUND_LABELS[idx]}、${f.name}`;
+        const fundHeader = `<tr class="sf-fund-header"><td colspan="9">${escapeHTML(label)}</td></tr>`;
+        const rows = [
+            ...(data.tables[`${f.id}_src`] || []),
+            ...(data.tables[`${f.id}_use`] || [])
+        ];
+        return fundHeader + rows.map(renderPlanAggRowHTML).join('');
+    }).join('');
+    body.innerHTML = bodyHTML || `<tr><td colspan="9" class="sf-aggregate-empty">（無資料）</td></tr>`;
+}
+
+// 員額用人費 / 管制項目：依 name 跨基金加總
+function sumRowsByName(tids, data) {
+    const merged = [];
+    tids.forEach(tid => {
+        (data.tables[tid] || []).forEach(row => {
+            const name = (row.name || '').trim();
+            if (!name) return;
+            let match = merged.find(r => (r.name || '').trim() === name);
+            if (!match) {
+                match = { name: row.name };
+                merged.push(match);
+            }
+            MERGE_SUM_FIELDS.forEach(k => {
+                const raw = row[k];
+                if (raw === undefined || raw === '' || raw === null) return;
+                const v = parseFloat(raw);
+                if (isNaN(v)) return;
+                const prev = parseFloat(match[k]);
+                match[k] = (isNaN(prev) ? 0 : prev) + v;
+            });
+            if (row.desc && row.desc.trim()) {
+                match.desc = (match.desc ? match.desc + '\n' : '') + row.desc.trim();
+            }
+        });
+    });
+    return merged;
+}
+
+function renderFlatAggRowHTML(r) {
+    const numCell = (v) => `<td class="sf-agg-num"${numColor(v)}>${fmtNum(v) || '-'}</td>`;
+    const nameCell = `<td class="sf-agg-name">${escapeHTML(r.name || '')}</td>`;
+    const descCell = `<td class="sf-agg-desc">${escapeHTML(r.desc || '').replace(/\n/g, '<br>')}</td>`;
+    return `<tr>${numCell(r.dec112)}${numCell(r.dec113)}${numCell(r.bud114)}${nameCell}${numCell(r.orig)}${numCell(r.dep_diff)}${numCell(r.dep_app)}${numCell(r.gov_diff)}${numCell(r.gov_app)}${descCell}</tr>`;
+}
+
+function renderPersonnelAggregate() {
+    const body = document.getElementById('sf-personnel-aggregate-body');
+    if (!body) return;
+    const data = collectData();
+    const tids = PLAN_FUNDS.map(f => `personnel_cost_${f.code}`);
+    const merged = sumRowsByName(tids, data);
+    body.innerHTML = merged.length
+        ? merged.map(renderFlatAggRowHTML).join('')
+        : `<tr><td colspan="10" class="sf-aggregate-empty">（無資料）</td></tr>`;
+}
+
+function renderControlAggregate() {
+    const body = document.getElementById('sf-control-aggregate-body');
+    if (!body) return;
+    const data = collectData();
+    const tids = PLAN_FUNDS.map(f => `control_${f.code}`);
+    const merged = sumRowsByName(tids, data);
+    body.innerHTML = merged.length
+        ? merged.map(renderFlatAggRowHTML).join('')
+        : `<tr><td colspan="10" class="sf-aggregate-empty">（無資料）</td></tr>`;
+}
+
+// 若目前正顯示彙編子面板，則即時重算（匯入／合併 JSON、重置範例等資料變動後呼叫）
+function refreshActiveAggregate() {
+    const planBtn = document.querySelector('.sf-subtab-btn.active');
+    if (planBtn?.dataset.subtab === 'plan_aggregate') renderPlanAggregate();
+    const persBtn = document.querySelector('.sf-personnel-subtab-btn.active');
+    if (persBtn?.dataset.subtab === 'personnel_cost_aggregate') renderPersonnelAggregate();
+    const ctrlBtn = document.querySelector('.sf-control-subtab-btn.active');
+    if (ctrlBtn?.dataset.subtab === 'control_aggregate') renderControlAggregate();
 }
 
 // ========== 8. 分頁切換 ==========
@@ -1925,6 +2217,28 @@ function bindEvents() {
     document.querySelectorAll('[data-tab-export-doc]').forEach(btn => {
         btn.onclick = () => exportTabDoc(btn.dataset.tabExportDoc);
     });
+
+    // Word .docx 直接匯入（業務計畫一鍵載入 6 基金）
+    const dxBtn = document.getElementById('sf-btn-docx-import');
+    const dxFile = document.getElementById('sf-docx-import-file');
+    if (dxBtn && dxFile) {
+        dxBtn.onclick = () => dxFile.click();
+        dxFile.onchange = e => {
+            if (e.target.files[0]) handleDocxImport(e.target.files[0]);
+            e.target.value = '';
+        };
+    }
+
+    // Word 轉換器 JSON 匯入（業務計畫一鍵載入 6 基金）
+    const wcBtn = document.getElementById('sf-btn-word-converter');
+    const wcFile = document.getElementById('sf-word-converter-file');
+    if (wcBtn && wcFile) {
+        wcBtn.onclick = () => wcFile.click();
+        wcFile.onchange = e => {
+            if (e.target.files[0]) handleWordConverterImport(e.target.files[0]);
+            e.target.value = '';
+        };
+    }
 
     document.getElementById('sf-btn-clear').onclick = () => {
         if (!confirm('確定要清空所有欄位與資料列？此動作無法復原。')) return;
