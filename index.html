@@ -7,10 +7,12 @@
     <title>農業特別收入基金 116 年度 細項預算查填</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
     <link rel="stylesheet" href="budget-style.css">
-    <link rel="stylesheet" href="special-fund.css">
+    <link rel="stylesheet" href="special-fund.css?v=3">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-    <script src="special-fund.js?v=6"></script>
+    <script src="mammoth.browser.min.js?v=1.7.1"></script>
+    <script src="word-converter.js?v=2"></script>
+    <script src="special-fund.js?v=9"></script>
 </head>
 <body>
 
@@ -77,6 +79,10 @@
             <input type="file" data-tab-import-file="plan" class="hidden" accept=".json">
             <button data-tab-merge="plan" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">🧩 合併多份 JSON</button>
             <input type="file" data-tab-merge-file="plan" class="hidden" accept=".json" multiple>
+            <button id="sf-btn-docx-import" class="sf-tab-toolbar-btn bg-amber-200 text-amber-900 px-3 py-2 rounded-lg text-sm font-bold border border-amber-400 hover:bg-amber-300" title="直接匯入 Word .docx（自動解析表格 6 基金）">📥 匯入 Word .docx</button>
+            <input type="file" id="sf-docx-import-file" class="hidden" accept=".docx">
+            <button id="sf-btn-word-converter" class="sf-tab-toolbar-btn bg-amber-100 text-amber-800 px-3 py-2 rounded-lg text-sm font-bold border border-amber-300 hover:bg-amber-200" title="從 Word 轉換器輸出的 JSON 載入（已有 JSON 才用）">📄 Word 轉 JSON</button>
+            <input type="file" id="sf-word-converter-file" class="hidden" accept=".json">
             <button data-tab-export-json="plan" class="sf-tab-toolbar-btn bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
             <button data-tab-export-doc="plan" class="sf-tab-toolbar-btn bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-700">📝 匯出 Doc</button>
         </div>
@@ -90,6 +96,7 @@
             <button data-subtab="plan_fish"     class="sf-subtab-btn">肆、漁業基金</button>
             <button data-subtab="plan_loss"     class="sf-subtab-btn">伍、農損基金</button>
             <button data-subtab="plan_renewal"  class="sf-subtab-btn">陸、農再基金</button>
+            <button data-subtab="plan_aggregate" class="sf-subtab-btn sf-subtab-aggregate" title="即時彙整六分基金資料（唯讀）">柒、彙編</button>
         </div>
 
         <!-- 6 個子面板，由 JS 渲染 -->
@@ -127,6 +134,7 @@
             <button data-subtab="personnel_cost_fish"     class="sf-personnel-subtab-btn">肆、漁業基金</button>
             <button data-subtab="personnel_cost_loss"     class="sf-personnel-subtab-btn">伍、農損基金</button>
             <button data-subtab="personnel_cost_renewal"  class="sf-personnel-subtab-btn">陸、農再基金</button>
+            <button data-subtab="personnel_cost_aggregate" class="sf-personnel-subtab-btn sf-subtab-aggregate" title="依項目名稱跨基金加總（唯讀）">柒、彙編</button>
         </div>
 
         <!-- 員額表（全基金共用） -->
@@ -203,6 +211,7 @@
             <button data-subtab="control_fish"     class="sf-control-subtab-btn">肆、漁業基金</button>
             <button data-subtab="control_loss"     class="sf-control-subtab-btn">伍、農損基金</button>
             <button data-subtab="control_renewal"  class="sf-control-subtab-btn">陸、農再基金</button>
+            <button data-subtab="control_aggregate" class="sf-control-subtab-btn sf-subtab-aggregate" title="依項目名稱跨基金加總（唯讀）">柒、彙編</button>
         </div>
 
         <!-- 6 個子面板，由 JS 渲染 -->

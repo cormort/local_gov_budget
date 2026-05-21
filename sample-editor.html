@@ -39,6 +39,27 @@
   .preview-table tr.lv-1 { font-weight: 600; }
   .preview-table tr.lv-2 td:nth-child(2) { padding-left: 22px; }
   .preview-table tr.lv-3 td:nth-child(2) { padding-left: 40px; color: #475569; }
+  /* 可編輯預覽表 */
+  .preview-table.editable input,
+  .preview-table.editable select {
+    width: 100%; padding: 2px 5px; border: 1px solid transparent;
+    background: transparent; font-family: inherit; font-size: inherit;
+    color: inherit; border-radius: 3px; box-sizing: border-box;
+  }
+  .preview-table.editable input:hover,
+  .preview-table.editable select:hover { border-color: #cbd5e1; background: white; }
+  .preview-table.editable input:focus,
+  .preview-table.editable select:focus { outline: none; border-color: #a78bfa; background: white; box-shadow: 0 0 0 2px rgba(167,139,250,0.25); }
+  .preview-table.editable input.cell-num { text-align: right; font-variant-numeric: tabular-nums; }
+  .preview-table.editable select.cell-lv { width: 56px; padding-right: 18px; }
+  .preview-table.editable td.ops { text-align: center; width: 36px; padding: 2px; }
+  .preview-table.editable .btn-del {
+    background: none; border: none; cursor: pointer; color: #94a3b8;
+    width: 26px; height: 24px; border-radius: 3px; font-size: 0.95rem; padding: 0;
+  }
+  .preview-table.editable .btn-del:hover { background: #fee2e2; color: #dc2626; }
+  .preview-edit-toolbar { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .preview-edit-toolbar .hint { margin-left: auto; }
   .nav-link { color: #6b21a8; text-decoration: none; font-weight: 600; }
   .nav-link:hover { text-decoration: underline; }
   .legend { display: flex; gap: 12px; font-size: 0.75rem; flex-wrap: wrap; margin-top: 4px; }
@@ -80,9 +101,14 @@
   <div class="row">
     <button class="btn" id="btn-load">📂 從專案載入 sample_fund_X.json</button>
     <button class="btn" id="btn-load-file">📁 開啟本機 JSON</button>
+    <button class="btn" id="btn-load-docx" title="直接匯入 Word .docx（自動解析表格、抽出當前基金）">📥 匯入 Word .docx</button>
+    <button class="btn" id="btn-load-converter" title="從 Word 轉換器輸出（[{tableIndex,data}, ...]）拉出當前基金的 src/use">📄 載入 Word 轉換 JSON</button>
     <input type="file" id="file-input" accept=".json" style="display:none">
+    <input type="file" id="file-input-converter" accept=".json" style="display:none">
+    <input type="file" id="file-input-docx" accept=".docx" style="display:none">
     <span class="status" id="load-status"></span>
   </div>
+  <p class="hint">「匯入 Word .docx」與「Word 轉換 JSON」只會更新當前基金的業務計畫 src／use，其他表（員額、用人費、管制項目）保留不動。建議先按「從專案載入」再覆蓋。</p>
 </div>
 
 <div class="card">
@@ -106,6 +132,7 @@
     <span class="added">綠底＝新增列</span>
     <span class="unchanged">灰字＝原資料（未動）</span>
   </div>
+  <p class="hint">下表可直接編輯：點任一格即可修改名稱、層級或數值。修改後請按下方「套用到記憶中」才會生效。</p>
   <div id="preview-area"></div>
 </div>
 
@@ -118,6 +145,8 @@
   <p class="hint">下載後請把檔案放回專案根目錄（覆蓋舊檔），commit 上 GitHub 後 Pages 會帶到新版。</p>
 </div>
 
-<script src="sample-editor.js?v=2"></script>
+<script src="mammoth.browser.min.js?v=1.7.1"></script>
+<script src="word-converter.js?v=2"></script>
+<script src="sample-editor.js?v=5"></script>
 </body>
 </html>
