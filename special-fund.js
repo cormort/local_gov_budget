@@ -1021,9 +1021,6 @@ function applyData(data) {
         if (items.length) items.forEach(it => addRow(tid, it));
         if (tid.startsWith('plan_')) recalcPlanTable(tid);
     });
-    // 應用數據後，重新初始化子選項卡狀態（確保只有第一個基金顯示）
-    switchPersonnelSubtab('agri');
-    switchControlSubtab('agri');
 }
 
 function val(id) { return (document.getElementById(id)?.value || '').trim(); }
