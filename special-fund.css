@@ -267,3 +267,8 @@
 .sf-merge-card .label { font-size: 0.75rem; color: #6b21a8; font-weight: 700; }
 .sf-merge-card .value { font-size: 1.5rem; color: #4c1d95; font-weight: 700; line-height: 1.2; }
 .sf-merge-card .sub   { font-size: 0.7rem; color: #6b7280; }
+
+/* 隱藏子面板（用於 tab 切換，避免 inline style 違反 CSP） */
+.sf-subpanel-hidden {
+    display: none !important;
+}

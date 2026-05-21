@@ -1841,7 +1841,7 @@ function renderPlanSubpanels() {
                 </div>
             </div>`;
         }).join('');
-        return `<div class="sf-plan-subpanel" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+        return `<div class="sf-plan-subpanel${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.id}">
             <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
                 <h3 class="text-lg font-bold text-purple-700">${escapeHTML(f.name)}</h3>
                 <p class="text-xs text-slate-600 mt-1">116年度 主要業務計畫預算表 · 表號 1-2 · 單位：新臺幣千元</p>
@@ -1856,7 +1856,7 @@ function switchPlanSubtab(fundId) {
         b.classList.toggle('active', b.dataset.subtab === fundId);
     });
     document.querySelectorAll('.sf-plan-subpanel').forEach(p => {
-        p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
+        p.classList.toggle('sf-subpanel-hidden', p.dataset.fund !== fundId);
     });
 }
 
@@ -1867,7 +1867,7 @@ function renderPersonnelSubpanels() {
     container.innerHTML = PLAN_FUNDS.map((f, idx) => {
         const tid = `personnel_cost_${f.id}`;
         return `
-        <div class="sf-personnel-subpanel section-card" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+        <div class="sf-personnel-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.id}">
             <div class="flex justify-between items-center mb-3">
                 <div>
                     <h4 class="text-lg font-bold text-purple-700">乙、用人費用 — ${escapeHTML(f.name)} <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h4>
@@ -1912,7 +1912,7 @@ function switchPersonnelSubtab(fundId) {
         b.classList.toggle('active', b.dataset.subtab.endsWith(fundId));
     });
     document.querySelectorAll('.sf-personnel-subpanel').forEach(p => {
-        p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
+        p.classList.toggle('sf-subpanel-hidden', p.dataset.fund !== fundId);
     });
 }
 
@@ -1923,7 +1923,7 @@ function renderControlSubpanels() {
     container.innerHTML = PLAN_FUNDS.map((f, idx) => {
         const tid = `control_${f.id}`;
         return `
-        <div class="sf-control-subpanel section-card" data-fund="${f.id}" ${idx > 0 ? 'style="display:none"' : ''}>
+        <div class="sf-control-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.id}">
             <div class="flex justify-between items-center mb-3">
                 <div>
                     <h3 class="text-lg font-bold text-purple-700">${escapeHTML(f.name)} — 其他管制性項目及重大事項預算表 <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h3>
@@ -1968,7 +1968,7 @@ function switchControlSubtab(fundId) {
         b.classList.toggle('active', b.dataset.subtab.endsWith(fundId));
     });
     document.querySelectorAll('.sf-control-subpanel').forEach(p => {
-        p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
+        p.classList.toggle('sf-subpanel-hidden', p.dataset.fund !== fundId);
     });
 }
 
