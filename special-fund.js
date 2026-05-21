@@ -2186,7 +2186,7 @@ async function fetchSampleTables() {
     const codes = PLAN_FUNDS.map(f => f.code);
     try {
         const all = await Promise.all(codes.map(c =>
-            fetch(`sample_fund_${c}.json`).then(r => r.ok ? r.json() : null).catch(() => null)
+            fetch(`sample_fund_${c}.json`, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)
         ));
         const merged = {};
         all.forEach(d => {
