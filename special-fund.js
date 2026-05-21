@@ -1909,7 +1909,7 @@ function renderPersonnelSubpanels() {
 // 切換員額用人費子選項卡
 function switchPersonnelSubtab(fundId) {
     document.querySelectorAll('.sf-personnel-subtab-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.subtab.startsWith(fundId));
+        b.classList.toggle('active', b.dataset.subtab.endsWith(fundId));
     });
     document.querySelectorAll('.sf-personnel-subpanel').forEach(p => {
         p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
@@ -1965,7 +1965,7 @@ function renderControlSubpanels() {
 // 切換管制項目子選項卡
 function switchControlSubtab(fundId) {
     document.querySelectorAll('.sf-control-subtab-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.subtab.startsWith(fundId));
+        b.classList.toggle('active', b.dataset.subtab.endsWith(fundId));
     });
     document.querySelectorAll('.sf-control-subpanel').forEach(p => {
         p.style.display = (p.dataset.fund === fundId) ? '' : 'none';
