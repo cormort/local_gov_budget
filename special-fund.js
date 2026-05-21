@@ -1945,13 +1945,14 @@ function bindEvents() {
         btn.onclick = () => { addRow(btn.dataset.table); scheduleAutosave(); };
     });
 
-    // 套用範例骨架
+    // 套用範例骨架（優先 sample_fund_*.json 真實資料，fallback 內建 SAMPLES）
     document.querySelectorAll('.sf-load-sample').forEach(btn => {
-        btn.onclick = () => {
+        btn.onclick = async () => {
             const tid = btn.dataset.table;
             if (!confirm(`將清除「${tableConfigs[tid].title}」目前所有列並重新載入 Word 預設項目？`)) return;
+            const fetched = await fetchSampleTables();
             document.getElementById('sf-tbody-' + tid).innerHTML = '';
-            (SAMPLES[tid] || []).forEach(r => addRow(tid, r));
+            resolveSampleRows(tid, fetched).forEach(r => addRow(tid, r));
             if (tid.startsWith('plan_')) recalcPlanTable(tid);
             scheduleAutosave();
         };
@@ -2178,12 +2179,51 @@ function parseClipboardTable(html) {
 }
 
 // ========== 10. 啟動 ==========
-function loadAllSamples() {
+// 從 sample_fund_*.json 載入真實資料；fallback 回 SAMPLES 內的占位資料
+let _sampleTablesCache = null;
+async function fetchSampleTables() {
+    if (_sampleTablesCache) return _sampleTablesCache;
+    const codes = PLAN_FUNDS.map(f => f.code);
+    try {
+        const all = await Promise.all(codes.map(c =>
+            fetch(`sample_fund_${c}.json`).then(r => r.ok ? r.json() : null).catch(() => null)
+        ));
+        const merged = {};
+        all.forEach(d => {
+            if (!d || !d.tables) return;
+            Object.entries(d.tables).forEach(([tid, rows]) => {
+                if (!merged[tid]) merged[tid] = [];
+                rows.forEach(r => merged[tid].push(r));
+            });
+        });
+        _sampleTablesCache = merged;
+        return merged;
+    } catch (e) {
+        console.warn('fetchSampleTables failed', e);
+        return {};
+    }
+}
+
+function resolveSampleRows(tid, fetched) {
+    // 優先 sample_fund_*.json（真實 Excel 資料），其次 SAMPLES（占位）
+    const fromJson = fetched && fetched[tid];
+    if (fromJson && fromJson.length) return fromJson;
+    return SAMPLES[tid] || [];
+}
+
+async function loadAllSamples() {
+    const fetched = await fetchSampleTables();
+    // 跑 normalizeData：補上 plan 各表的 L0「甲/乙」段落標題列
+    const fakeFull = { tables: { ...fetched } };
+    Object.keys(tableConfigs).forEach(tid => {
+        if (!fakeFull.tables[tid]) fakeFull.tables[tid] = (SAMPLES[tid] || []).map(r => ({ ...r }));
+    });
+    const normalized = normalizeData(fakeFull);
     Object.keys(tableConfigs).forEach(tid => {
         const tbody = document.getElementById('sf-tbody-' + tid);
         if (!tbody) return;
         tbody.innerHTML = '';
-        (SAMPLES[tid] || []).forEach(r => addRow(tid, r));
+        (normalized.tables[tid] || []).forEach(r => addRow(tid, r));
         if (tid.startsWith('plan_')) recalcPlanTable(tid);
     });
 }
