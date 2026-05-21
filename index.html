@@ -28,25 +28,17 @@
             <button data-tab="plan"      class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition active bg-white shadow-sm">📋 業務計畫</button>
             <button data-tab="personnel" class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition text-slate-500">👥 員額用人費</button>
             <button data-tab="control"   class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition text-slate-500">📊 管制項目</button>
-            <button data-tab="merge"     class="sf-tab-btn px-5 py-2 rounded-full font-bold text-sm transition text-slate-500">📥 彙整模式</button>
         </div>
     </div>
 </nav>
 
 <div class="max-w-[98%] mx-auto p-4">
 
-    <!-- 共用 metadata + 工具列 -->
+    <!-- 共用 metadata -->
     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6">
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-xl font-bold text-slate-800">基本資料</h2>
-            <div class="flex gap-2 flex-wrap">
-                <button id="sf-btn-import" class="bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入 JSON</button>
-                <input type="file" id="sf-import-file" class="hidden" accept=".json">
-                <button id="sf-btn-export-json" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
-                <button id="sf-btn-export-doc"  class="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-700">📝 匯出 Word (當前頁)</button>
-                <button id="sf-btn-export-doc-all" class="bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-purple-700">📚 匯出 Word (全部)</button>
-                <button id="sf-btn-clear" class="text-red-500 px-3 py-2 border rounded-lg text-sm hover:bg-red-50">🗑️ 清空</button>
-            </div>
+            <button id="sf-btn-clear" class="text-red-500 px-3 py-2 border rounded-lg text-sm hover:bg-red-50">🗑️ 清空全部</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
@@ -75,6 +67,17 @@
 
     <!-- ========== TAB 1: 業務計畫表（6 個基金子 tab）========== -->
     <section id="sf-tab-plan" class="sf-tab-panel">
+        <!-- tab 工具列 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">業務計畫</span>
+            <button data-tab-import="plan" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入 JSON</button>
+            <input type="file" data-tab-import-file="plan" class="hidden" accept=".json">
+            <button data-tab-merge="plan" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">🧩 合併多份 JSON</button>
+            <input type="file" data-tab-merge-file="plan" class="hidden" accept=".json" multiple>
+            <button data-tab-export-json="plan" class="sf-tab-toolbar-btn bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
+            <button data-tab-export-doc="plan" class="sf-tab-toolbar-btn bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-700">📝 匯出 Doc</button>
+        </div>
+
         <!-- 子 tab 列 -->
         <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
             <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
@@ -101,6 +104,17 @@
 
     <!-- ========== TAB 2: 員額及用人費用 ========== -->
     <section id="sf-tab-personnel" class="sf-tab-panel hidden">
+        <!-- tab 工具列 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">員額用人費</span>
+            <button data-tab-import="personnel" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入 JSON</button>
+            <input type="file" data-tab-import-file="personnel" class="hidden" accept=".json">
+            <button data-tab-merge="personnel" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">🧩 合併多份 JSON</button>
+            <input type="file" data-tab-merge-file="personnel" class="hidden" accept=".json" multiple>
+            <button data-tab-export-json="personnel" class="sf-tab-toolbar-btn bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
+            <button data-tab-export-doc="personnel" class="sf-tab-toolbar-btn bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-700">📝 匯出 Doc</button>
+        </div>
+
         <!-- 乙、用人費用 — 子選項卡（各基金） — 放在最上面 -->
         <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
             <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
@@ -166,6 +180,17 @@
 
     <!-- ========== TAB 3: 管制項目 ========== -->
     <section id="sf-tab-control" class="sf-tab-panel hidden">
+        <!-- tab 工具列 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">管制項目</span>
+            <button data-tab-import="control" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入 JSON</button>
+            <input type="file" data-tab-import-file="control" class="hidden" accept=".json">
+            <button data-tab-merge="control" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">🧩 合併多份 JSON</button>
+            <input type="file" data-tab-merge-file="control" class="hidden" accept=".json" multiple>
+            <button data-tab-export-json="control" class="sf-tab-toolbar-btn bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
+            <button data-tab-export-doc="control" class="sf-tab-toolbar-btn bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-indigo-700">📝 匯出 Doc</button>
+        </div>
+
         <!-- 子選項卡（各基金） -->
         <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
             <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
@@ -190,57 +215,7 @@
         </div>
     </section>
 
-    <!-- ========== TAB 4: 彙整模式 ========== -->
-    <section id="sf-tab-merge" class="sf-tab-panel hidden">
-        <div class="section-card">
-            <h3 class="text-xl font-bold text-purple-700 mb-2">📥 彙整模式 — 多基金 JSON 合併</h3>
-            <p class="text-sm text-slate-500 mb-4">
-                載入多份個別分基金的 JSON 檔，產生一份彙整基金。
-                <b>主要業務計畫表</b>：採「<u>向下追加</u>」（保留每基金完整列）；
-                <b>員額／用人費／管制項目</b>：採「<u>相同項目名稱加總</u>」（依 <code>name</code> 比對）。
-            </p>
 
-            <!-- 上傳區 -->
-            <div id="sf-merge-dropzone" class="sf-dropzone rounded-lg p-8 text-center cursor-pointer mb-4">
-                <div class="text-3xl mb-2">📁</div>
-                <div class="font-bold text-purple-700">點擊或拖曳多個基金 JSON 至此</div>
-                <div class="text-xs text-slate-500 mt-1">支援同時選取多個檔案；每檔代表一個個別分基金</div>
-                <input type="file" id="sf-merge-file" class="hidden" accept=".json" multiple>
-            </div>
-
-            <!-- 已載入清單 -->
-            <div class="mb-4">
-                <h4 class="text-sm font-bold mb-2 text-slate-600">已載入基金（<span id="sf-merge-count">0</span> 個）</h4>
-                <div id="sf-merge-list" class="space-y-2"></div>
-            </div>
-
-            <!-- 設定 -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-purple-50 border border-purple-200 p-4 rounded">
-                <div>
-                    <label class="text-xs font-bold text-slate-500 uppercase">彙整基金名稱</label>
-                    <input type="text" id="sf-merge-fund" class="border-b-2 w-full p-2 outline-none font-bold focus:border-purple-500" placeholder="例：農業特別收入基金（合計）">
-                </div>
-                <div>
-                    <label class="text-xs font-bold text-slate-500 uppercase">彙整年度</label>
-                    <input type="number" id="sf-merge-year" class="border-b-2 w-full p-2 outline-none" placeholder="預設使用上方年度欄位">
-                </div>
-            </div>
-
-            <!-- 預覽 -->
-            <div id="sf-merge-preview" class="mb-4 hidden">
-                <h4 class="text-sm font-bold mb-2 text-slate-600">彙整結果預覽</h4>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="sf-merge-preview-cards"></div>
-            </div>
-
-            <!-- 動作 -->
-            <div class="flex gap-2 flex-wrap">
-                <button id="sf-merge-preview-btn" class="bg-slate-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-slate-700">🔍 預覽彙整結果</button>
-                <button id="sf-merge-download" class="bg-purple-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-purple-700">💾 下載彙整 JSON</button>
-                <button id="sf-merge-apply" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold shadow hover:bg-indigo-700">📋 套用至上方表格</button>
-                <button id="sf-merge-clear" class="text-red-500 px-4 py-2 border rounded-lg hover:bg-red-50 ml-auto">🗑️ 清除已載入</button>
-            </div>
-        </div>
-    </section>
 </div>
 
 <div id="sf-autosave-indicator" class="autosave-indicator">✓ 已自動儲存</div>
