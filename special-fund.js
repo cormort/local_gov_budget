@@ -2180,6 +2180,8 @@ function parseClipboardTable(html) {
 
 // ========== 10. 啟動 ==========
 // 從 sample_fund_*.json 載入真實資料；fallback 回 SAMPLES 內的占位資料
+// 注意：'headcount' 是六基金共用的表，只取第一份；其餘 plan_X_*／personnel_cost_X／control_X 是基金特定，向下追加
+const SAMPLE_SHARED_KEYS = new Set(['headcount']);
 let _sampleTablesCache = null;
 async function fetchSampleTables() {
     if (_sampleTablesCache) return _sampleTablesCache;
@@ -2192,8 +2194,12 @@ async function fetchSampleTables() {
         all.forEach(d => {
             if (!d || !d.tables) return;
             Object.entries(d.tables).forEach(([tid, rows]) => {
-                if (!merged[tid]) merged[tid] = [];
-                rows.forEach(r => merged[tid].push(r));
+                if (SAMPLE_SHARED_KEYS.has(tid)) {
+                    if (!merged[tid]) merged[tid] = rows.map(r => ({ ...r }));
+                } else {
+                    if (!merged[tid]) merged[tid] = [];
+                    rows.forEach(r => merged[tid].push(r));
+                }
             });
         });
         _sampleTablesCache = merged;

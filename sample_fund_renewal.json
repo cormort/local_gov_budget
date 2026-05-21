@@ -117,59 +117,46 @@
     ],
     "headcount": [
       {
-        "name": "員額-項目一",
-        "dec112": 100,
-        "dec113": 100,
-        "bud114": 100,
-        "orig": 100,
-        "dep_diff": 100,
-        "dep_app": 100,
-        "gov_diff": 100,
-        "gov_app": 100
+        "name": "一、編制內預算員額"
       },
       {
-        "name": "員額-項目二",
-        "dec112": 100,
-        "dec113": 100,
-        "bud114": 100,
-        "orig": 100,
-        "dep_diff": 100,
-        "dep_app": 100,
-        "gov_diff": 100,
-        "gov_app": 100
+        "name": "　(一)職員"
       },
       {
-        "name": "員額-項目三",
-        "dec112": 100,
-        "dec113": 100,
-        "bud114": 100,
-        "orig": 100,
-        "dep_diff": 100,
-        "dep_app": 100,
-        "gov_diff": 100,
-        "gov_app": 100
+        "name": "　(二)警察"
       },
       {
-        "name": "員額-項目四",
-        "dec112": 100,
-        "dec113": 100,
-        "bud114": 100,
-        "orig": 100,
-        "dep_diff": 100,
-        "dep_app": 100,
-        "gov_diff": 100,
-        "gov_app": 100
+        "name": "　(三)駐衛警"
       },
       {
-        "name": "員額-項目五",
-        "dec112": 100,
-        "dec113": 100,
-        "bud114": 100,
-        "orig": 100,
-        "dep_diff": 100,
-        "dep_app": 100,
-        "gov_diff": 100,
-        "gov_app": 100
+        "name": "　(四)技工"
+      },
+      {
+        "name": "　(五)工友"
+      },
+      {
+        "name": "　(六)駕駛"
+      },
+      {
+        "name": "　(七)聘用"
+      },
+      {
+        "name": "　(八)約僱"
+      },
+      {
+        "name": "合　　　　計"
+      },
+      {
+        "name": "二、管理會委員"
+      },
+      {
+        "name": "三、顧問人員"
+      },
+      {
+        "name": "四、兼任人員"
+      },
+      {
+        "name": "五、資本支出"
       }
     ],
     "personnel_cost_renewal": [
