@@ -31,12 +31,12 @@ const PLAN_BASE = {
     isPlan: true
 };
 const PLAN_FUNDS = [
-    { id: 'plan_agri',     name: '農業發展基金',         short: '農發',    rank: 1 },
-    { id: 'plan_forest',   name: '林務發展及造林基金',     short: '林務',    rank: 2 },
-    { id: 'plan_disaster', name: '農業天然災害救助基金',   short: '天災',    rank: 3 },
-    { id: 'plan_fish',     name: '漁業發展基金',         short: '漁業',    rank: 4 },
-    { id: 'plan_loss',     name: '農產品受進口損害救助基金', short: '農損',  rank: 5 },
-    { id: 'plan_renewal',  name: '農村再生基金',         short: '農再',    rank: 6 }
+    { id: 'plan_agri',     code: 'agri',     name: '農業發展基金',         short: '農發',    rank: 1 },
+    { id: 'plan_forest',   code: 'forest',   name: '林務發展及造林基金',     short: '林務',    rank: 2 },
+    { id: 'plan_disaster', code: 'disaster', name: '農業天然災害救助基金',   short: '天災',    rank: 3 },
+    { id: 'plan_fish',     code: 'fish',     name: '漁業發展基金',         short: '漁業',    rank: 4 },
+    { id: 'plan_loss',     code: 'loss',     name: '農產品受進口損害救助基金', short: '農損',  rank: 5 },
+    { id: 'plan_renewal',  code: 'renewal',  name: '農村再生基金',         short: '農再',    rank: 6 }
 ];
 const PLAN_SECTIONS = [
     { suffix: 'src', label: '甲、基金來源' },
@@ -73,7 +73,7 @@ Object.assign(tableConfigs, {
 // 為各基金分別建立 personnel_cost 和 control 配置
 PLAN_FUNDS.forEach(f => {
     // personnel_cost_{fund}
-    tableConfigs[`personnel_cost_${f.id}`] = {
+    tableConfigs[`personnel_cost_${f.code}`] = {
         title: `${f.name} — 乙、用人費用`,
         sheetId: '1-3 下半部',
         unit: '新臺幣千元',
@@ -86,7 +86,7 @@ PLAN_FUNDS.forEach(f => {
     };
 
     // control_{fund}
-    tableConfigs[`control_${f.id}`] = {
+    tableConfigs[`control_${f.code}`] = {
         title: `${f.name} — 其他管制性項目及重大事項預算表`,
         sheetId: '1-4',
         unit: '新臺幣千元',
@@ -1455,8 +1455,8 @@ function exportDoc(scope) {
     let tables;
     if (scope === 'all') {
         // 導出所有表：6個基金的業務計畫 + 員額 + 各基金的用人費與管制項目
-        const personnelTables = planFundIds.map(f => `personnel_cost_${f}`);
-        const controlTables = planFundIds.map(f => `control_${f}`);
+        const personnelTables = PLAN_FUNDS.map(f => `personnel_cost_${f.code}`);
+        const controlTables = PLAN_FUNDS.map(f => `control_${f.code}`);
         tables = [...planFundIds, 'headcount', ...personnelTables, ...controlTables];
     } else if (scope === 'plan_all') {
         tables = planFundIds;
@@ -1467,11 +1467,11 @@ function exportDoc(scope) {
             tables = [active || 'plan_agri']; // 該基金的 src+use 合併
         } else if (main === 'personnel') {
             // 員額 + 所有基金的用人費
-            const personnelTables = planFundIds.map(f => `personnel_cost_${f}`);
+            const personnelTables = PLAN_FUNDS.map(f => `personnel_cost_${f.code}`);
             tables = ['headcount', ...personnelTables];
         } else if (main === 'control') {
             // 所有基金的管制項目
-            tables = planFundIds.map(f => `control_${f}`);
+            tables = PLAN_FUNDS.map(f => `control_${f.code}`);
         } else {
             tables = [main];
         }
@@ -1612,8 +1612,8 @@ function computeMerged() {
             const t = { headcount: [] };
             PLAN_FUNDS.forEach(f => {
                 PLAN_SECTIONS.forEach(s => t[`${f.id}_${s.suffix}`] = []);
-                t[`personnel_cost_${f.id}`] = [];
-                t[`control_${f.id}`] = [];
+                t[`personnel_cost_${f.code}`] = [];
+                t[`control_${f.code}`] = [];
             });
             return t;
         })(),
@@ -1667,7 +1667,7 @@ function computeMerged() {
         // === 基金特定的用人費與管制項目：為每基金加總 ===
         PLAN_FUNDS.forEach(pf => {
             ['personnel_cost','control'].forEach(typeKey => {
-                const tid = `${typeKey}_${pf.id}`;
+                const tid = `${typeKey}_${pf.code}`;
                 (t[tid] || []).forEach(row => {
                     const name = (row.name || '').trim();
                     if (!name) return;
@@ -1865,9 +1865,9 @@ function renderPersonnelSubpanels() {
     const container = document.getElementById('sf-personnel-subpanels');
     if (!container) return;
     container.innerHTML = PLAN_FUNDS.map((f, idx) => {
-        const tid = `personnel_cost_${f.id}`;
+        const tid = `personnel_cost_${f.code}`;
         return `
-        <div class="sf-personnel-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.id}">
+        <div class="sf-personnel-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.code}">
             <div class="flex justify-between items-center mb-3">
                 <div>
                     <h4 class="text-lg font-bold text-purple-700">乙、用人費用 — ${escapeHTML(f.name)} <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h4>
@@ -1921,9 +1921,9 @@ function renderControlSubpanels() {
     const container = document.getElementById('sf-control-subpanels');
     if (!container) return;
     container.innerHTML = PLAN_FUNDS.map((f, idx) => {
-        const tid = `control_${f.id}`;
+        const tid = `control_${f.code}`;
         return `
-        <div class="sf-control-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.id}">
+        <div class="sf-control-subpanel section-card${idx > 0 ? ' sf-subpanel-hidden' : ''}" data-fund="${f.code}">
             <div class="flex justify-between items-center mb-3">
                 <div>
                     <h3 class="text-lg font-bold text-purple-700">${escapeHTML(f.name)} — 其他管制性項目及重大事項預算表 <span class="text-xs font-normal text-slate-500">（單位：新臺幣千元）</span></h3>
