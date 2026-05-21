@@ -101,6 +101,17 @@
 
     <!-- ========== TAB 2: 員額及用人費用 ========== -->
     <section id="sf-tab-personnel" class="sf-tab-panel hidden">
+        <!-- 乙、用人費用 — 子選項卡（各基金） — 放在最上面 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
+            <button data-subtab="personnel_cost_agri"     class="sf-personnel-subtab-btn active">壹、農發基金</button>
+            <button data-subtab="personnel_cost_forest"   class="sf-personnel-subtab-btn">貳、林務基金</button>
+            <button data-subtab="personnel_cost_disaster" class="sf-personnel-subtab-btn">叁、天災基金</button>
+            <button data-subtab="personnel_cost_fish"     class="sf-personnel-subtab-btn">肆、漁業基金</button>
+            <button data-subtab="personnel_cost_loss"     class="sf-personnel-subtab-btn">伍、農損基金</button>
+            <button data-subtab="personnel_cost_renewal"  class="sf-personnel-subtab-btn">陸、農再基金</button>
+        </div>
+
         <!-- 員額表（全基金共用） -->
         <div class="section-card">
             <div class="flex justify-between items-center mb-3">
@@ -140,18 +151,7 @@
             </div>
         </div>
 
-        <!-- 乙、用人費用 — 子選項卡（各基金） -->
-        <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2">
-            <span class="text-xs font-bold text-slate-500 uppercase mr-2">選擇基金</span>
-            <button data-subtab="personnel_cost_agri"     class="sf-personnel-subtab-btn active">壹、農發基金</button>
-            <button data-subtab="personnel_cost_forest"   class="sf-personnel-subtab-btn">貳、林務基金</button>
-            <button data-subtab="personnel_cost_disaster" class="sf-personnel-subtab-btn">叁、天災基金</button>
-            <button data-subtab="personnel_cost_fish"     class="sf-personnel-subtab-btn">肆、漁業基金</button>
-            <button data-subtab="personnel_cost_loss"     class="sf-personnel-subtab-btn">伍、農損基金</button>
-            <button data-subtab="personnel_cost_renewal"  class="sf-personnel-subtab-btn">陸、農再基金</button>
-        </div>
-
-        <!-- 6 個子面板，由 JS 渲染 -->
+        <!-- 乙、用人費用 — 6 個子面板，由 JS 渲染 -->
         <div id="sf-personnel-subpanels"></div>
 
         <!-- 共用審核意見 -->
