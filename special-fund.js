@@ -822,7 +822,7 @@ function cellHTML(col, data, tableId) {
         return `<td class="sf-lv"><select class="sf-level-select" data-key="level">${opts}</select></td>`;
     }
     if (def.type === 'textarea') {
-        return `<td class="${def.td_class}"><textarea data-key="${col}" placeholder="">${val}</textarea></td>`;
+        return `<td class="${def.td_class}"><textarea data-key="${col}" placeholder="">${escapeHTML(val)}</textarea></td>`;
     }
     if (def.type === 'text') {
         return `<td class="${def.td_class}"><input type="text" data-key="${col}" value="${escapeAttr(val)}"></td>`;
