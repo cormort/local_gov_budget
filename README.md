@@ -109,7 +109,14 @@ local_gov_budget/
 │   ├── 資料載入/還原 (L603-668)
 │   ├── JSON 導入/導出 (L672-750+)
 │   └── 事件監聽與互動 (L1470+)
-├── special-fund.css                  # 樣式表
+├── special-fund.css                  # 樣式表（含上傳 xlsx 的預覽視窗樣式）
+├── vendor/forms/                     # 產生檔：表單定義、預設資料、xlsx profile（勿手改）
+│   ├── agri-special-fund.js          #   → window.LGB_FORMS（來源：agri_special_fund_forms）
+│   ├── sample-data.js                #   → window.LGB_SAMPLE_DATA
+│   └── xlsx-profiles.js              #   → window.LGB_XLSX_PROFILES
+├── tools/sync-forms.mjs              # 從 forms repo 重新產生 vendor/forms（npm run sync:forms）
+├── xlsx-import.js                    # 上傳 xlsx → 差異預覽 → 只補金額（不動結構）
+├── tools/verify-xlsx-mapping.mjs     # 映射回歸測試（npm run test:mapping）
 ├── budget-app.js                     # 其他功能模組（預留）
 ├── budget-style.css                  # 額外樣式
 │
@@ -120,7 +127,7 @@ local_gov_budget/
 ├── budget_data_converted.json        # 部分轉換資料（不完整）
 │
 ├── tailwind.config.js                # Tailwind CSS 配置
-├── package.json                      # 依賴項（Tailwind 構建）
+├── package.json                      # 依賴項（Tailwind 構建、xlsx 測試用）
 └── README.md                         # 本檔案
 ```
 
@@ -273,23 +280,68 @@ file:///Users/hsiehminchieh/Dev/Work/local_gov_budget/special-fund.html
 
 ### 5. 匯入
 
-選擇 JSON 檔案匯入，系統會：
-- 比對欄位別名（中文欄位名稱）
-- 只更新存在的欄位（不覆蓋無關數據）
-- 保留現有審核意見
+**a) 匯入 JSON**：選擇 JSON 檔案匯入，系統會比對欄位別名（中文欄位名稱）、只更新存在的欄位（不覆蓋無關數據）、保留現有審核意見。
+
+**b) 匯入官方 Excel（推薦）**：業務計畫頁工具列的「📊 匯入官方 xlsx」
+
+1. 上傳官方彙總檔（例：`FNGBRB5300_*.xlsx`）
+2. 系統比對後**先顯示差異**（舊值 → 新值），不會直接覆蓋
+3. 只有「完全相同」與 profile 內宣告的「別名」會預設勾選；「包含」「相似」一律要人工確認
+4. 按「套用」才寫入，並自動存檔；可下載 `mapping-report_*.json` 留存本次對帳紀錄
+
+| 比對結果 | 意義 | 預設行為 |
+|---|---|---|
+| 完全相同 | 正規化後名稱一致 | 自動勾選 |
+| 別名 | `xlsx-profiles.js` 內人工宣告的對應（例：綠色環境給付計畫 → 農糧產業調整與轉型計畫） | 自動勾選 |
+| 包含 | 一方是另一方的子字串（官方欄名常夾舊名稱註記） | 需逐筆確認 |
+| 相似 | 相似度 ≥ 0.75 | 需逐筆確認 |
+| 未匹配 | 找不到對應欄位 | 只列出，**永不寫入** |
+
+其他保護：
+- 段落標題列（甲、乙）與「其他」「購建固定資產」這類人工分類列不參與映射，避免蓋掉自動加總
+- 母列若「官方值 ≠ 子列加總」，預覽會先警告（套用後仍以子列加總為準）
+- 只補金額欄位，**不動**表格結構、層級、審核意見
 
 ---
 
 ## 🔧 開發與更新
 
+### 表單定義的來源（重要）
+
+表單欄位、25 張表、基金清單、加總規則**不再寫在這支程式裡**，來源是
+[agri_special_fund_forms](https://github.com/cormort/agri_special_fund_forms)：
+
+```
+agri_special_fund_forms（表單定義的唯一來源）
+        │  npm run sync:forms
+        ▼
+local_gov_budget/vendor/forms/*.js   ← 產生檔（已 commit，file:// 也能用）
+        │  window.LGB_FORMS / LGB_SAMPLE_DATA / LGB_XLSX_PROFILES
+        ▼
+special-fund.js  以資料推導 COL、PLAN_FUNDS、tableConfigs、TAB_INFO、加總規則
+```
+
+- **要改表單或換年度**：改 forms repo → 跑 `npm run sync:forms`（預設讀 `../agri_special_fund_forms`，
+  也可 `--from <path>`）→ 重新整理。
+- **要確認有沒有漂移**：`npm run check:forms`（不一致會 exit 1，可放 CI）。
+- 為什麼是產生「.js」而不是直接 fetch JSON：本專案實務上以 `file://` 開啟，
+  `fetch()` 讀不到本地 JSON，且 CSP 為 `connect-src 'self'`；用 `<script>` 載入產生檔可同時支援
+  `file://` 與 http。`vendor/forms/*.js` 內含來源 repo 的 commit 短碼，方便追朔。
+
+### 換年度／換官方檔案格式（上傳 xlsx 的路徑）
+
+映射設定改在 forms repo 的 `profiles/FNGBRB5300.json`，改完跑 `npm run sync:forms`；
+`xlsx-import.js` 不需要改。
+
 ### 修改預設值
 
-**位置**：`special-fund.js` L93 - L455
+預設資料已移到 forms repo 的 `data/sample_fund_*.json`（本 repo 只保留產生檔與一份副本供 `file://` 離線使用）：
 
-**步驟**：
-1. 在對應的 `plan_agri` / `plan_fish` 等陣列中找到要修改的列
-2. 更改 `bud114` 的值（單位：千元）
-3. 保存檔案，瀏覽器重新整理
+1. 改 forms repo 的 `data/sample_fund_*.json`（`bud114` 單位為千元）
+2. 在本 repo 跑 `npm run sync:forms`
+3. 瀏覽器重新整理（或按「重置為 Word 預設項目」）
+
+若只是臨時調整，建議直接在畫面上改並匯出 JSON，不要動產生檔。
 
 **範例** — 更新農發基金第一計畫預算：
 ```javascript

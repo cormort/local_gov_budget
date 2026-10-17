@@ -1,101 +1,44 @@
 'use strict';
 
-// ========== 1. 表格欄位定義 ==========
-// 每個 column: { key, label, type, td_class?, auto? }
-//   type: 'number' | 'text' | 'textarea' | 'level'
-//   auto: 'dep_app' (= orig + dep_diff) | 'gov_app' (= dep_app + gov_diff)
+// ========== 1. 表單定義（唯一來源：agri_special_fund_forms repo） ==========
+// COL / PLAN_FUNDS / PLAN_SECTIONS / LEVEL_LABELS / tableConfigs 全部由
+// vendor/forms/agri-special-fund.js（產生檔）推導，不再手寫。
+// 要改表單：改 forms repo → 在本地跑 `npm run sync:forms`。
+const FORMS = window.LGB_FORMS;
+if (!FORMS) {
+    throw new Error('vendor/forms/agri-special-fund.js 未載入（請先執行 npm run sync:forms）');
+}
 
-const COL = {
-    // 內部 key 維持 dec112/dec113/bud114/apr114 以維持 autosave 相容；標籤對應新年度
-    dec112: { key: 'dec112', label: '113年度決算', type: 'number', td_class: 'sf-num' },
-    dec113: { key: 'dec113', label: '114年度決算', type: 'number', td_class: 'sf-num' },
-    bud114: { key: 'bud114', label: '115年度預算', type: 'number', td_class: 'sf-num' },
-    apr114: { key: 'apr114', label: '115年4月底在職', type: 'number', td_class: 'sf-num' },
-    level:  { key: 'level',  label: '層級',         type: 'level',  td_class: 'sf-lv' },
-    name:   { key: 'name',   label: '項目/科目名稱', type: 'text',   td_class: 'sf-name' },
-    desc:   { key: 'desc',   label: '摘要/說明',     type: 'textarea', td_class: 'sf-desc' },
-    orig:    { key: 'orig',    label: '原編數',     type: 'number', td_class: 'sf-num' },
-    dep_diff:{ key: 'dep_diff',label: '主管增減(-)', type: 'number', td_class: 'sf-num' },
-    dep_app: { key: 'dep_app', label: '主管核列',   type: 'number', td_class: 'sf-num', auto: 'dep_app' },
-    gov_diff:{ key: 'gov_diff',label: '院擬增減(-)', type: 'number', td_class: 'sf-num' },
-    gov_app: { key: 'gov_app', label: '院擬核列',   type: 'number', td_class: 'sf-num', auto: 'gov_app' }
-};
+const COL = {};
+Object.keys(FORMS.columns).forEach(key => {
+    const d = FORMS.columns[key];
+    const def = { key, label: d.label, type: d.type, td_class: d.tdClass };
+    if (d.auto) def.auto = d.auto;
+    COL[key] = def;
+});
 
-// 業務計畫表共用結構（6 基金 × 甲/乙 = 12 表，共用同一組欄位）
-const PLAN_BASE = {
-    sheetId: '1-2',
-    unit: '新臺幣千元',
-    cols: ['level', 'dec113', 'bud114', 'name', 'desc', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app'],
-    hasLevel: true,
-    reviewKey: 'plan',
-    isPlan: true
-};
-const PLAN_FUNDS = [
-    { id: 'plan_agri',     code: 'agri',     name: '農業發展基金',         short: '農發',    rank: 1 },
-    { id: 'plan_forest',   code: 'forest',   name: '林務發展及造林基金',     short: '林務',    rank: 2 },
-    { id: 'plan_disaster', code: 'disaster', name: '農業天然災害救助基金',   short: '天災',    rank: 3 },
-    { id: 'plan_fish',     code: 'fish',     name: '漁業發展基金',         short: '漁業',    rank: 4 },
-    { id: 'plan_loss',     code: 'loss',     name: '農產品受進口損害救助基金', short: '農損',  rank: 5 },
-    { id: 'plan_renewal',  code: 'renewal',  name: '農村再生基金',         short: '農再',    rank: 6 }
-];
-const PLAN_SECTIONS = [
-    { suffix: 'src', label: '甲、基金來源' },
-    { suffix: 'use', label: '乙、基金用途' }
-];
+const PLAN_FUNDS = FORMS.funds.map(f => ({ ...f }));
+const PLAN_SECTIONS = FORMS.sections.map(s => ({ ...s }));
 
+const LEVEL_LABELS = FORMS.levelLabels;
+
+// 25 張表的設定（業務計畫 12、員額 1、用人費用 6、管制項目 6）
 const tableConfigs = {};
-PLAN_FUNDS.forEach(f => {
-    PLAN_SECTIONS.forEach(sec => {
-        const tid = `${f.id}_${sec.suffix}`;
-        tableConfigs[tid] = {
-            ...PLAN_BASE,
-            title: `${f.name} 116年度 主要業務計畫預算表 — ${sec.label}`,
-            fundId: f.id,
-            fundName: f.name,
-            fundShort: f.short,
-            section: sec.suffix,
-            sectionLabel: sec.label,
-            rank: f.rank
-        };
-    });
-});
-Object.assign(tableConfigs, {
-    headcount: {
-        title: '甲、員額',
-        sheetId: '1-3 上半部',
-        unit: '人',
-        cols: ['dec112', 'dec113', 'bud114', 'apr114', 'name', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app', 'desc'],
-        hasLevel: false,
-        reviewKey: null // 員額表自身無審核意見
-    }
-});
-
-// 為各基金分別建立 personnel_cost 和 control 配置
-PLAN_FUNDS.forEach(f => {
-    // personnel_cost_{fund}
-    tableConfigs[`personnel_cost_${f.code}`] = {
-        title: `${f.name} — 乙、用人費用`,
-        sheetId: '1-3 下半部',
-        unit: '新臺幣千元',
-        cols: ['dec112', 'dec113', 'bud114', 'name', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app', 'desc'],
-        hasLevel: false,
-        reviewKey: 'personnel',
-        fundId: f.id,
-        fundName: f.name,
-        fundShort: f.short
-    };
-
-    // control_{fund}
-    tableConfigs[`control_${f.code}`] = {
-        title: `${f.name} — 其他管制性項目及重大事項預算表`,
-        sheetId: '1-4',
-        unit: '新臺幣千元',
-        cols: ['dec112', 'dec113', 'bud114', 'name', 'orig', 'dep_diff', 'dep_app', 'gov_diff', 'gov_app', 'desc'],
-        hasLevel: false,
-        reviewKey: 'control',
-        fundId: f.id,
-        fundName: f.name,
-        fundShort: f.short
+FORMS.tables.forEach(t => {
+    tableConfigs[t.id] = {
+        title: t.title,
+        sheetId: t.sheetId,
+        unit: t.unit,
+        cols: t.cols.slice(),
+        hasLevel: !!t.hasLevel,
+        reviewKey: t.reviewKey || null,
+        isPlan: !!t.isPlan,
+        fundId: t.fundId,
+        fundName: t.fundName,
+        fundShort: t.fundShort,
+        section: t.section,
+        sectionLabel: t.sectionLabel,
+        rank: t.rank
     };
 });
 
@@ -107,644 +50,9 @@ function isControlTable(tableId) {
     return tableId === 'control' || /^control_/.test(tableId);
 }
 
-// 業務計畫表層級：L0 為「甲/乙」區段標題列，置於各表最上方
-const LEVEL_LABELS = { 0: '甲/乙', 1: '一、二、', 2: '計畫名 / (一)', 3: '1./2.', 4: '(1)/(2)' };
-
-// ========== 2. 預設項目（依各分基金 Word 原表，數字留空） ==========
-const SAMPLES = {
-    // === 業務計畫 — 農發基金（依「農發基金115-212業務計畫」）===
-    plan_agri: [
-        { level: 2, name: '甲、基金來源：', bud114: 25088694 },
-        { level: 3, name: '一、一般業務計畫' },
-        { level: 3, name: '二、國庫撥補款' },
-        { level: 2, name: '乙、基金用途：', bud114: 26027696 },
-        { level: 3, name: '一、提升農業經營及發展計畫', bud114: 18683875 },
-        { level: 4, name: '糧政業務計畫' },
-        { level: 4, name: '1.收購糧食' },
-        { level: 5, name: '(1)數量：公噸(稻穀)' },
-        { level: 5, name: '(2)單位成本：元' },
-        { level: 4, name: '2.糧食銷售(主產品)' },
-        { level: 5, name: '(1)銷售量：公噸(折糙)' },
-        { level: 5, name: '(2)單位成本：元' },
-        { level: 4, name: '穩定肥料及相關資材供需計畫' },
-        { level: 4, name: '產銷調節計畫' },
-        { level: 4, name: '家禽流行性感冒防疫計畫' },
-        { level: 3, name: '二、促進農地利用及農業競爭力計畫', bud114: 2053561 },
-        { level: 4, name: '老農出租農地獎勵計畫' },
-        { level: 4, name: '農地之生產環境整備及維護管理計畫' },
-        { level: 4, name: '農業研究、實驗、技術改進計畫' },
-        { level: 4, name: '農地對地給付計畫' },
-        { level: 3, name: '三、增進農民所得及福利計畫', bud114: 5079216 },
-        { level: 4, name: '獎勵農漁民子女就學計畫' },
-        { level: 4, name: '農業保險計畫' },
-        { level: 4, name: '精進豬隻保險業務計畫' },
-        { level: 4, name: '精進乳牛保險業務計畫' },
-        { level: 4, name: '家禽禽流感保險計畫' },
-        { level: 4, name: '農產業保險計畫' },
-        { level: 4, name: '漁產業保險計畫' },
-        { level: 4, name: '農業保險推動及輔導計畫' },
-        { level: 4, name: '農業貸款利息差額補貼' },
-        { level: 4, name: '農機貸款' },
-        { level: 4, name: '加速農村建設貸款' },
-        { level: 4, name: '擴大家庭農場經營規模協助農民購買耕地貸款' },
-        { level: 4, name: '各類專案性農業貸款利息補貼' },
-        { level: 4, name: '養豬新式設施(備)導入提供專案政策性農貸利息補貼' },
-        { level: 4, name: '委託辦理政策性農業專案貸款業務及印製宣傳摺頁' },
-        { level: 4, name: '辦理政策性農業專案貸款行政事務' },
-        { level: 3, name: '四、輔導菸農轉型與檳榔廢園轉作計畫', bud114: 85000 },
-        { level: 3, name: '五、處理農會漁會信用部計畫', bud114: 125002 },
-        { level: 3, name: '六、一般行政管理計畫' }
-    ],
-    // === 業務計畫 — 林務基金（依「林務基金212-115」）===
-    plan_forest: [
-        { level: 2, name: '甲、基金來源：', bud114: 1696479 },
-        { level: 3, name: '一、一般業務計畫之基金來源合計' },
-        { level: 2, name: '乙、基金用途：', bud114: 1659962 },
-        { level: 3, name: '一、獎勵輔導造林計畫', bud114: 480117 },
-        { level: 3, name: '二、森林遊樂及林業鐵路經營管理計畫', bud114: 1153045 },
-        { level: 3, name: '三、山坡地開發利用回饋金繳交管理計畫', bud114: 26800 },
-        { level: 3, name: '四、原住民保留地竹林更新獎勵計畫' }
-    ],
-    // === 業務計畫 — 農業天然災害救助基金 ===
-    plan_disaster: [
-        { level: 2, name: '甲、基金來源：', bud114: 6215490 },
-        { level: 3, name: '一般業務計畫' },
-        { level: 3, name: '國庫撥補額' },
-        { level: 2, name: '乙、基金用途：', bud114: 6215490 },
-        { level: 3, name: '農業天然災害救助計畫', bud114: 6215490 }
-    ],
-    // === 業務計畫 — 漁業基金（依「漁發基金115-212業務計畫」）===
-    plan_fish: [
-        { level: 2, name: '甲、基金來源：', bud114: 980 },
-        { level: 3, name: '財產收入' },
-        { level: 3, name: '其他收入' },
-        { level: 2, name: '乙、基金用途：', bud114: 2300 },
-        { level: 3, name: '漁業發展補助計畫', bud114: 2300 }
-    ],
-    // === 業務計畫 — 農產品受進口損害救助基金（依「農損基金-212」）===
-    plan_loss: [
-        { level: 2, name: '甲、基金來源：', bud114: 16095143 },
-        { level: 3, name: '一、權利金收入' },
-        { level: 3, name: '二、利息收入' },
-        { level: 3, name: '三、公庫撥款收入' },
-        { level: 3, name: '四、其他收入' },
-        { level: 2, name: '乙、基金用途：', bud114: 16695143 },
-        { level: 3, name: '一、調整產業或防範措施計畫', bud114: 3879115 },
-        { level: 3, name: '二、進口損害救助及穩價計畫', bud114: 1000 },
-        { level: 3, name: '三、農糧產業調整與轉型計畫(原「綠色環境給付計畫」)', bud114: 12759005 },
-        { level: 3, name: '四、農產品進口管理計畫', bud114: 56023 }
-    ],
-    // === 業務計畫 — 農村再生基金（依「農再基金-212」）===
-    plan_renewal: [
-        { level: 2, name: '甲、基金來源：', bud114: 2913206 },
-        { level: 3, name: '一、一般業務計畫' },
-        { level: 3, name: '二、國庫撥補款' },
-        { level: 2, name: '乙、基金用途：', bud114: 17234940 },
-        // 農再有 壹/貳 額外層，所以 壹/貳 對應 L1，下面 一/二/三 對應 L2，1./2. 對應 L3
-        { level: 3, name: '壹、農村再生規劃及人力培育計畫', bud114: 2185200 },
-        { level: 4, name: '一、農村規劃及培力' },
-        { level: 4, name: '1.農村人力及教育推廣' },
-        { level: 4, name: '二、農業人才多元培育' },
-        { level: 4, name: '三、農村農產業人力活化計畫' },
-        { level: 3, name: '貳、農村再生建設及發展計畫', bud114: 15049740 },
-        { level: 4, name: '一、農村再生社區發展及環境改善' },
-        { level: 4, name: '1.農村再生跨域發展' },
-        { level: 4, name: '2.社區農村再生計畫' },
-        { level: 4, name: '3.農村社區土地重劃及發展規劃' },
-        { level: 4, name: '二、農村發展及活化' },
-        { level: 4, name: '1.提升農村農糧產業競爭力' },
-        { level: 4, name: '2.發展健康永續的有機產業' },
-        { level: 4, name: '3.農村社區畜牧場環境改善及資源利用' },
-        { level: 4, name: '4.建設休閒農業優質環境' },
-        { level: 4, name: '5.友善漁業生產環境及漁村產業活動推廣' },
-        { level: 4, name: '6.山村綠色經濟永續發展計畫' },
-        { level: 4, name: '7.農產加工整合服務體系發展' },
-        { level: 4, name: '8.運用資通訊技術(ICT)強化農業發展及推廣計畫' },
-        { level: 4, name: '9.優化農業推廣教育訓練場域' },
-        { level: 4, name: '10.推動化學農藥減量模式促進農村生產環境永續發展' },
-        { level: 4, name: '11.農村水資源韌性公共設施建設' },
-        { level: 4, name: '12.推動農會經濟事業發展，振興農村產業' },
-        { level: 4, name: '13.改善農村金融服務品質' },
-        { level: 4, name: '14.農業旅遊創新發展及市場拓展' },
-        { level: 4, name: '三、擴大豬場導入新式整合型設施(備)' },
-        { level: 4, name: '四、建構農糧產業機械示範體系與營造多元服務價值鏈' },
-        { level: 4, name: '五、智能防災設施型農業計畫' }
-    ],
-    // === 舊版整合用 plan 已移除，向下相容透過 normalizeData() 自動 migrate ===
-    _legacy_plan_DELETED: [
-        { level: 1, name: '壹、農業發展基金' },
-        { level: 2, name: '甲、基金來源：' },
-        { level: 3, name: '一、一般業務計畫' },
-        { level: 3, name: '二、國庫撥補款' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 4, name: '提升農業經營及發展計畫' },
-        { level: 4, name: '糧政業務計畫' },
-        { level: 4, name: '收購糧食' },
-        { level: 5, name: '(1)數量：公噸(稻穀)' },
-        { level: 5, name: '(2)單位成本：元' },
-        { level: 4, name: '糧食銷售(主產品)' },
-        { level: 5, name: '(1)銷售量：公噸(折糙)' },
-        { level: 5, name: '(2)單位成本：元' },
-        { level: 4, name: '穩定肥料及相關資材供需計畫' },
-        { level: 4, name: '產銷調節計畫' },
-        { level: 4, name: '家禽流行性感冒防疫計畫' },
-        { level: 4, name: '促進農地利用及農業競爭力計畫' },
-        { level: 4, name: '老農出租農地獎勵計畫' },
-        { level: 4, name: '農地之生產環境整備及維護管理計畫' },
-        { level: 4, name: '農業研究、實驗、技術改進計畫' },
-        { level: 4, name: '農地對地給付計畫' },
-        { level: 4, name: '增進農民所得及福利計畫' },
-        { level: 4, name: '獎勵農漁民子女就學計畫' },
-        { level: 4, name: '農業保險計畫' },
-        { level: 4, name: '精進豬隻保險業務計畫' },
-        { level: 4, name: '精進乳牛保險業務計畫' },
-        { level: 4, name: '家禽禽流感保險計畫' },
-        { level: 4, name: '農產業保險計畫' },
-        { level: 4, name: '漁產業保險計畫' },
-        { level: 4, name: '農業保險推動及輔導計畫' },
-        { level: 4, name: '農業貸款利息差額補貼' },
-        { level: 4, name: '農機貸款' },
-        { level: 4, name: '加速農村建設貸款' },
-        { level: 4, name: '擴大家庭農場經營規模協助農民購買耕地貸款' },
-        { level: 4, name: '各類專案性農業貸款利息補貼' },
-        { level: 4, name: '養豬新式設施(備)導入提供專案政策性農貸利息補貼' },
-        { level: 4, name: '委託辦理政策性農業專案貸款業務及印製宣傳摺頁' },
-        { level: 4, name: '辦理政策性農業專案貸款行政事務' },
-        { level: 4, name: '輔導菸農轉型與檳榔廢園轉作計畫' },
-        { level: 4, name: '處理農會漁會信用部計畫' },
-        { level: 4, name: '一般行政管理計畫' },
-        { level: 1, name: '貳、林務發展及造林基金' },
-        { level: 2, name: '甲、基金來源：' },
-        { level: 4, name: '一般業務計畫' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 4, name: '獎勵輔導造林計畫' },
-        { level: 4, name: '森林遊樂及林業鐵路經營管理計畫' },
-        { level: 4, name: '山坡地開發利用回饋金繳交管理計畫' },
-        { level: 4, name: '原住民保留地竹林更新獎勵計畫' },
-        { level: 1, name: '叁、農業天然災害救助基金' },
-        { level: 2, name: '甲、基金來源：' },
-        { level: 4, name: '一般業務計畫' },
-        { level: 4, name: '國庫撥補款' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 4, name: '農業天然災害救助計畫' },
-        { level: 1, name: '肆、漁業發展基金' },
-        { level: 2, name: '甲、基金來源：' },
-        { level: 4, name: '財產收入' },
-        { level: 4, name: '其他收入' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 4, name: '漁業發展補助計畫' },
-        { level: 1, name: '伍、農產品受進口損害救助基金' },
-        { level: 2, name: '甲、基金來源：' },
-        { level: 4, name: '權利金收入' },
-        { level: 4, name: '利息收入' },
-        { level: 4, name: '國庫撥補款' },
-        { level: 4, name: '其他收入' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 4, name: '調整產業或防範措施計畫' },
-        { level: 4, name: '進口損害救助及穩價計畫' },
-        { level: 4, name: '農糧產業調整與轉型計畫(原「綠色環境給付計畫」)' },
-        { level: 4, name: '農產品進口管理計畫' },
-        { level: 1, name: '陸、農村再生基金' },
-        { level: 2, name: '甲、基金來源：' },
-        { level: 4, name: '一般業務計畫' },
-        { level: 4, name: '國庫撥補款' },
-        { level: 2, name: '乙、基金用途：' },
-        { level: 4, name: '農村再生規劃及人力培育計畫' },
-        { level: 4, name: '農村規劃及培力' },
-        { level: 4, name: '農村人力及教育推廣' },
-        { level: 4, name: '農業人才多元培育' },
-        { level: 4, name: '農村農產業人力活化計畫' },
-        { level: 4, name: '農村再生建設及發展計畫' },
-        { level: 4, name: '農村再生社區發展及環境改善' },
-        { level: 4, name: '農村再生跨域發展' },
-        { level: 4, name: '社區農村再生計畫' },
-        { level: 4, name: '農村社區土地重劃及發展規劃' },
-        { level: 4, name: '農村發展及活化' },
-        { level: 4, name: '提升農村農糧產業競爭力' },
-        { level: 4, name: '發展健康永續的有機產業' },
-        { level: 4, name: '農村社區畜牧場環境改善及資源利用' },
-        { level: 4, name: '建設休閒農業優質環境' },
-        { level: 4, name: '友善漁業生產環境及漁村產業活動推廣' },
-        { level: 4, name: '山村綠色經濟永續發展計畫' },
-        { level: 4, name: '農產加工整合服務體系發展' },
-        { level: 4, name: '運用資通訊技術(ICT)強化農業發展及推廣計畫' },
-        { level: 4, name: '優化農業推廣教育訓練場域' },
-        { level: 4, name: '推動化學農藥減量模式促進農村生產環境永續發展' },
-        { level: 4, name: '農村水資源韌性公共設施建設' },
-        { level: 4, name: '推動農會經濟事業發展，振興農村產業' },
-        { level: 4, name: '改善農村金融服務品質' },
-        { level: 4, name: '農業旅遊創新發展及市場拓展' },
-        { level: 4, name: '擴大豬場導入新式整合型設施(備)' },
-        { level: 4, name: '建構農糧產業機械示範體系與營造多元服務價值鏈' },
-        { level: 4, name: '智能防災設施型農業計畫' }
-    ],
-    headcount: [
-        { name: '一、編制內預算員額' },
-        { name: '　(一)職員' },
-        { name: '　(二)警察' },
-        { name: '　(三)駐衛警' },
-        { name: '　(四)技工' },
-        { name: '　(五)工友' },
-        { name: '　(六)駕駛' },
-        { name: '　(七)聘用' },
-        { name: '　(八)約僱' },
-        { name: '合　　　　計' },
-        { name: '二、管理會委員' },
-        { name: '三、顧問人員' },
-        { name: '四、兼任人員' },
-        { name: '五、資本支出' }
-    ],
-    // === 員額用人費 — 農業發展基金 ===
-    personnel_cost_agri: [
-        { name: '一、正式員額薪資', bud114: 457 },
-        { name: '　(一)編制內' },
-        { name: '　(二)管理會委員' },
-        { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
-        { name: '　(一)編制內' },
-        { name: '　(二)兼職人員' },
-        { name: '　(三)其他' },
-        { name: '三、加(夜)班費', bud114: 6132 },
-        { name: '　(一)延長工時加班費', bud114: 4200 },
-        { name: '　(二)其他' },
-        { name: '四、津貼', bud114: 61 },
-        { name: '五、獎金', bud114: 86 },
-        { name: '六、退休及卹償金', bud114: 42 },
-        { name: '七、資遣費' },
-        { name: '八、福利費', bud114: 81 },
-        { name: '　(一)分擔員工保險費' },
-        { name: '　(二)其他' },
-        { name: '九、提繳費', bud114: 1 },
-        { name: '合　　　　計' },
-        { name: '資本支出' }
-    ],
-    control_agri: [
-        { name: '一、水電費', bud114: 30091 },
-        { name: '二、國內旅費', bud114: 18409 },
-        { name: '三、國外旅費', bud114: 135 },
-        { name: '(一)出國考察、訪問' },
-        { name: '(二)參加國際會議、談判' },
-        { name: '(三)出國進修、研究及實習計畫' },
-        { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費', bud114: 43623 },
-        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
-        { name: '七、推展費', bud114: 228084 },
-        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
-        { name: '(一)一般(不含體育活動費)' },
-        { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）', bud114: 1380 },
-        { name: '(一)工程管理費' },
-        { name: '(二)一般服務費－計時與計件人員酬金' },
-        { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費', bud114: 85972 },
-        { name: '十一、公共關係費' },
-        { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗', bud114: 12580064 },
-        { name: '十四、其他費用', bud114: 11476160 },
-        { name: '十五、補助與捐助', bud114: 114566529 },
-        { name: '(一)以前年度計畫' },
-        { name: '(二)新興計畫' },
-        { name: '十六、公務車輛', bud114: 61963 },
-        { name: '(一)管理用車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '(二)其他車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '十七、資產變賣' },
-        { name: '(一)變賣淨收入' },
-        { name: '(二)帳面價值' },
-        { name: '(三)資產處分利益' },
-        { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' },
-        { name: '(二)補辦預算' }
-    ],
-    // === 員額用人費 — 漁業發展基金 ===
-    personnel_cost_fish: [
-        { name: '一、正式員額薪資', bud114: 457 },
-        { name: '　(一)編制內' },
-        { name: '　(二)管理會委員' },
-        { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
-        { name: '　(一)編制內' },
-        { name: '　(二)兼職人員' },
-        { name: '　(三)其他' },
-        { name: '三、加(夜)班費', bud114: 6132 },
-        { name: '　(一)延長工時加班費', bud114: 4200 },
-        { name: '　(二)其他' },
-        { name: '四、津貼', bud114: 61 },
-        { name: '五、獎金', bud114: 86 },
-        { name: '六、退休及卹償金', bud114: 42 },
-        { name: '七、資遣費' },
-        { name: '八、福利費', bud114: 81 },
-        { name: '　(一)分擔員工保險費' },
-        { name: '　(二)其他' },
-        { name: '九、提繳費', bud114: 1 },
-        { name: '合　　　　計' },
-        { name: '資本支出' }
-    ],
-    control_fish: [
-        { name: '一、水電費', bud114: 30091 },
-        { name: '二、國內旅費', bud114: 18409 },
-        { name: '三、國外旅費', bud114: 135 },
-        { name: '(一)出國考察、訪問' },
-        { name: '(二)參加國際會議、談判' },
-        { name: '(三)出國進修、研究及實習計畫' },
-        { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費', bud114: 43623 },
-        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
-        { name: '七、推展費', bud114: 228084 },
-        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
-        { name: '(一)一般(不含體育活動費)' },
-        { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）', bud114: 1380 },
-        { name: '(一)工程管理費' },
-        { name: '(二)一般服務費－計時與計件人員酬金' },
-        { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費', bud114: 85972 },
-        { name: '十一、公共關係費' },
-        { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗', bud114: 12580064 },
-        { name: '十四、其他費用', bud114: 11476160 },
-        { name: '十五、補助與捐助', bud114: 114566529 },
-        { name: '(一)以前年度計畫' },
-        { name: '(二)新興計畫' },
-        { name: '十六、公務車輛', bud114: 61963 },
-        { name: '(一)管理用車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '(二)其他車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '十七、資產變賣' },
-        { name: '(一)變賣淨收入' },
-        { name: '(二)帳面價值' },
-        { name: '(三)資產處分利益' },
-        { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' },
-        { name: '(二)補辦預算' }
-    ],
-    // === 員額用人費 — 林務發展及造林基金 ===
-    personnel_cost_forest: [
-        { name: '一、正式員額薪資', bud114: 457 },
-        { name: '　(一)編制內' },
-        { name: '　(二)管理會委員' },
-        { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
-        { name: '　(一)編制內' },
-        { name: '　(二)兼職人員' },
-        { name: '　(三)其他' },
-        { name: '三、加(夜)班費', bud114: 6132 },
-        { name: '　(一)延長工時加班費', bud114: 4200 },
-        { name: '　(二)其他' },
-        { name: '四、津貼', bud114: 61 },
-        { name: '五、獎金', bud114: 86 },
-        { name: '六、退休及卹償金', bud114: 42 },
-        { name: '七、資遣費' },
-        { name: '八、福利費', bud114: 81 },
-        { name: '　(一)分擔員工保險費' },
-        { name: '　(二)其他' },
-        { name: '九、提繳費', bud114: 1 },
-        { name: '合　　　　計' },
-        { name: '資本支出' }
-    ],
-    control_forest: [
-        { name: '一、水電費', bud114: 30091 },
-        { name: '二、國內旅費', bud114: 18409 },
-        { name: '三、國外旅費', bud114: 135 },
-        { name: '(一)出國考察、訪問' },
-        { name: '(二)參加國際會議、談判' },
-        { name: '(三)出國進修、研究及實習計畫' },
-        { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費', bud114: 43623 },
-        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
-        { name: '七、推展費', bud114: 228084 },
-        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
-        { name: '(一)一般(不含體育活動費)' },
-        { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）', bud114: 1380 },
-        { name: '(一)工程管理費' },
-        { name: '(二)一般服務費－計時與計件人員酬金' },
-        { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費', bud114: 85972 },
-        { name: '十一、公共關係費' },
-        { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗', bud114: 12580064 },
-        { name: '十四、其他費用', bud114: 11476160 },
-        { name: '十五、補助與捐助', bud114: 114566529 },
-        { name: '(一)以前年度計畫' },
-        { name: '(二)新興計畫' },
-        { name: '十六、公務車輛', bud114: 61963 },
-        { name: '(一)管理用車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '(二)其他車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '十七、資產變賣' },
-        { name: '(一)變賣淨收入' },
-        { name: '(二)帳面價值' },
-        { name: '(三)資產處分利益' },
-        { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' },
-        { name: '(二)補辦預算' }
-    ],
-    // === 員額用人費 — 農業天然災害救助基金 ===
-    personnel_cost_disaster: [
-        { name: '一、正式員額薪資', bud114: 457 },
-        { name: '　(一)編制內' },
-        { name: '　(二)管理會委員' },
-        { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
-        { name: '　(一)編制內' },
-        { name: '　(二)兼職人員' },
-        { name: '　(三)其他' },
-        { name: '三、加(夜)班費', bud114: 6132 },
-        { name: '　(一)延長工時加班費', bud114: 4200 },
-        { name: '　(二)其他' },
-        { name: '四、津貼', bud114: 61 },
-        { name: '五、獎金', bud114: 86 },
-        { name: '六、退休及卹償金', bud114: 42 },
-        { name: '七、資遣費' },
-        { name: '八、福利費', bud114: 81 },
-        { name: '　(一)分擔員工保險費' },
-        { name: '　(二)其他' },
-        { name: '九、提繳費', bud114: 1 },
-        { name: '合　　　　計' },
-        { name: '資本支出' }
-    ],
-    control_disaster: [
-        { name: '一、水電費', bud114: 30091 },
-        { name: '二、國內旅費', bud114: 18409 },
-        { name: '三、國外旅費', bud114: 135 },
-        { name: '(一)出國考察、訪問' },
-        { name: '(二)參加國際會議、談判' },
-        { name: '(三)出國進修、研究及實習計畫' },
-        { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費', bud114: 43623 },
-        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
-        { name: '七、推展費', bud114: 228084 },
-        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
-        { name: '(一)一般(不含體育活動費)' },
-        { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）', bud114: 1380 },
-        { name: '(一)工程管理費' },
-        { name: '(二)一般服務費－計時與計件人員酬金' },
-        { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費', bud114: 85972 },
-        { name: '十一、公共關係費' },
-        { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗', bud114: 12580064 },
-        { name: '十四、其他費用', bud114: 11476160 },
-        { name: '十五、補助與捐助', bud114: 114566529 },
-        { name: '(一)以前年度計畫' },
-        { name: '(二)新興計畫' },
-        { name: '十六、公務車輛', bud114: 61963 },
-        { name: '(一)管理用車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '(二)其他車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '十七、資產變賣' },
-        { name: '(一)變賣淨收入' },
-        { name: '(二)帳面價值' },
-        { name: '(三)資產處分利益' },
-        { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' },
-        { name: '(二)補辦預算' }
-    ],
-    // === 員額用人費 — 農產品受進口損害救助基金 ===
-    personnel_cost_loss: [
-        { name: '一、正式員額薪資', bud114: 457 },
-        { name: '　(一)編制內' },
-        { name: '　(二)管理會委員' },
-        { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
-        { name: '　(一)編制內' },
-        { name: '　(二)兼職人員' },
-        { name: '　(三)其他' },
-        { name: '三、加(夜)班費', bud114: 6132 },
-        { name: '　(一)延長工時加班費', bud114: 4200 },
-        { name: '　(二)其他' },
-        { name: '四、津貼', bud114: 61 },
-        { name: '五、獎金', bud114: 86 },
-        { name: '六、退休及卹償金', bud114: 42 },
-        { name: '七、資遣費' },
-        { name: '八、福利費', bud114: 81 },
-        { name: '　(一)分擔員工保險費' },
-        { name: '　(二)其他' },
-        { name: '九、提繳費', bud114: 1 },
-        { name: '合　　　　計' },
-        { name: '資本支出' }
-    ],
-    control_loss: [
-        { name: '一、水電費', bud114: 30091 },
-        { name: '二、國內旅費', bud114: 18409 },
-        { name: '三、國外旅費', bud114: 135 },
-        { name: '(一)出國考察、訪問' },
-        { name: '(二)參加國際會議、談判' },
-        { name: '(三)出國進修、研究及實習計畫' },
-        { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費', bud114: 43623 },
-        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
-        { name: '七、推展費', bud114: 228084 },
-        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
-        { name: '(一)一般(不含體育活動費)' },
-        { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）', bud114: 1380 },
-        { name: '(一)工程管理費' },
-        { name: '(二)一般服務費－計時與計件人員酬金' },
-        { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費', bud114: 85972 },
-        { name: '十一、公共關係費' },
-        { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗', bud114: 12580064 },
-        { name: '十四、其他費用', bud114: 11476160 },
-        { name: '十五、補助與捐助', bud114: 114566529 },
-        { name: '(一)以前年度計畫' },
-        { name: '(二)新興計畫' },
-        { name: '十六、公務車輛', bud114: 61963 },
-        { name: '(一)管理用車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '(二)其他車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '十七、資產變賣' },
-        { name: '(一)變賣淨收入' },
-        { name: '(二)帳面價值' },
-        { name: '(三)資產處分利益' },
-        { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' },
-        { name: '(二)補辦預算' }
-    ],
-    // === 員額用人費 — 農村再生基金 ===
-    personnel_cost_renewal: [
-        { name: '一、正式員額薪資', bud114: 457 },
-        { name: '　(一)編制內' },
-        { name: '　(二)管理會委員' },
-        { name: '　(三)顧問人員' },
-        { name: '二、聘僱及兼職人員薪資', bud114: 690 },
-        { name: '　(一)編制內' },
-        { name: '　(二)兼職人員' },
-        { name: '　(三)其他' },
-        { name: '三、加(夜)班費', bud114: 6132 },
-        { name: '　(一)延長工時加班費', bud114: 4200 },
-        { name: '　(二)其他' },
-        { name: '四、津貼', bud114: 61 },
-        { name: '五、獎金', bud114: 86 },
-        { name: '六、退休及卹償金', bud114: 42 },
-        { name: '七、資遣費' },
-        { name: '八、福利費', bud114: 81 },
-        { name: '　(一)分擔員工保險費' },
-        { name: '　(二)其他' },
-        { name: '九、提繳費', bud114: 1 },
-        { name: '合　　　　計' },
-        { name: '資本支出' }
-    ],
-    control_renewal: [
-        { name: '一、水電費', bud114: 30091 },
-        { name: '二、國內旅費', bud114: 18409 },
-        { name: '三、國外旅費', bud114: 135 },
-        { name: '(一)出國考察、訪問' },
-        { name: '(二)參加國際會議、談判' },
-        { name: '(三)出國進修、研究及實習計畫' },
-        { name: '四、大陸地區旅費' },
-        { name: '五、印刷裝訂費', bud114: 43623 },
-        { name: '六、媒體政策及業務宣導費', bud114: 70386 },
-        { name: '七、推展費', bud114: 228084 },
-        { name: '八、一般服務費（不含計時與計件人員酬金）', bud114: 874115 },
-        { name: '(一)一般(不含體育活動費)' },
-        { name: '(二)體育活動費' },
-        { name: '九、契約勞力（約用人員）', bud114: 1380 },
-        { name: '(一)工程管理費' },
-        { name: '(二)一般服務費－計時與計件人員酬金' },
-        { name: '(三)專業服務費－專技人員酬金' },
-        { name: '十、委託調查研究費', bud114: 85972 },
-        { name: '十一、公共關係費' },
-        { name: '十二、員工慰勞費' },
-        { name: '十三、用品消耗', bud114: 12580064 },
-        { name: '十四、其他費用', bud114: 11476160 },
-        { name: '十五、補助與捐助', bud114: 114566529 },
-        { name: '(一)以前年度計畫' },
-        { name: '(二)新興計畫' },
-        { name: '十六、公務車輛', bud114: 61963 },
-        { name: '(一)管理用車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '(二)其他車輛' },
-        { name: '1.新購' },
-        { name: '2.汰換' },
-        { name: '十七、資產變賣' },
-        { name: '(一)變賣淨收入' },
-        { name: '(二)帳面價值' },
-        { name: '(三)資產處分利益' },
-        { name: '十八、其他重大事項' },
-        { name: '(一)購置無形資產' },
-        { name: '(二)補辦預算' }
-    ]
-};
+// ========== 2. 預設項目（產生檔：來源 agri_special_fund_forms/data/*.json） ==========
+// 執行時優先 fetch sample_fund_*.json；取不到時（例如 file:// 開啟）使用這份內嵌資料。
+const SAMPLES = window.LGB_SAMPLE_DATA || {};
 
 // ========== 2.5 業務計畫 列拆解輔助（甲/乙 與層級調整）==========
 // 業務計畫的層級規則（甲/乙 升格為表頭後）：
@@ -789,18 +97,6 @@ function splitPlanRows(combinedRows) {
     }
     return { src: srcRows, use: useRows };
 }
-// 初始化：把 SAMPLES.plan_agri 等拆成 plan_agri_src / plan_agri_use
-PLAN_FUNDS.forEach(f => {
-    const combined = SAMPLES[f.id];
-    if (Array.isArray(combined)) {
-        const { src, use } = splitPlanRows(combined);
-        SAMPLES[`${f.id}_src`] = src;
-        SAMPLES[`${f.id}_use`] = use;
-        delete SAMPLES[f.id];
-    }
-});
-delete SAMPLES._legacy_plan_DELETED;
-
 // ========== 3. 行渲染 ==========
 // 數值轉「千分號」字串；空值/非數值原樣
 function formatNum(v) {
@@ -888,13 +184,13 @@ function reformatNumericCells(tr) {
 
 // === 業務計畫 合計邏輯（父列 = Σ 子列）===
 // 例外：「收購糧食」「糧食銷售」之類含子列但子列為數量/單位成本者，不適用合計
-const NO_AUTO_SUM_KEYWORDS = ['收購糧食', '糧食銷售'];
+const NO_AUTO_SUM_KEYWORDS = (FORMS.rules && FORMS.rules.noAutoSumKeywords) || ['收購糧食', '糧食銷售'];
 function shouldAutoSum(name) {
     const nm = String(name || '');
     return !NO_AUTO_SUM_KEYWORDS.some(k => nm.includes(k));
 }
 
-const PLAN_SUM_KEYS = ['dec113', 'bud114', 'orig', 'dep_diff', 'gov_diff'];
+const PLAN_SUM_KEYS = (FORMS.rules && FORMS.rules.planSumFields) || ['dec113', 'bud114', 'orig', 'dep_diff', 'gov_diff'];
 
 function recalcPlanTable(tableId) {
     if (!tableId || !tableId.startsWith('plan_')) return;
@@ -1027,23 +323,17 @@ function val(id) { return (document.getElementById(id)?.value || '').trim(); }
 
 // ========== 5. 各 Tab 的 JSON 匯入／匯出 / 多份合併 ==========
 // 每個主 tab 所對應的表格 ID 與 review key
-const TAB_INFO = {
-    plan: {
-        reviewKey: 'plan',
-        suffix: '業務計畫',
-        tableIds: () => PLAN_FUNDS.flatMap(f => PLAN_SECTIONS.map(s => `${f.id}_${s.suffix}`))
-    },
-    personnel: {
-        reviewKey: 'personnel',
-        suffix: '員額用人費',
-        tableIds: () => ['headcount', ...PLAN_FUNDS.map(f => `personnel_cost_${f.code}`)]
-    },
-    control: {
-        reviewKey: 'control',
-        suffix: '管制項目',
-        tableIds: () => PLAN_FUNDS.map(f => `control_${f.code}`)
-    }
-};
+const TAB_INFO = {};
+FORMS.tabs.forEach(t => {
+    TAB_INFO[t.id] = {
+        reviewKey: t.reviewKey,
+        suffix: t.suffix,
+        // 該分頁涵蓋的表格：以 reviewKey 對應（員額表沒有 reviewKey，歸在「員額用人費」分頁）
+        tableIds: () => Object.keys(tableConfigs).filter(tid =>
+            tableConfigs[tid].reviewKey === t.id ||
+            (t.id === 'personnel' && tid === 'headcount'))
+    };
+});
 
 // 取得 tab-scoped 資料（meta + 該 tab 表格 + 該 tab 審核意見）
 function collectTabData(tab) {

@@ -7,12 +7,16 @@
     <title>農業特別收入基金 116 年度 預算先期表件查填彙整平台</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
     <link rel="stylesheet" href="budget-style.css">
-    <link rel="stylesheet" href="special-fund.css?v=3">
+    <link rel="stylesheet" href="special-fund.css?v=4">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="mammoth.browser.min.js?v=1.7.1"></script>
     <script src="word-converter.js?v=2"></script>
-    <script src="special-fund.js?v=9"></script>
+    <script src="vendor/forms/agri-special-fund.js?v=1"></script>
+    <script src="vendor/forms/sample-data.js?v=1"></script>
+    <script src="vendor/forms/xlsx-profiles.js?v=1"></script>
+    <script src="special-fund.js?v=10"></script>
+    <script src="xlsx-import.js?v=2"></script>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-GHGBM401HN"></script>
 <script>
@@ -76,7 +80,7 @@
 
     <div class="excel-guide flex items-center gap-2">
         <span>💡</span>
-        <span><b>操作提示：</b>所有金額欄為千元（員額表甲為人數）。<b>核列數會自動計算</b>（核列＝原編＋增減）。可在表中按 <kbd class="bg-white px-1 border rounded">Enter</kbd> 移到下一列；<kbd class="bg-white px-1 border rounded">Ctrl+V</kbd> 從 Excel 貼上整塊資料。</span>
+        <span><b>操作提示：</b>所有金額欄為千元（員額表甲為人數）。<b>核列數會自動計算</b>（核列＝原編＋增減）。可在表中按 <kbd class="bg-white px-1 border rounded">Enter</kbd> 移到下一列；<kbd class="bg-white px-1 border rounded">Ctrl+V</kbd> 從 Excel 貼上整塊資料。收到官方預算彙總檔時，用「📊 匯入官方 xlsx」上傳，系統會先列出差異，確認後只補金額、不動結構。</span>
     </div>
 
     <!-- ========== TAB 1: 業務計畫表（6 個基金子 tab）========== -->
@@ -88,6 +92,8 @@
             <input type="file" data-tab-import-file="plan" class="hidden" accept=".json">
             <button data-tab-merge="plan" class="sf-tab-toolbar-btn bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">🧩 合併多份 JSON</button>
             <input type="file" data-tab-merge-file="plan" class="hidden" accept=".json" multiple>
+            <button id="sf-btn-xlsx-import" class="sf-tab-toolbar-btn bg-emerald-100 text-emerald-800 px-3 py-2 rounded-lg text-sm font-bold border border-emerald-300 hover:bg-emerald-200" title="上傳官方 FNGBRB5300 等 xlsx：先顯示差異，再只補金額欄位（不動表格結構）">📊 匯入官方 xlsx</button>
+            <input type="file" id="sf-xlsx-import-file" class="hidden" accept=".xlsx,.xlsm">
             <button id="sf-btn-docx-import" class="sf-tab-toolbar-btn bg-amber-200 text-amber-900 px-3 py-2 rounded-lg text-sm font-bold border border-amber-400 hover:bg-amber-300" title="直接匯入 Word .docx（自動解析表格 6 基金）">📥 匯入 Word .docx</button>
             <input type="file" id="sf-docx-import-file" class="hidden" accept=".docx">
             <button id="sf-btn-word-converter" class="sf-tab-toolbar-btn bg-amber-100 text-amber-800 px-3 py-2 rounded-lg text-sm font-bold border border-amber-300 hover:bg-amber-200" title="從 Word 轉換器輸出的 JSON 載入（已有 JSON 才用）">📄 Word 轉 JSON</button>
