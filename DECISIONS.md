@@ -145,6 +145,14 @@ meta / reviews / 25 張表逐列比對 → 完全相同（僅 savedAt 時間戳�
 - `buildTableDocHTML` / `buildPlanCombinedDocHTML` / `buildPersonnelTabDocHTML` / `buildControlTabDocHTML`
   都能產出（長度 4,978 / 28,479 / 14,794 / 20,310）
 
+## 推送狀態
+
+- 遠端 `main` 已包含本輪與上一輪的改動（含 xlsx 匯入、forms 化重構）。
+  推送方式同前：CLI 無可用憑證，改用瀏覽器既有登入的 session 以 GitHub Web 上傳，
+  內容與本機 commit 樹狀一致（`git diff --stat origin/main HEAD` 為空）。
+  本機原本的 commit 保留在分支 `local-history`（`1f0b54f`），`main` 對齊遠端後續 commit。
+- 表單定義的線上預覽：<https://cormort.github.io/agri_special_fund_forms/>
+
 ## 待覆核
 
 - `personnel_cost_disaster` 與 `personnel_cost_fish` 在 forms repo 的資料是空陣列，
