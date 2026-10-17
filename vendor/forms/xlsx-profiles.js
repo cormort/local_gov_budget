@@ -1,5 +1,5 @@
 /* 產生檔，請勿手改：官方 xlsx 映射 profile
- * 來源：agri_special_fund_forms@c5d5e82（/Users/hermes/github/agri_special_fund_forms）
+ * 來源：agri_special_fund_forms@e270a3a（/Users/hermes/github/agri_special_fund_forms）
  * 產生：npm run sync:forms（tools/sync-forms.mjs）
  */
 (function (root) { root.LGB_XLSX_PROFILES = {"FNGBRB5300":{"id":"FNGBRB5300","label":"各基金業務計畫年度預算數（FNGBRB5300 彙總檔）","sheet":0,"keyColumn":"基金名稱","scale":1000,"valueKey":"bud114","funds":{"agri":"農業發展基金","forest":"林務發展及造林基金","disaster":"農業天然災害救助基金","fish":"漁業發展基金","loss":"農產品受進口損害救助基金","renewal":"農村再生基金"},"sectionSplit":{"srcColumn":"基金來源","useColumn":"基金用途"},"tableTemplates":{"src":"plan_{code}_src","use":"plan_{code}_use"},"ignoreNames":["其他","購建固定資產"],"minNameLength":3,"fuzzyThreshold":0.75,"nameAliases":{"綠色環境給付計畫":"農糧產業調整與轉型計畫"},"notes":["scale=1000：官方檔為「元」，表單為「千元」。","sectionSplit：以「基金來源」「基金用途」兩個彙總欄的位置，把欄位切成甲、乙兩個分支，避免跨分支誤配。","ignoreNames：業務計畫底下的『其他』『購建固定資產』是人工分類列，官方檔沒有對應欄位，必須排除。","minNameLength：短於 3 字的名稱不做包含／相似比對，否則『其他』會撞上『其他收入』。","nameAliases：官方 115 年度檔已將『綠色環境給付計畫』改名為『農糧產業調整與轉型計畫(原為「綠色環境給付計畫」)』。","本檔為 JSON 版；local_gov_budget 因以 file:// 執行、無法 fetch，另存有同內容的 xlsx-profiles.js。"]}}; })(typeof window !== 'undefined' ? window : globalThis);
