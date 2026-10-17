@@ -159,3 +159,37 @@ meta / reviews / 25 張表逐列比對 → 完全相同（僅 savedAt 時間戳�
   因此這兩張表目前是空的（重構前是舊佔位 `SAMPLES` 的假資料；現在不再偽造）。
   若確實該有員額/用人費資料，請補在 forms repo 的 `data/`。
 - 刪除了根目錄 `xlsx-profiles.js`：若有人直接用舊路徑載入會 404，請改用 `vendor/forms/xlsx-profiles.js`。
+
+---
+
+# DECISIONS（第三輪）— 移除無效追蹤與冗餘欄位
+
+## 1. 移除 GA4 追蹤碼
+
+`index.html`、`sample-editor.html` 各有一段 gtag inline script。CSP 是
+`script-src 'self' https://cdnjs.cloudflare.com; connect-src 'self' https://cdnjs.cloudflare.com`，
+inline script 沒有 `unsafe-inline` 一律被擋，`connect-src` 也不含 `google-analytics.com`，
+所以追蹤從一開始就不會送出。本次直接移除，不留一段「看起來有、其實沒作用」的程式。
+
+若日後要恢復：改成 `gtag.js` 外部檔案、把 `googletagmanager.com` 加進 `script-src`、
+`www.google-analytics.com` 加進 `connect-src`，並確認隱私權政策。
+
+## 2. 移除業務計畫表的 `dec112` 資料
+
+`dec112`（113 年度決算）只出現在業務計畫的 12 張表，而這 12 張表的欄位定義裡沒有它
+（`cols` 是 `level/dec113/bud114/...`），所以純粹是資料冗餘，也是 forms repo 驗證的
+12 個警告來源。已從 6 個 `sample_fund_*.json`（引擎與 forms repo 各一份）刪掉，
+共 **100 列**的 `dec112` 鍵。
+
+- 員額／用人費用／管制項目 **仍保留** `dec112` 欄位與表頭（113 年度決算），只是本來就沒有值。
+- 既有使用者瀏覽器裡的 autosave 仍可能帶 `dec112`；`addRow` 只渲染 `cfg.cols`，
+  不認得的鍵會被忽略，下次自動存檔就自然消失，不需要資料遷移。
+- forms repo 的驗證警告因此從 12 個變成 **0 個**。
+
+## 驗證
+
+- `node tools/validate.mjs`（forms repo）→ 通過、0 警告、254 列
+- `npm run test:mapping` → 14/14
+- `npm run check:forms` → 同步（25 張表、25 份資料、184 列）
+- 瀏覽器（http 與 file://）：25 張表、196 列、業務計畫表無 `dec112`、
+  員額表仍有「113年度決算」表頭、`window.gtag` 為 undefined、0 個 JS 錯誤

@@ -158,7 +158,7 @@ local_gov_budget/
 | `level` | 層級 | level | 0＝甲/乙、1＝一、二、、2＝計畫名／(一)、3＝1.／2.、4＝(1)／(2) |
 | `name` | 項目/科目名稱 | text | 列名 |
 | `desc` | 摘要/說明 | textarea | |
-| `dec112` | 113 年度決算 | number | 資料保留，但表單目前**不顯示**這欄 |
+| `dec112` | 113 年度決算 | number | 只有員額／用人費用／管制項目有這欄；業務計畫表沒有，資料檔也不帶這個 key |
 | `dec113` | 114 年度決算 | number | |
 | `bud114` | 115 年度預算 | number | 本表單的主要金額欄（官方檔 `valueKey`） |
 | `apr114` | 115 年 4 月底在職 | number | 僅員額表 |
@@ -268,10 +268,7 @@ npm run build:css           # 重新產生 budget-style.css（Tailwind）
 - **沒有版本歷史**：只能靠每次匯出的 JSON／Doc 留檔。
 - **兩張表目前是空的**：`personnel_cost_disaster`、`personnel_cost_fish` 在 forms repo 是空陣列；
   以前是用佔位資料填充，現在不再偽造。要補請改 forms repo 的 `data/`。
-- **`dec112`（113 年度決算）不顯示**：資料仍存在於 `sample_fund_*.json`，表單沒有這一欄。
 - **依賴 CDN**：SheetJS／FileSaver／mammoth 由 cdnjs 載入，離線時「匯入 xlsx」不可用，其餘功能仍可操作。
-- **GA4 追蹤目前無效**：`index.html` 的 GA 是 inline script，但 CSP `script-src` 未允許 `unsafe-inline`，
-  且 `connect-src` 未包含 `google-analytics.com`；若需要追蹤請改成外部檔案並放寬 CSP。
 - **單頁載入 25 張表**：資料量大時首次渲染會慢（目前 196 列，尚無感）。
 - **合併多份 JSON 的規則**：用人費／管制項目按「同名加總」，業務計畫逐基金追加；
   同名但語意不同的列會被誤加總，合併前請先確認。
