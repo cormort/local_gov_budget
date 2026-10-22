@@ -228,16 +228,24 @@ function fb_importJSON(text) {
     fb_msg(`已匯入「${data.template.title}」，${(data.rows || []).length} 列。`);
 }
 
-// ?form=名稱 → 讀 forms/名稱.json
+// ?form=名稱 → 讀 forms/名稱.json；沒有的話直接讀 forms/名稱.xlsx（可只上傳 Excel，不必先匯出範本）
 async function fb_loadFixedForm(name) {
     if (/[\\/]|\.\./.test(name)) throw new Error('表單名稱不合法：' + name);
-    const res = await fetch(`forms/${encodeURIComponent(name)}.json`, { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`找不到固定表單「${name}」（forms/${name}.json，HTTP ${res.status}）`);
-    fb_load(await res.json());
+    const base = `forms/${encodeURIComponent(name)}`;
+    let warnings = [];
+    const res = await fetch(base + '.json', { cache: 'no-cache' });
+    if (res.ok) fb_load(await res.json());
+    else {
+        const xres = await fetch(base + '.xlsx', { cache: 'no-cache' });
+        if (!xres.ok) throw new Error(`找不到固定表單「${name}」（forms/ 裡沒有 ${name}.json 或 ${name}.xlsx）`);
+        const parsed = fb_readWorkbook(await xres.arrayBuffer(), name + '.xlsx');
+        fb_render(parsed.template, parsed.rows);
+        warnings = parsed.warnings;
+    }
     document.getElementById('fb-btn-xlsx').classList.add('hidden');
     document.getElementById('fb-btn-template').classList.add('hidden');
     document.getElementById('fb-link-aggregate').classList.add('hidden');
-    fb_msg(`固定表單「${name}」：請填寫機關、填表人與各列數值後按「💾 匯出 JSON」回傳。`);
+    fb_msg(`固定表單「${name}」：請填寫機關、填表人與各列數值後按「💾 匯出 JSON」回傳。`, warnings);
 }
 
 function fb_msg(text, warnings = []) {
