@@ -1,6 +1,6 @@
 // node form-builder.test.js — 公式轉換與求值的自我檢查
 const assert = require('assert');
-const { fb_translateFormula: tr, fb_evalFormula: ev } = require('./form-builder.js');
+const { fb_translateFormula: tr, fb_evalFormula: ev, fb_parseTSV: tsv, fb_cleanNum: num } = require('./form-builder.js');
 
 const vals = { B: 10, C: 4, D: 6, E: 2 };
 const get = k => vals[k];
@@ -19,5 +19,16 @@ assert.strictEqual(ev('-(B-C)/E', get), -3);
 assert.strictEqual(ev('B/0', get), 0);
 assert.throws(() => ev('B+', get));
 assert.throws(() => ev('(B', get));
+
+// Excel 貼上
+assert.deepStrictEqual(tsv('a\t1\nb\t2\n'), [['a', '1'], ['b', '2']]);
+assert.deepStrictEqual(tsv('a\t1\r\nb\t2\r\n'), [['a', '1'], ['b', '2']]);
+assert.deepStrictEqual(tsv('"x\ny"\t"say ""hi"""\n'), [['x\ny', 'say "hi"']]);
+assert.deepStrictEqual(tsv('a\t\tc'), [['a', '', 'c']]);
+assert.strictEqual(num('1,234'), '1234');
+assert.strictEqual(num(' (500) '), '-500');
+assert.strictEqual(num('-'), '');
+assert.strictEqual(num('-12.5'), '-12.5');
+assert.strictEqual(num('abc'), 'abc');
 
 console.log('form-builder: all checks passed');
