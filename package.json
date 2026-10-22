@@ -6,13 +6,10 @@
     "build:css": "npx tailwindcss -i ./src/input.css -o ./budget-style.css --minify",
     "watch:css": "npx tailwindcss -i ./src/input.css -o ./budget-style.css --watch",
     "build": "npm run build:css",
-    "test:mapping": "node tools/verify-xlsx-mapping.mjs",
-    "sync:forms": "node tools/sync-forms.mjs",
-    "check:forms": "node tools/sync-forms.mjs --check"
+    "test": "node form-builder.test.js"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
-    "tailwindcss": "^3.4.0",
-    "xlsx": "0.18.5"
+    "tailwindcss": "^3.4.0"
   }
 }
