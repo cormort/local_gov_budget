@@ -31,4 +31,27 @@ assert.strictEqual(num('-'), '');
 assert.strictEqual(num('-12.5'), '-12.5');
 assert.strictEqual(num('abc'), 'abc');
 
+// 多列表頭：第 0 列表名（A1:F1 合併）、第 1 列空白、第 2–3 列表頭、第 4 列起資料
+//   計畫名稱(A3:A4) | 預算數(B3:D3)        | 執行數(E3:E4) | 說明(F3:F4)
+//                   | 原編 | 增減 | 核列 |
+const grid = [
+    ['○○計畫經費表', '', '', '', '', ''],
+    ['', '', '', '', '', ''],
+    ['計畫名稱', '預算數', '', '', '執行數', '說明'],
+    ['', '原編', '增減', '核列', '', ''],
+    ['一般行政', '1000', '-50', '950', '900', '人事費'],
+];
+const at = (r, c) => (grid[r] || [])[c] || '';
+const M = (r1, c1, r2, c2) => ({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } });
+const merges = [M(0, 0, 0, 5), M(2, 0, 3, 0), M(2, 1, 2, 3), M(2, 4, 3, 4), M(2, 5, 3, 5)];
+const { fb_headerBlock: block, fb_columnLevels: levels, fb_theadRows: thead } = require('./form-builder.js');
+assert.deepStrictEqual(block(at, merges, 0, 4, 0, 5), { hr: 2, he: 3 });
+assert.deepStrictEqual(block(at, [], 2, 4, 0, 5), { hr: 2, he: 2 });              // 沒有合併 → 單列表頭
+assert.deepStrictEqual(block(at, [M(2, 1, 2, 3)], 2, 4, 0, 5), { hr: 2, he: 3 }); // 只有橫向合併也能抓到子表頭
+assert.deepStrictEqual([0, 1, 3, 4].map(c => levels(at, merges, 2, 3, c)), [['計畫名稱'], ['預算數', '原編'], ['預算數', '核列'], ['執行數']]);
+const cols = [['計畫名稱'], ['預算數', '原編'], ['預算數', '增減'], ['預算數', '核列'], ['執行數']].map(l => ({ label: l.join('－'), levels: l }));
+const h = thead(cols).map(row => row.map(x => `${x.text}:${x.colspan}x${x.rowspan}`));
+assert.deepStrictEqual(h, [['計畫名稱:1x2', '預算數:3x1', '執行數:1x2'], ['原編:1x1', '增減:1x1', '核列:1x1']]);
+assert.deepStrictEqual(thead([{ label: 'A' }, { label: 'B' }]).map(r => r.length), [2]); // 舊範本沒有 levels → 單列
+
 console.log('form-builder: all checks passed');
