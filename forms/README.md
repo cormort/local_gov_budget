@@ -1,15 +1,16 @@
-# 固定表單範本
+# 固定表單範本（取代線上表單的查填流程）
 
-此資料夾的每個 `名稱.json` 都是一份固定表單，以下列網址開啟（表頭、公式、預設項目都固定，填表人不能換範本）：
+全程在 GitHub Pages 上的靜態頁面完成，不需伺服器；填報資料只存在填表人的瀏覽器與回傳的 JSON 檔。
 
-```
-https://cormort.github.io/local_gov_budget/form-builder.html?form=名稱
-```
+| 步驟 | 誰 | 做什麼 |
+|---|---|---|
+| 1. 建表單 | 承辦 | `form-builder.html` 上傳 Excel 範本 → 確認欄位與公式 → 「📌 匯出範本」得到 `名稱.json` |
+| 2. 發布 | 承辦 | 把 `名稱.json` 放到本資料夾，commit 並推上 `main`；部署完成後網址生效 |
+| 3. 填報 | 各機關 | 開啟 `https://cormort.github.io/local_gov_budget/form-builder.html?form=名稱`，填寫後「💾 匯出 JSON」，以 email 等方式回傳 |
+| 4. 彙整 | 承辦 | 開啟 `form-aggregate.html`，把所有回傳的 JSON 一次拖入 → 繳交清單／依項目彙總／明細 → 「📥 匯出 Excel」 |
 
-## 新增或修改表單
+- 修改同名範本即更新表單；已開啟舊版的人重新整理即可。
+- 彙整只接受同一份表單（表頭與公式相同）的 JSON；同機關同年度重複繳交以最後匯入者為準。
+- 彙總時公式欄以加總後的數值重算（比率類欄位才正確）。
 
-1. 開啟 `form-builder.html`，按「📊 上傳 Excel 範本」產生表單，確認欄位與公式正確（可再增刪預設項目）。
-2. 按「📌 匯出範本」，得到 `名稱.json`（名稱＝Excel 檔名）。
-3. 將檔案放到本資料夾，commit 並推上 `main`；GitHub Pages 部署完成後網址即生效。
-
-修改同名檔案即更新表單，已開啟舊版的人重新整理即可。範例：`業務計畫範例.json` → `form-builder.html?form=業務計畫範例`。
+範例：`業務計畫範例.json` → `form-builder.html?form=業務計畫範例`。
