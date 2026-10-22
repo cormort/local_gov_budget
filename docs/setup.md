@@ -15,10 +15,11 @@ https://你的帳號.github.io/local_gov_budget/
 ## 步驟 1　申請 GitHub 帳號
 
 1. 開啟 <https://github.com/signup>
-2. 依序輸入：
+2. 依序輸入（也可以按上方「Continue with Google」用 Google 帳號註冊）：
    - **Email**：建議用公務信箱，之後通知與找回密碼都寄到這裡
    - **Password**：至少 15 字元，或至少 8 字元且含數字與小寫字母
    - **Username（帳號）**：**會直接出現在網址裡**，例如帳號 `abc-budget` → 網站是 `abc-budget.github.io`。建議用機關或單位的英文縮寫，只能用英文、數字與 `-`
+   - **Your Country/Region**：選 **Taiwan**（必填）
 3. 完成人機驗證，到信箱收驗證碼並輸入
 4. 方案選 **Free** 即可
 
