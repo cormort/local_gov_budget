@@ -26,6 +26,7 @@
         <div class="flex gap-2">
             <button id="fb-btn-xlsx" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 上傳 Excel 範本</button>
             <input type="file" id="fb-xlsx-file" class="hidden" accept=".xlsx,.xls">
+            <button id="fb-btn-template" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow" title="匯出為固定表單範本，放到 forms/ 資料夾供他人以網址開啟">📌 匯出範本</button>
             <button id="fb-btn-import" class="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入 JSON</button>
             <input type="file" id="fb-json-file" class="hidden" accept=".json">
             <button id="fb-btn-export" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
@@ -36,7 +37,7 @@
 <div class="max-w-[98%] mx-auto p-4">
     <div class="excel-guide">
         <b>範本規則：</b>第一個非空白列為表頭，第一欄為項目名稱。第二列起的資料會帶入為預設項目；
-        儲存格若是公式（如 <code>=B2-C2</code>、<code>=SUM(B2:D2)</code>，限同一列的加減乘除），該欄即成為自動計算欄。
+        儲存格若是公式（如 <code>=B2-C2</code>、<code>=SUM(B2:D2)</code>，限同一列的加減乘除），該欄即成為自動計算欄。空白欄預設為數值欄；要文字欄請在任一資料列填入文字。
     </div>
 
     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6">

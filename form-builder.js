@@ -171,10 +171,8 @@ function fb_calc() {
 }
 
 // ========== 4. JSON 匯出 / 匯入 ==========
-function fb_exportJSON() {
-    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
-    const val = id => document.getElementById(id).value;
-    const rows = [...document.querySelectorAll('#fb-tbody tr')].map(tr => {
+function fb_collectRows() {
+    return [...document.querySelectorAll('#fb-tbody tr')].map(tr => {
         const row = {};
         fb_template.columns.forEach(c => {
             const v = tr.querySelector('.v-' + c.key).value;
@@ -182,20 +180,54 @@ function fb_exportJSON() {
         });
         return row;
     }).filter(r => String(r[fb_template.columns[0].key] ?? '').trim());
-    const data = { template: fb_template, metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, rows };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    saveAs(blob, `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
+}
+
+const fb_saveJSON = (data, fileName) =>
+    saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), fileName);
+
+function fb_exportJSON() {
+    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
+    const val = id => document.getElementById(id).value;
+    const data = { template: fb_template, metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, rows: fb_collectRows() };
+    fb_saveJSON(data, `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
+}
+
+// 固定表單範本：放到 repo 的 forms/ 資料夾，以 form-builder.html?form=檔名 開啟
+// 目前表格的列（不含公式欄）會成為預設項目；不含機關／填表人
+function fb_exportTemplate() {
+    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
+    const rows = fb_collectRows().map(r => {
+        fb_template.columns.forEach(c => { if (c.formula) delete r[c.key]; });
+        return r;
+    });
+    fb_saveJSON({ template: fb_template, rows }, `${fb_template.title}.json`);
+    fb_msg(`已匯出範本「${fb_template.title}.json」：放到 repo 的 forms/ 資料夾並推上 GitHub 後，以 form-builder.html?form=${fb_template.title} 開啟。`);
+}
+
+function fb_load(data) {
+    if (!data.template || !Array.isArray(data.template.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
+    const m = data.metadata || {};
+    document.getElementById('fb-org').value = m.org || '';
+    if (m.year) document.getElementById('fb-year').value = m.year;
+    document.getElementById('fb-user').value = m.user || '';
+    fb_render(data.template, data.rows || []);
 }
 
 function fb_importJSON(text) {
     const data = JSON.parse(text);
-    if (!data.template || !Array.isArray(data.template.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
-    const m = data.metadata || {};
-    document.getElementById('fb-org').value = m.org || '';
-    document.getElementById('fb-year').value = m.year || '';
-    document.getElementById('fb-user').value = m.user || '';
-    fb_render(data.template, data.rows || []);
+    fb_load(data);
     fb_msg(`已匯入「${data.template.title}」，${(data.rows || []).length} 列。`);
+}
+
+// ?form=名稱 → 讀 forms/名稱.json
+async function fb_loadFixedForm(name) {
+    if (/[\\/]|\.\./.test(name)) throw new Error('表單名稱不合法：' + name);
+    const res = await fetch(`forms/${encodeURIComponent(name)}.json`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`找不到固定表單「${name}」（forms/${name}.json，HTTP ${res.status}）`);
+    fb_load(await res.json());
+    document.getElementById('fb-btn-xlsx').classList.add('hidden');
+    document.getElementById('fb-btn-template').classList.add('hidden');
+    fb_msg(`固定表單「${name}」：請填寫機關、填表人與各列數值後按「💾 匯出 JSON」回傳。`);
 }
 
 function fb_msg(text, warnings = []) {
@@ -208,6 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fb-btn-xlsx').onclick = () => $('fb-xlsx-file').click();
     $('fb-btn-import').onclick = () => $('fb-json-file').click();
     $('fb-btn-export').onclick = fb_exportJSON;
+    $('fb-btn-template').onclick = fb_exportTemplate;
     $('fb-btn-add').onclick = () => { fb_addRow(); fb_calc(); };
 
     $('fb-xlsx-file').onchange = async e => {
@@ -232,6 +265,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fb-tbody').addEventListener('click', e => {
         if (e.target.classList.contains('fb-del')) { e.target.closest('tr').remove(); fb_calc(); }
     });
+
+    const form = new URLSearchParams(location.search).get('form');
+    if (form) fb_loadFixedForm(form).catch(err => fb_msg('⚠️ ' + err.message));
 });
 
 }
