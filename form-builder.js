@@ -123,6 +123,7 @@ const fb_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '
 
 function fb_render(template, rows) {
     fb_template = template;
+    document.getElementById('fb-publish').classList.add('hidden');
     document.getElementById('fb-title').value = template.title;
     document.getElementById('fb-heading').textContent = template.title;
     document.getElementById('fb-thead').innerHTML =
@@ -201,8 +202,16 @@ function fb_exportTemplate() {
         return r;
     });
     fb_saveJSON({ template: fb_template, rows }, `${fb_template.title}.json`);
-    fb_msg(`已匯出範本「${fb_template.title}.json」：放到 repo 的 forms/ 資料夾並推上 GitHub 後，以 form-builder.html?form=${fb_template.title} 開啟。`);
+    fb_msg('');
+    document.getElementById('fb-publish-file').textContent = document.getElementById('fb-publish-file2').textContent = `${fb_template.title}.json`;
+    document.getElementById('fb-publish-github').href = FB_UPLOAD_URL;
+    document.getElementById('fb-share-url').value = FB_SITE_URL + 'form-builder.html?form=' + encodeURIComponent(fb_template.title);
+    document.getElementById('fb-publish').classList.remove('hidden');
 }
+
+// ponytail: repo 寫死，fork 到別的帳號時改這兩行
+const FB_UPLOAD_URL = 'https://github.com/cormort/local_gov_budget/upload/main/forms';
+const FB_SITE_URL = 'https://cormort.github.io/local_gov_budget/';
 
 function fb_load(data) {
     if (!data.template || !Array.isArray(data.template.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
@@ -243,6 +252,12 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fb-btn-import').onclick = () => $('fb-json-file').click();
     $('fb-btn-export').onclick = fb_exportJSON;
     $('fb-btn-template').onclick = fb_exportTemplate;
+    $('fb-btn-copy').onclick = async () => {
+        const url = $('fb-share-url');
+        try { await navigator.clipboard.writeText(url.value); } catch (e) { url.select(); document.execCommand('copy'); }
+        $('fb-btn-copy').textContent = '已複製 ✓';
+        setTimeout(() => { $('fb-btn-copy').textContent = '複製連結'; }, 1500);
+    };
     $('fb-btn-add').onclick = () => { fb_addRow(); fb_calc(); };
 
     $('fb-xlsx-file').onchange = async e => {
