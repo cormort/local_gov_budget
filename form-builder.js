@@ -86,7 +86,76 @@ function fb_cleanNum(s) {
     return isNaN(Number(t)) ? s.trim() : String(neg ? -Number(t) : Number(t));
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum };
+// ========== 1c. 多列表頭（合併儲存格） ==========
+// textAt(r, c) 取儲存格文字；merges 為 SheetJS 的 ws['!merges']（{ s:{r,c}, e:{r,c} }，0 起算）
+const fb_mergeAt = (merges, r, c) => merges.find(m => r >= m.s.r && r <= m.e.r && c >= m.s.c && c <= m.e.c);
+
+// 合併儲存格的文字只存在左上角，其他格視同左上角的文字
+function fb_mergedText(textAt, merges, r, c) {
+    const m = fb_mergeAt(merges, r, c);
+    return m ? textAt(m.s.r, m.s.c) : textAt(r, c);
+}
+
+// 找表頭範圍 { hr, he }：
+// - 跳過空白列，以及只有一格有字的列（表名「○○表」、「單位：千元」）
+// - 表頭內有直向合併（如「計畫名稱」跨兩列）→ 表頭延伸到合併底端
+// - 表頭內有橫向合併（如「預算數」跨三欄）且下一列在該範圍內有文字 → 下一列是子表頭
+function fb_headerBlock(textAt, merges, r0, r1, c0, c1) {
+    const filled = r => { let n = 0; for (let c = c0; c <= c1; c++) if (textAt(r, c)) n++; return n; };
+    let hr = r0;
+    while (hr <= r1 && (filled(hr) === 0 || (c1 > c0 && filled(hr) === 1))) hr++; // ponytail: 單欄範本的表頭若只有一格會被當表名跳過
+    if (hr > r1) return null;
+    let he = hr, changed = true;
+    while (changed) {
+        changed = false;
+        merges.filter(m => m.s.r >= hr && m.s.r <= he).forEach(m => {
+            let end = m.e.r;
+            if (m.e.c > m.s.c && m.e.r + 1 <= r1) {
+                const below = m.e.r + 1;
+                for (let c = m.s.c; c <= m.e.c; c++) {
+                    const t = textAt(below, c);
+                    if (t && isNaN(Number(t.replace(/,/g, '')))) { end = below; break; }
+                }
+            }
+            if (end > he) { he = end; changed = true; }
+        });
+    }
+    return { hr, he };
+}
+
+// 某欄由上而下的表頭文字，去掉合併造成的連續重複：["預算數","原編"]、["計畫名稱"]
+function fb_columnLevels(textAt, merges, hr, he, c) {
+    const levels = [];
+    for (let r = hr; r <= he; r++) {
+        const t = fb_mergedText(textAt, merges, r, c);
+        if (t && t !== levels[levels.length - 1]) levels.push(t);
+    }
+    return levels;
+}
+
+// 依各欄 levels 排出多列 <thead>：同一上層連續的欄合成 colspan，層數較少的欄用 rowspan 補滿
+function fb_theadRows(columns) {
+    const L = columns.map(c => c.levels || [c.label]);
+    const D = Math.max(1, ...L.map(l => l.length));
+    const same = (a, b, k) => a.slice(0, k + 1).join('\u0000') === b.slice(0, k + 1).join('\u0000');
+    const rows = [];
+    for (let k = 0; k < D; k++) {
+        const row = [];
+        for (let j = 0; j < L.length;) {
+            const lv = L[j];
+            if (lv.length <= k) { j++; continue; }
+            if (k === lv.length - 1) { row.push({ text: lv[k], colspan: 1, rowspan: D - k, col: columns[j] }); j++; continue; }
+            let span = 1;
+            while (j + span < L.length && L[j + span].length > k + 1 && same(L[j + span], lv, k)) span++;
+            row.push({ text: lv[k], colspan: span, rowspan: 1 });
+            j += span;
+        }
+        rows.push(row);
+    }
+    return rows;
+}
+
+if (typeof module !== 'undefined') module.exports = { fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -99,20 +168,23 @@ function fb_readWorkbook(buf, fileName) {
     const cell = (r, c) => ws[XLSX.utils.encode_cell({ r, c })];
     const text = (r, c) => { const x = cell(r, c); return x ? String(x.w ?? x.v ?? '').trim() : ''; };
 
-    // 表頭 = 第一個有內容的列
-    let hr = range.s.r;
-    while (hr <= range.e.r && ![...Array(range.e.c - range.s.c + 1)].some((_, k) => text(hr, range.s.c + k))) hr++;
-    if (hr > range.e.r) throw new Error('找不到表頭列');
+    // 表頭範圍：可能跨多列（合併儲存格），欄名以「－」串接各層，例如「預算數－原編」
+    const merges = ws['!merges'] || [];
+    const block = fb_headerBlock(text, merges, range.s.r, range.e.r, range.s.c, range.e.c);
+    if (!block) throw new Error('找不到表頭列');
+    const { hr, he } = block;
 
     const columns = [], warnings = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
-        const label = text(hr, c);
-        if (!label) continue;
+        const levels = fb_columnLevels(text, merges, hr, he, c);
+        if (!levels.length) continue;
+        const label = levels.join('－');
         const key = XLSX.utils.encode_col(c);
         const col = { key, label, type: columns.length === 0 ? 'text' : 'num' };
+        if (levels.length > 1) col.levels = levels;
         if (columns.length > 0) {
             // 取表頭下方第一個公式當該欄公式
-            for (let r = hr + 1; r <= range.e.r; r++) {
+            for (let r = he + 1; r <= range.e.r; r++) {
                 const x = cell(r, c);
                 if (x && x.f) {
                     const expr = fb_translateFormula(x.f, r + 1);
@@ -135,7 +207,7 @@ function fb_readWorkbook(buf, fileName) {
 
     // 資料列 → 預設項目（第一欄有值才算）
     const rows = [];
-    for (let r = hr + 1; r <= range.e.r; r++) {
+    for (let r = he + 1; r <= range.e.r; r++) {
         if (!text(r, XLSX.utils.decode_col(columns[0].key))) continue;
         const row = {};
         columns.forEach(c => {
@@ -157,8 +229,11 @@ function fb_render(template, rows) {
     document.getElementById('fb-publish').classList.add('hidden');
     document.getElementById('fb-title').value = template.title;
     document.getElementById('fb-heading').textContent = template.title;
-    document.getElementById('fb-thead').innerHTML =
-        '<tr><th class="w-8"></th>' + template.columns.map(c => `<th>${fb_esc(c.label)}${c.formula ? ' 🔒' : ''}</th>`).join('') + '</tr>';
+    const head = fb_theadRows(template.columns);
+    document.getElementById('fb-thead').innerHTML = head.map((row, k) =>
+        '<tr>' + (k === 0 ? `<th class="w-8" rowspan="${head.length}"></th>` : '') +
+        row.map(h => `<th colspan="${h.colspan}" rowspan="${h.rowspan}">${fb_esc(h.text)}${h.col?.formula ? ' 🔒' : ''}</th>`).join('') +
+        '</tr>').join('');
     document.getElementById('fb-tfoot').innerHTML =
         '<tr><td>∑</td>' + template.columns.map((c, i) =>
             i === 0 ? '<td class="text-center">合計</td>' : `<td>${c.type === 'num' ? `<input type="text" class="t-${c.key}" readonly>` : ''}</td>`).join('') + '</tr>';
