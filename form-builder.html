@@ -50,6 +50,17 @@
 
     <div id="fb-msg" class="text-sm text-slate-500 mb-4">尚未載入範本。</div>
 
+    <div id="fb-publish" class="excel-guide hidden">
+        <p class="font-bold mb-2">📌 範本「<span id="fb-publish-file"></span>」已下載，接著發布：</p>
+        <p class="mb-2">1. 點右邊按鈕開啟 GitHub 上傳頁，把剛下載的檔案拖進去，按「Commit changes」（同名檔案會直接覆蓋成新版）。檔名須正好是「<span id="fb-publish-file2"></span>」，若下載資料夾已有同名檔被自動改成「…(1).json」，請先改回。
+            <a id="fb-publish-github" target="_blank" rel="noopener" class="bg-slate-800 text-white px-3 py-1 rounded-lg text-sm font-bold">前往 GitHub 發布 ↗</a></p>
+        <p class="mb-2">2. 約 1 分鐘後網站更新，把下面的連結傳給填報人（之後改版也是同一個連結）：</p>
+        <div class="flex gap-2 items-center">
+            <input type="text" id="fb-share-url" class="border w-full p-2 rounded-lg text-sm" readonly>
+            <button id="fb-btn-copy" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">複製連結</button>
+        </div>
+    </div>
+
     <div id="fb-card" class="section-card hidden">
         <div class="flex justify-between items-center mb-4">
             <h2 id="fb-heading" class="text-xl font-bold text-slate-800"></h2>
