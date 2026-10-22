@@ -54,4 +54,14 @@ const h = thead(cols).map(row => row.map(x => `${x.text}:${x.colspan}x${x.rowspa
 assert.deepStrictEqual(h, [['計畫名稱:1x2', '預算數:3x1', '執行數:1x2'], ['原編:1x1', '增減:1x1', '核列:1x1']]);
 assert.deepStrictEqual(thead([{ label: 'A' }, { label: 'B' }]).map(r => r.length), [2]); // 舊範本沒有 levels → 單列
 
+// 發布／分享網址跟著網站所在帳號
+const { fb_repoUrls: urls } = require('./form-builder.js');
+assert.deepStrictEqual(urls('alice.github.io', '/local_gov_budget/form-builder.html'),
+    { upload: 'https://github.com/alice/local_gov_budget/upload/main/forms', site: 'https://alice.github.io/local_gov_budget/' });
+assert.deepStrictEqual(urls('Bob-Lin.github.io', '/my-forms/'),
+    { upload: 'https://github.com/bob-lin/my-forms/upload/main/forms', site: 'https://bob-lin.github.io/my-forms/' });
+assert.deepStrictEqual(urls('carol.github.io', '/form-builder.html'),
+    { upload: 'https://github.com/carol/carol.github.io/upload/main/forms', site: 'https://carol.github.io/' });
+assert.ok(urls('localhost', '/form-builder.html').upload.includes('/cormort/local_gov_budget/'));
+
 console.log('form-builder: all checks passed');

@@ -13,6 +13,8 @@
 
 發布表單與完整流程見 [`forms/README.md`](forms/README.md)。
 
+**想要有自己的一份？** 從申請 GitHub 帳號、Fork 到開啟 GitHub Pages 的步驟見 [`docs/setup.md`](docs/setup.md)。
+
 ## Excel 範本規則
 
 - 第一個非空白列是表頭，第一欄是項目名稱；表頭下方的資料列成為預設項目
