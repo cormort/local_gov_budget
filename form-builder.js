@@ -55,7 +55,38 @@ function fb_evalFormula(expr, get) {
     return v;
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_translateFormula, fb_evalFormula };
+// ========== 1b. Excel 貼上：剪貼簿是 TSV（含換行或 tab 的儲存格以雙引號包住） ==========
+function fb_parseTSV(text) {
+    const rows = [[]];
+    let cell = '', i = 0, quoted = false;
+    for (; i < text.length; i++) {
+        const ch = text[i];
+        if (quoted) {
+            if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+            else if (ch === '"') quoted = false;
+            else cell += ch;
+        } else if (ch === '"' && cell === '') quoted = true;
+        else if (ch === '\t') { rows[rows.length - 1].push(cell); cell = ''; }
+        else if (ch === '\n' || ch === '\r') {
+            if (ch === '\r' && text[i + 1] === '\n') i++;
+            rows[rows.length - 1].push(cell); cell = ''; rows.push([]);
+        } else cell += ch;
+    }
+    rows[rows.length - 1].push(cell);
+    if (rows.length > 1 && rows[rows.length - 1].join('') === '') rows.pop(); // Excel 複製結尾的換行
+    return rows;
+}
+
+// "1,234" → 1234、"(500)" → -500、"－" 或空白 → ''；不是數字就原樣回傳讓使用者看到
+function fb_cleanNum(s) {
+    let t = String(s).replace(/[,\s]/g, '');
+    if (t === '' || t === '-' || t === '－') return '';
+    const neg = /^\(.*\)$/.test(t);
+    if (neg) t = t.slice(1, -1);
+    return isNaN(Number(t)) ? s.trim() : String(neg ? -Number(t) : Number(t));
+}
+
+if (typeof module !== 'undefined') module.exports = { fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -147,6 +178,29 @@ function fb_addRow(data = {}) {
             return `<td><input type="${type}" class="${cls}" value="${fb_esc(data[c.key])}"${c.formula ? ' readonly tabindex="-1"' : ''}></td>`;
         }).join('');
     document.getElementById('fb-tbody').appendChild(tr);
+}
+
+// 從游標所在儲存格開始，依 Excel 的欄位順序往右、往下填；公式欄跳過（照樣佔一欄，與 Excel 版面一致），列不夠就新增
+function fb_onPaste(e) {
+    const input = e.target.closest('input');
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (!input || !/[\t\n\r]/.test(text)) return; // 單一儲存格交給瀏覽器預設處理
+    e.preventDefault();
+    const cols = fb_template.columns;
+    const startCol = cols.findIndex(c => input.classList.contains('v-' + c.key));
+    let tr = input.closest('tr');
+    fb_parseTSV(text).forEach((cells, r) => {
+        if (r > 0) {
+            if (!tr.nextElementSibling) fb_addRow();
+            tr = tr.nextElementSibling;
+        }
+        cells.forEach((v, k) => {
+            const c = cols[startCol + k];
+            if (!c || c.formula) return;
+            tr.querySelector('.v-' + c.key).value = c.type === 'num' ? fb_cleanNum(v) : v.trim();
+        });
+    });
+    fb_calc();
 }
 
 function fb_calc() {
@@ -287,6 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     $('fb-tbody').addEventListener('input', fb_calc);
+    $('fb-tbody').addEventListener('paste', fb_onPaste);
     $('fb-tbody').addEventListener('click', e => {
         if (e.target.classList.contains('fb-del')) { e.target.closest('tr').remove(); fb_calc(); }
     });
