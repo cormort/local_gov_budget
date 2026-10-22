@@ -6,7 +6,7 @@
 |---|---|---|
 | 1. 建表單 | 承辦 | `form-builder.html` 上傳 Excel 範本 → 確認欄位與公式 → 「📌 匯出範本」得到 `名稱.json` |
 | 2. 發布 | 承辦 | 把 `名稱.json`（或直接把 Excel `名稱.xlsx`）放到本資料夾，commit 並推上 `main`；部署完成後網址生效 |
-| 3. 填報 | 各機關 | 開啟 `https://cormort.github.io/local_gov_budget/form-builder.html?form=名稱`，填寫後「💾 匯出 JSON」，以 email 等方式回傳 |
+| 3. 填報 | 各機關 | 開啟 `https://帳號.github.io/local_gov_budget/form-builder.html?form=名稱`（本站帳號為 cormort；自行架設見 [`docs/setup.md`](../docs/setup.md)），填寫後「💾 匯出 JSON」，以 email 等方式回傳 |
 | 4. 彙整 | 承辦 | 開啟 `form-aggregate.html`，把所有回傳的 JSON 一次拖入 → 繳交清單／依項目彙總／明細 → 「📥 匯出 Excel」 |
 
 - 修改同名範本即更新表單；已開啟舊版的人重新整理即可。

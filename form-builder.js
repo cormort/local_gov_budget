@@ -155,7 +155,22 @@ function fb_theadRows(columns) {
     return rows;
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows };
+// 「前往 GitHub 發布」與分享連結跟著網站所在的帳號／repo 走，別人複製這個專案後不必改程式
+// alice.github.io/local_gov_budget/… → github.com/alice/local_gov_budget；本機開發時用原作者的 repo
+function fb_repoUrls(hostname, pathname) {
+    const m = /^([^.]+)\.github\.io$/i.exec(hostname);
+    if (!m) return { upload: 'https://github.com/cormort/local_gov_budget/upload/main/forms', site: 'https://cormort.github.io/local_gov_budget/' };
+    const owner = m[1].toLowerCase();
+    const first = pathname.split('/')[1] || '';
+    const isProjectSite = first && !first.includes('.');            // /repo/… 是專案網站；/xxx.html 是 owner.github.io 本身
+    const repo = isProjectSite ? first : hostname.toLowerCase();
+    return {
+        upload: `https://github.com/${owner}/${repo}/upload/main/forms`,
+        site: `https://${hostname.toLowerCase()}/${isProjectSite ? repo + '/' : ''}`,
+    };
+}
+
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -338,9 +353,7 @@ function fb_exportTemplate() {
     document.getElementById('fb-publish').classList.remove('hidden');
 }
 
-// ponytail: repo 寫死，fork 到別的帳號時改這兩行
-const FB_UPLOAD_URL = 'https://github.com/cormort/local_gov_budget/upload/main/forms';
-const FB_SITE_URL = 'https://cormort.github.io/local_gov_budget/';
+const { upload: FB_UPLOAD_URL, site: FB_SITE_URL } = fb_repoUrls(location.hostname, location.pathname);
 
 function fb_load(data) {
     if (!data.template || !Array.isArray(data.template.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
