@@ -2,6 +2,7 @@
 module.exports = {
   content: [
     './index.html',
+    './special-fund.html',
     './budget-app.js'
   ],
   theme: {
