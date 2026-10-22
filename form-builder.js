@@ -227,6 +227,7 @@ async function fb_loadFixedForm(name) {
     fb_load(await res.json());
     document.getElementById('fb-btn-xlsx').classList.add('hidden');
     document.getElementById('fb-btn-template').classList.add('hidden');
+    document.getElementById('fb-link-aggregate').classList.add('hidden');
     fb_msg(`固定表單「${name}」：請填寫機關、填表人與各列數值後按「💾 匯出 JSON」回傳。`);
 }
 
@@ -236,6 +237,7 @@ function fb_msg(text, warnings = []) {
 
 // ========== 5. 綁定事件 ==========
 document.addEventListener('DOMContentLoaded', () => {
+    if (!document.getElementById('fb-tbody')) return; // 彙整頁只借用公式函數
     const $ = id => document.getElementById(id);
     $('fb-btn-xlsx').onclick = () => $('fb-xlsx-file').click();
     $('fb-btn-import').onclick = () => $('fb-json-file').click();
