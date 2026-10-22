@@ -63,7 +63,7 @@ function ag_summary() {
 function ag_table(headId, bodyId, headers, rows) {
     document.getElementById(headId).innerHTML = '<tr>' + headers.map(h => `<th>${ag_esc(h)}</th>`).join('') + '</tr>';
     document.getElementById(bodyId).innerHTML = rows.map(r =>
-        '<tr>' + r.map(v => `<td class="${typeof v === 'number' ? 'text-right' : 'text-left'} px-2${typeof v === 'number' && v < 0 ? ' negative-value' : ''}">${v}</td>`).join('') + '</tr>').join('');
+        '<tr>' + r.map(v => `<td class="${typeof v === 'number' ? 'text-right' : 'text-left'} px-2${typeof v === 'number' && v < 0 ? ' negative-value' : ''}">${ag_fmt(v)}</td>`).join('') + '</tr>').join('');
 }
 
 function ag_views() {
@@ -90,9 +90,11 @@ function ag_render() {
     const v = ag_views();
     document.getElementById('ag-subs-title').textContent = `繳交清單（${ag_subs.length} 份）`;
     ag_table('ag-subs-head', 'ag-subs', [...v.subs.headers, ''], v.subs.rows.map((r, i) =>
-        [...r.map(x => ag_esc(x)), `<button class="ag-del text-red-500 font-bold" data-i="${i}" title="移除">×</button>`]));
-    ag_table('ag-sum-head', 'ag-sum', v.sum.headers, v.sum.rows.map(r => r.map(x => typeof x === 'number' ? ag_fmt(x) : ag_esc(x))));
-    ag_table('ag-detail-head', 'ag-detail', v.detail.headers, v.detail.rows.map(r => r.map(x => typeof x === 'number' ? ag_fmt(x) : ag_esc(x))));
+        [...r.map(x => typeof x === 'number' ? x : ag_esc(x)), `<button class="ag-del text-red-500 font-bold" data-i="${i}" title="移除">×</button>`]));
+    // 字串先跳脫，數字留給 ag_table 格式化並靠右
+    const esc = rows => rows.map(r => r.map(x => typeof x === 'number' ? x : ag_esc(x)));
+    ag_table('ag-sum-head', 'ag-sum', v.sum.headers, esc(v.sum.rows));
+    ag_table('ag-detail-head', 'ag-detail', v.detail.headers, esc(v.detail.rows));
 }
 
 // ========== 4. 匯出 Excel ==========
