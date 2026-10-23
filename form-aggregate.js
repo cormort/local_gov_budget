@@ -119,10 +119,11 @@ function ag_views() {
     let blank = 0;
     const filled = ag_subs.map(s => {
         let n = 0;
-        ag_effRows(s).forEach(r => {
+        const rows = ag_effRows(s), parent = fb_parents(rows.map(r => r[cols[0].key]));
+        rows.forEach((r, i) => {
             if (!String(r[cols[0].key] ?? '').trim()) return;
             if (!fb_hasData(r, cols)) { blank++; return; } // 明細只列有數字的列
-            n++;
+            if (!parent.includes(i)) n++; // 「有數字的列」只算實際填的列，上層小計不算
             // 明細的公式欄以該列數值重算，不信任檔案內的值
             const calc = { ...r };
             cols.forEach(c => { if (c.formula) calc[c.key] = fb_evalFormula(c.formula, k => ag_num(calc[k])); });
@@ -148,7 +149,7 @@ function ag_renderDups() {
     document.getElementById('ag-dup-card').classList.toggle('hidden', !groups.length);
     if (!groups.length) return;
     document.getElementById('ag-dup-title').textContent = `⚠️ 重複填報（${groups.length} 項）`;
-    document.getElementById('ag-dup-head').innerHTML = '<tr>' + ['採計', '項目', '機關', ...nums.map(c => c.label), '說明'].map(h => `<th>${ag_esc(h)}</th>`).join('') + '</tr>';
+    document.getElementById('ag-dup-head').innerHTML = '<tr>' + ['採計', '項目', '機關', ...nums.map(c => c.label), '備註'].map(h => `<th>${ag_esc(h)}</th>`).join('') + '</tr>';
     document.getElementById('ag-dup').innerHTML = groups.map(([name, list]) => {
         const rows = list.map(o => ({ o, r: ag_subs[o.s].rows[o.i] }));
         const same = rows.every(x => fb_sameNums(x.r, rows[0].r, cols));
