@@ -204,7 +204,7 @@ function fb_theadRows(columns) {
 // alice.github.io/local_gov_budget/… → github.com/alice/local_gov_budget；本機開發時用原作者的 repo
 function fb_repoUrls(hostname, pathname) {
     const m = /^([^.]+)\.github\.io$/i.exec(hostname);
-    if (!m) return { upload: 'https://github.com/cormort/local_gov_budget/upload/main/forms', site: 'https://cormort.github.io/local_gov_budget/' };
+    if (!m) return { upload: 'https://github.com/cormort/local_gov_budget/upload/main/forms', site: 'https://cormort.github.io/local_gov_budget/', api: 'https://api.github.com/repos/cormort/local_gov_budget/contents/forms' };
     const owner = m[1].toLowerCase();
     const first = pathname.split('/')[1] || '';
     const isProjectSite = first && !first.includes('.');            // /repo/… 是專案網站；/xxx.html 是 owner.github.io 本身
@@ -212,10 +212,21 @@ function fb_repoUrls(hostname, pathname) {
     return {
         upload: `https://github.com/${owner}/${repo}/upload/main/forms`,
         site: `https://${hostname.toLowerCase()}/${isProjectSite ? repo + '/' : ''}`,
+        api: `https://api.github.com/repos/${owner}/${repo}/contents/forms`,
     };
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup };
+// 範本庫：GitHub API 列出的 forms/ 檔案 → [{ name, file }]；同名的 .json 與 .xlsx 只列一次（.json 為準，與 ?form= 相同）
+function fb_libraryEntries(items) {
+    const byName = new Map();
+    items.filter(x => x.type === 'file' && /\.(json|xlsx)$/i.test(x.name)).forEach(x => {
+        const name = x.name.replace(/\.[^.]+$/, '');
+        if (!byName.has(name) || /\.json$/i.test(x.name)) byName.set(name, x.name);
+    });
+    return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+}
+
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_libraryEntries };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -305,6 +316,7 @@ const fb_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '
 
 function fb_render(template, rows) {
     fb_template = template;
+    document.getElementById('fb-library').classList.add('hidden');
     document.getElementById('fb-publish').classList.add('hidden');
     document.getElementById('fb-title').value = template.title;
     document.getElementById('fb-heading').textContent = template.title;
@@ -370,6 +382,10 @@ function fb_calc() {
         const tr = trs[i], el = k => tr.querySelector('.v-' + k);
         const get = k => parseFloat(el(k)?.value) || 0;
         const isParent = parent.includes(i);
+        // 項目名稱依層級縮排，上層項目粗體
+        const nameEl = el(cols[0].key);
+        nameEl.style.paddingLeft = `${Math.max(fb_level(nameEl.value) - 1, 0) * 1.5 + 0.25}rem`;
+        nameEl.style.fontWeight = isParent ? '700' : '';
         cols.forEach(c => {
             if (c.type !== 'num' || c.formula) return;
             el(c.key).readOnly = isParent;
@@ -460,7 +476,27 @@ function fb_exportTemplate() {
     document.getElementById('fb-publish').classList.remove('hidden');
 }
 
-const { upload: FB_UPLOAD_URL, site: FB_SITE_URL } = fb_repoUrls(location.hostname, location.pathname);
+const { upload: FB_UPLOAD_URL, site: FB_SITE_URL, api: FB_API_URL } = fb_repoUrls(location.hostname, location.pathname);
+
+// 首頁（沒有 ?form=）列出 forms/ 已發布的表單；新上傳到 forms/ 的檔案會自動出現，不必另外維護清單
+// ponytail: GitHub API 未登入每小時 60 次（以 IP 計），超過就顯示錯誤，量大再改成 forms/index.json
+async function fb_loadLibrary() {
+    const list = document.getElementById('fb-library-list');
+    try {
+        const res = await fetch(FB_API_URL, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(res.status === 403 ? 'GitHub 查詢次數已達上限，請稍後再試' : `讀取失敗（${res.status}）`);
+        const entries = fb_libraryEntries(await res.json());
+        list.innerHTML = entries.length ? entries.map(e => {
+            const link = FB_SITE_URL + '?form=' + encodeURIComponent(e.name);
+            return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
+                <span class="font-bold text-slate-800 mr-auto">${fb_esc(e.name)}</span>
+                <a href="?form=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開啟填報</a>
+                <button class="fb-lib-copy bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" data-link="${fb_esc(link)}">複製連結</button>
+                <a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">下載範本檔（${fb_esc(e.file.split('.').pop())}）</a>
+            </li>`;
+        }).join('') : '<li class="py-2 text-slate-500">forms/ 裡還沒有表單。</li>';
+    } catch (err) { list.innerHTML = `<li class="py-2 text-slate-500">⚠️ ${fb_esc(err.message)}</li>`; }
+}
 
 function fb_load(data) {
     if (!data.template || !Array.isArray(data.template.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
@@ -560,6 +596,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const form = new URLSearchParams(location.search).get('form');
     if (form) fb_loadFixedForm(form).catch(err => fb_msg('⚠️ ' + err.message));
+    else { $('fb-library').classList.remove('hidden'); fb_loadLibrary(); }
+    $('fb-library-list').addEventListener('click', async e => {
+        const btn = e.target.closest('.fb-lib-copy');
+        if (!btn) return;
+        await navigator.clipboard.writeText(btn.dataset.link).catch(() => {});
+        btn.textContent = '已複製 ✓';
+        setTimeout(() => { btn.textContent = '複製連結'; }, 1500);
+    });
 });
 
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com https://api.github.com;">
     <title>自訂表單查填（由 Excel 產生）</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
     <link rel="stylesheet" href="budget-style.css">
@@ -52,6 +52,12 @@
 
     <div id="fb-msg" class="text-sm text-slate-500 mb-4">尚未載入範本。</div>
 
+    <div id="fb-library" class="section-card hidden">
+        <h2 class="text-xl font-bold text-slate-800 mb-1">📚 範本庫</h2>
+        <p class="text-sm text-slate-500 mb-3">forms/ 資料夾裡已發布的表單。開啟填報，或下載範本檔修改後另存新檔名上傳，就是一份新表單。</p>
+        <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+    </div>
+
     <div id="fb-publish" class="excel-guide hidden">
         <p class="font-bold mb-2">📌 範本「<span id="fb-publish-file"></span>」已下載，接著發布：</p>
         <p class="mb-2">1. 點右邊按鈕開啟 GitHub 上傳頁，把剛下載的檔案拖進去，按「Commit changes」（同名檔案會直接覆蓋成新版）。檔名須正好是「<span id="fb-publish-file2"></span>」，若下載資料夾已有同名檔被自動改成「…(1).json」，請先改回。（也可以直接上傳原本的 Excel 檔，網址名稱就是 Excel 檔名；同名的 .json 與 .xlsx 都在時以 .json 為準。）
@@ -59,7 +65,7 @@
         <p class="mb-2">2. 約 1 分鐘後網站更新，把下面的連結傳給填報人（之後改版也是同一個連結）：</p>
         <div class="flex gap-2 items-center">
             <input type="text" id="fb-share-url" class="border w-full p-2 rounded-lg text-sm" readonly>
-            <button id="fb-btn-copy" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">複製連結</button>
+            <button id="fb-btn-copy" class="whitespace-nowrap bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">複製連結</button>
         </div>
         <p class="mt-3">3. 習慣用 Excel 的填報人，可另外寄查填用 Excel：在 Excel 填好後，從上面連結「📥 匯入已填 Excel」再匯出，或直接把 Excel 寄回彙整（「填報資訊」工作表要填機關、年度）。
             <button id="fb-btn-blank-xlsx" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 下載查填用 Excel</button></p>

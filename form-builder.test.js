@@ -57,11 +57,11 @@ assert.deepStrictEqual(thead([{ label: 'A' }, { label: 'B' }]).map(r => r.length
 // 發布／分享網址跟著網站所在帳號
 const { fb_repoUrls: urls } = require('./form-builder.js');
 assert.deepStrictEqual(urls('alice.github.io', '/local_gov_budget/form-builder.html'),
-    { upload: 'https://github.com/alice/local_gov_budget/upload/main/forms', site: 'https://alice.github.io/local_gov_budget/' });
+    { upload: 'https://github.com/alice/local_gov_budget/upload/main/forms', site: 'https://alice.github.io/local_gov_budget/', api: 'https://api.github.com/repos/alice/local_gov_budget/contents/forms' });
 assert.deepStrictEqual(urls('Bob-Lin.github.io', '/my-forms/'),
-    { upload: 'https://github.com/bob-lin/my-forms/upload/main/forms', site: 'https://bob-lin.github.io/my-forms/' });
+    { upload: 'https://github.com/bob-lin/my-forms/upload/main/forms', site: 'https://bob-lin.github.io/my-forms/', api: 'https://api.github.com/repos/bob-lin/my-forms/contents/forms' });
 assert.deepStrictEqual(urls('carol.github.io', '/form-builder.html'),
-    { upload: 'https://github.com/carol/carol.github.io/upload/main/forms', site: 'https://carol.github.io/' });
+    { upload: 'https://github.com/carol/carol.github.io/upload/main/forms', site: 'https://carol.github.io/', api: 'https://api.github.com/repos/carol/carol.github.io/contents/forms' });
 assert.ok(urls('localhost', '/form-builder.html').upload.includes('/cormort/local_gov_budget/'));
 
 
@@ -79,4 +79,7 @@ assert.ok(mismatch(['項目', '預算數'], ['項目', '決算數']).includes('�
 const { fb_rollup: rollup } = require('./form-builder.js');
 const rcols = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B*2' }];
 assert.deepStrictEqual(rollup([{ A: '一、甲', B: '' }, { A: '（一）a', B: 1 }, { A: '1.x', B: 2 }, { A: '2.y', B: '3' }, { A: '二、乙', B: 9 }], rcols).map(r => r.B), [5, 5, 2, '3', 9]);
+const { fb_libraryEntries: lib } = require('./form-builder.js');
+assert.deepStrictEqual(lib([{ name: 'README.md', type: 'file' }, { name: '乙表.xlsx', type: 'file' }, { name: '甲表.xlsx', type: 'file' }, { name: '甲表.json', type: 'file' }, { name: 'old', type: 'dir' }]),
+    [{ name: '乙表', file: '乙表.xlsx' }, { name: '甲表', file: '甲表.json' }].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')));
 console.log('form-builder: all checks passed');

@@ -33,6 +33,10 @@ body {
     font-size: 0.9rem;
 }
 
+.budget-table input.text-left {
+    text-align: left;
+}
+
 .budget-table input:focus {
     outline: none;
     border-color: #3b82f6;
