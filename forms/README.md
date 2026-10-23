@@ -4,7 +4,7 @@
 
 | 步驟 | 誰 | 做什麼 |
 |---|---|---|
-| 1. 建表單 | 承辦 | 首頁上傳 Excel 範本 → 確認欄位與公式 → 「📌 匯出範本」得到 `名稱.json` |
+| 1. 建表單 | 承辦 | 首頁上傳 Excel 範本 → 確認欄位與公式 → 「📌 匯出範本」得到 `名稱.json`；同一區塊可「📊 下載查填用 Excel」給習慣用 Excel 的填報人 |
 | 2. 發布 | 承辦 | 把 `名稱.json`（或直接把 Excel `名稱.xlsx`）放到本資料夾，commit 並推上 `main`；部署完成後網址生效 |
 | 3. 填報 | 各機關 | 開啟 `https://帳號.github.io/local_gov_budget/?form=名稱`（本站帳號為 cormort；自行架設見 [`docs/setup.md`](../docs/setup.md)），填寫（可手填或「📥 匯入已填 Excel」）後「💾 匯出 JSON」或「📊 匯出 Excel」，以 email 等方式回傳 |
 | 4. 彙整 | 承辦 | 開啟 `form-aggregate.html`，把所有回傳的 JSON（或各機關「📊 匯出 Excel」的檔案；其他 Excel 以檔名當機關名稱）一次拖入 → 繳交清單／依項目彙總／明細 → 「📥 匯出 Excel」 |

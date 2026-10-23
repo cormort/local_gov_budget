@@ -411,9 +411,10 @@ const fb_saveJSON = (data, fileName) =>
 const FB_INFO_SHEET = '填報資訊', FB_INFO_KEYS = { 機關: 'org', 年度: 'year', 填表人: 'user' };
 
 // 已填的 Excel：欄位放回範本原本的欄（公式欄寫回 Excel 公式），可再匯入填表頁或直接拖進彙整頁
-function fb_exportXlsx() {
+// blank = 發起人產生給查填者的空白查填檔（填報資訊留白，由查填者在 Excel 裡填）
+function fb_exportXlsx(blank = false) {
     if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
-    const val = id => document.getElementById(id).value;
+    const val = id => blank ? '' : document.getElementById(id).value;
     const cols = fb_template.columns, caption = fb_template.caption || [], ws = {};
     const put = (r, key, cell) => { ws[key + (r + 1)] = cell; };
     caption.forEach((t, r) => put(r, 'A', { t: 's', v: t }));
@@ -433,7 +434,7 @@ function fb_exportXlsx() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, (fb_template.sheet || fb_template.title).slice(0, 31));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(Object.keys(FB_INFO_KEYS).map(k => [k, val('fb-' + FB_INFO_KEYS[k])])), FB_INFO_SHEET);
-    XLSX.writeFile(wb, `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
+    XLSX.writeFile(wb, blank ? `${fb_template.title}_查填.xlsx` : `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
 }
 
 function fb_exportJSON() {
@@ -507,7 +508,8 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fb-btn-xlsx').onclick = () => $('fb-xlsx-file').click();
     $('fb-btn-import').onclick = () => $('fb-json-file').click();
     $('fb-btn-export').onclick = fb_exportJSON;
-    $('fb-btn-export-xlsx').onclick = fb_exportXlsx;
+    $('fb-btn-export-xlsx').onclick = () => fb_exportXlsx();
+    $('fb-btn-blank-xlsx').onclick = () => fb_exportXlsx(true);
     $('fb-btn-template').onclick = fb_exportTemplate;
     $('fb-btn-copy').onclick = async () => {
         const url = $('fb-share-url');
