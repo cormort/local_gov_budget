@@ -6,6 +6,7 @@ let ag_form = null;     // 表單 { title, sheets: [{ name, columns, caption }] 
 let ag_subs = [];       // [{ file, org, year, user, tables: { 工作表名: rows } }]；rows 保留原值，列上 _off = true 表示重複填報時不採計
 let ag_oneOwner = {};   // 各工作表是否檢查重複填報：沒設定 = 依資料自動判斷（fb_itemOwners），true / false = 使用者指定
 let ag_cur = 0;         // 目前顯示的工作表
+let ag_fixed = false;   // 由 ?form= 載入的範本：清空回傳檔時保留表單
 
 const ag_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const ag_num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
@@ -74,6 +75,21 @@ async function ag_addFiles(files) {
     ag_defaultOff();
     ag_render();
     ag_msg(notes);
+}
+
+// ?form=名稱：範本庫的「彙整」，先載入 forms/名稱.json（沒有才讀 .xlsx 第一個工作表）當表單，之後只要拖入回傳檔
+async function ag_loadForm(name) {
+    if (/[\\/]|\.\./.test(name)) throw new Error('表單名稱不合法：' + name);
+    const base = 'forms/' + encodeURIComponent(name);
+    const res = await fetch(base + '.json', { cache: 'no-cache' });
+    if (res.ok) { const f = fb_normalize(await res.json()); ag_form = { title: f.title, sheets: f.sheets }; }
+    else {
+        const x = await fetch(base + '.xlsx', { cache: 'no-cache' });
+        if (!x.ok) throw new Error(`找不到範本「${name}」`);
+        ag_form = { ...ag_formFromXlsx(await x.arrayBuffer(), name + '.xlsx'), title: name };
+    }
+    ag_fixed = true;
+    document.getElementById('ag-msg').textContent = `表單「${ag_form.title}」${ag_form.sheets.length > 1 ? `（${ag_form.sheets.length} 個工作表）` : ''}：已載入範本，請拖入各機關回傳的 JSON 或 Excel。`;
 }
 
 function ag_msg(notes = []) {
@@ -251,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
     drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); ag_addFiles([...e.dataTransfer.files]); });
     $('ag-btn-xlsx').onclick = ag_exportXlsx;
-    $('ag-btn-clear').onclick = () => { ag_form = null; ag_subs = []; ag_oneOwner = {}; ag_cur = 0; ag_render(); ag_msg(); };
+    $('ag-btn-clear').onclick = () => { if (!ag_fixed) ag_form = null; ag_subs = []; ag_oneOwner = {}; ag_cur = 0; ag_render(); ag_msg(); };
     $('ag-tabs').addEventListener('click', e => { const b = e.target.closest('.fb-tab'); if (b) { ag_cur = +b.dataset.k; ag_render(); } });
     $('ag-dup-mode').onchange = e => { ag_oneOwner[ag_sheet(ag_cur).name] = e.target.checked; ag_defaultOff(); ag_render(); };
     $('ag-dup').addEventListener('change', e => {
@@ -262,7 +278,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $('ag-subs').addEventListener('click', e => {
         if (!e.target.classList.contains('ag-del')) return;
         ag_subs.splice(+e.target.dataset.i, 1);
-        if (!ag_subs.length) { ag_form = null; ag_oneOwner = {}; ag_cur = 0; }
+        if (!ag_subs.length) { if (!ag_fixed) ag_form = null; ag_oneOwner = {}; ag_cur = 0; }
         ag_render(); ag_msg();
     });
+    const form = new URLSearchParams(location.search).get('form');
+    if (form) ag_loadForm(form).catch(err => ag_msg([err.message]));
 });

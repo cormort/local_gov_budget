@@ -683,6 +683,7 @@ async function fb_loadLibrary() {
                     ${m.description ? `<div class="text-xs text-slate-500">${fb_esc(m.description)}</div>` : ''}</div>
                 <a href="?form=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開啟填報</a>
                 <button class="fb-lib-copy bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" data-link="${fb_esc(link)}">複製連結</button>
+                <a href="form-aggregate.html?form=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold" title="開啟這份表單的彙整頁，拖入各機關回傳的檔案">彙整</a>
                 <a href="?form=${encodeURIComponent(e.name)}&blank=1" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載空白的查填用 Excel，寄給習慣用 Excel 的填報人">查填用 Excel</a>
                 <a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">範本檔（${fb_esc(e.file.split('.').pop())}）</a>
             </li>`;
