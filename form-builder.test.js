@@ -107,4 +107,19 @@ assert.strictEqual(norm({ template: { title: 'x', columns: [] } }).sheets[0].nam
 const newJson = { template: { title: 't', sheets: [{ name: 'a', columns: [] }, { name: 'b', columns: [] }] }, tables: { a: [], b: [{}] } };
 assert.deepStrictEqual(norm(newJson).sheets.map(s => s.name), ['a', 'b']);
 assert.throws(() => norm({ template: {} }));
+// 三層表頭：預算數 → 經常門／資本門 → 原編／核列，合計只到第二層
+const g3 = [
+    ['計畫名稱', '預算數', '', '', '', '', '執行數'],
+    ['', '經常門', '', '資本門', '', '合計', ''],
+    ['', '原編', '核列', '原編', '核列', '', ''],
+    ['人事費', '10', '9', '5', '4', '', '8'],
+];
+const at3 = (r, c) => (g3[r] || [])[c] || '';
+const m3 = [M(0, 0, 2, 0), M(0, 1, 0, 5), M(0, 6, 2, 6), M(1, 1, 1, 2), M(1, 3, 1, 4), M(1, 5, 2, 5)];
+assert.deepStrictEqual(block(at3, m3, 0, 3, 0, 6), { hr: 0, he: 2 });
+const lv3 = [0, 1, 2, 3, 4, 5, 6].map(c => levels(at3, m3, 0, 2, c));
+assert.deepStrictEqual(lv3[2], ['預算數', '經常門', '核列']);
+assert.deepStrictEqual(lv3[5], ['預算數', '合計']);
+const h3 = thead(lv3.map(l => ({ label: l.join('－'), levels: l }))).map(row => row.map(x => `${x.text}:${x.colspan}x${x.rowspan}`));
+assert.deepStrictEqual(h3, [['計畫名稱:1x3', '預算數:5x1', '執行數:1x3'], ['經常門:2x1', '資本門:2x1', '合計:1x2'], ['原編:1x1', '核列:1x1', '原編:1x1', '核列:1x1']]);
 console.log('form-builder: all checks passed');
