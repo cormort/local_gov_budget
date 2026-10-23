@@ -57,11 +57,84 @@ assert.deepStrictEqual(thead([{ label: 'A' }, { label: 'B' }]).map(r => r.length
 // 發布／分享網址跟著網站所在帳號
 const { fb_repoUrls: urls } = require('./form-builder.js');
 assert.deepStrictEqual(urls('alice.github.io', '/local_gov_budget/form-builder.html'),
-    { upload: 'https://github.com/alice/local_gov_budget/upload/main/forms', site: 'https://alice.github.io/local_gov_budget/' });
+    { upload: 'https://github.com/alice/local_gov_budget/upload/main/forms', site: 'https://alice.github.io/local_gov_budget/', api: 'https://api.github.com/repos/alice/local_gov_budget/contents/forms' });
 assert.deepStrictEqual(urls('Bob-Lin.github.io', '/my-forms/'),
-    { upload: 'https://github.com/bob-lin/my-forms/upload/main/forms', site: 'https://bob-lin.github.io/my-forms/' });
+    { upload: 'https://github.com/bob-lin/my-forms/upload/main/forms', site: 'https://bob-lin.github.io/my-forms/', api: 'https://api.github.com/repos/bob-lin/my-forms/contents/forms' });
 assert.deepStrictEqual(urls('carol.github.io', '/form-builder.html'),
-    { upload: 'https://github.com/carol/carol.github.io/upload/main/forms', site: 'https://carol.github.io/' });
+    { upload: 'https://github.com/carol/carol.github.io/upload/main/forms', site: 'https://carol.github.io/', api: 'https://api.github.com/repos/carol/carol.github.io/contents/forms' });
 assert.ok(urls('localhost', '/form-builder.html').upload.includes('/cormort/local_gov_budget/'));
 
+
+
+// 項目層級與小計
+const { fb_level: lvl, fb_parents: parents, fb_refsOtherRow: other, fb_headerMismatch: mismatch } = require('./form-builder.js');
+assert.deepStrictEqual(['一、人事費', '（一）薪資', '1.本俸', '(1)主管', '說明', '二、業務費', '1.加班', '1.5億元'].map(lvl), [1, 2, 3, 4, 0, 1, 3, 0]);
+assert.deepStrictEqual(parents(['一、人事費', '（一）薪資', '1.本俸', '2.加給', '說明', '（二）獎金', '二、業務費', '合計']), [-1, 0, 1, 1, -1, 0, -1, -1]);
+// 真實查填表：沒編號的基金屬於上方「一、作業基金」；縮排的分基金屬於上方沒縮排的基金
+assert.deepStrictEqual(parents(['合計', '一、作業基金', '行政院國家發展基金', '營建建設基金', '二、特別收入基金', '離島建設基金']), [-1, -1, 1, 1, -1, 4]);
+assert.deepStrictEqual(parents(['交通作業基金', '  民航事業作業基金', '  國道公路建設管理基金', '經濟作業基金']), [-1, 0, 0, -1]);
+assert.deepStrictEqual(parents(['甲', '乙', '丙']), [-1, -1, -1]); // 沒編號、沒縮排的清單都是同一層
+assert.deepStrictEqual(parents(['1.甲', '(1)a', '2.乙']), [-1, 0, -1]); // 最上層不是「一、」也可以
+assert.strictEqual(other('SUM(B3:B9)', 10), true);
+assert.strictEqual(other('B10-C10', 10), false);
+assert.strictEqual(other('[1]大基金!$M$41', 24), false); // 外部連結取值，不是合計列
+assert.strictEqual(mismatch(['項目', '預算數'], ['項目', '預算數']), null);
+assert.ok(mismatch(['項目', '預算數'], ['項目']).includes('欄位數量不符'));
+assert.ok(mismatch(['項目', '預算數'], ['項目', '決算數']).includes('第 2 欄'));
+assert.strictEqual(mismatch(['說明\r\n(執行率低於80%者)'], ['說明\n(執行率低於80%者)']), null); // 換行不同不算
+const { fb_rollup: rollup } = require('./form-builder.js');
+const rcols = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B*2' }];
+assert.deepStrictEqual(rollup([{ A: '一、甲', B: '' }, { A: '（一）a', B: 1 }, { A: '1.x', B: 2 }, { A: '2.y', B: '3' }, { A: '二、乙', B: 9 }], rcols).map(r => r.B), [5, 5, 2, '3', 9]);
+const { fb_libraryEntries: lib } = require('./form-builder.js');
+assert.deepStrictEqual(lib([{ name: 'README.md', type: 'file' }, { name: '乙表.xlsx', type: 'file' }, { name: '甲表.xlsx', type: 'file' }, { name: '甲表.json', type: 'file' }, { name: 'old', type: 'dir' }]),
+    [{ name: '乙表', file: '乙表.xlsx' }, { name: '甲表', file: '甲表.json' }].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')));
+// 彙整檢查：清單型（各填各的）才抓重複；經費表型（大家填同一批項目）不算
+const { fb_itemOwners: owners, fb_sameNums: same } = require('./form-builder.js');
+const oc = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B*2' }];
+const sub = (...rows) => ({ rows: rows.map(([A, B]) => ({ A, B })) });
+let o = owners([sub(['一、作業基金', 9], ['甲基金', 5], ['乙基金', '']), sub(['一、作業基金', 0], ['甲基金', ''], ['乙基金', 7]), sub(['甲基金', 5], ['丙基金', 1], ['丁基金', 2])], oc);
+assert.strictEqual(o.oneOwner, true);
+assert.deepStrictEqual([...o.owners].map(([k, v]) => [k, v.length]), [['甲基金', 2], ['乙基金', 1], ['丙基金', 1], ['丁基金', 1]]); // 上層「一、」不算
+o = owners([sub(['人事費', 1], ['業務費', 2]), sub(['人事費', 3], ['業務費', 4])], oc);
+assert.strictEqual(o.oneOwner, false);
+assert.strictEqual(same({ B: 5, C: 1 }, { B: '5', C: 2 }, oc), true);  // 公式欄不比
+assert.strictEqual(same({ B: 5 }, { B: 6 }, oc), false);
+// 多工作表格式；舊的單一工作表 JSON 轉成新格式
+const { fb_normalize: norm } = require('./form-builder.js');
+const oldJson = { template: { title: '經費表', sheet: '工作表1', columns: [{ key: 'A', label: '項目' }], caption: ['單位：千元'] }, rows: [{ A: '甲' }] };
+assert.deepStrictEqual(norm(oldJson), { title: '經費表', sheets: [{ name: '工作表1', columns: [{ key: 'A', label: '項目' }], caption: ['單位：千元'] }], tables: { 工作表1: [{ A: '甲' }] } });
+assert.strictEqual(norm({ template: { title: 'x', columns: [] } }).sheets[0].name, 'x'); // 更舊的沒有 sheet
+const newJson = { template: { title: 't', sheets: [{ name: 'a', columns: [] }, { name: 'b', columns: [] }] }, tables: { a: [], b: [{}] } };
+assert.deepStrictEqual(norm(newJson).sheets.map(s => s.name), ['a', 'b']);
+assert.throws(() => norm({ template: {} }));
+// 三層表頭：預算數 → 經常門／資本門 → 原編／核列，合計只到第二層
+const g3 = [
+    ['計畫名稱', '預算數', '', '', '', '', '執行數'],
+    ['', '經常門', '', '資本門', '', '合計', ''],
+    ['', '原編', '核列', '原編', '核列', '', ''],
+    ['人事費', '10', '9', '5', '4', '', '8'],
+];
+const at3 = (r, c) => (g3[r] || [])[c] || '';
+const m3 = [M(0, 0, 2, 0), M(0, 1, 0, 5), M(0, 6, 2, 6), M(1, 1, 1, 2), M(1, 3, 1, 4), M(1, 5, 2, 5)];
+assert.deepStrictEqual(block(at3, m3, 0, 3, 0, 6), { hr: 0, he: 2 });
+const lv3 = [0, 1, 2, 3, 4, 5, 6].map(c => levels(at3, m3, 0, 2, c));
+assert.deepStrictEqual(lv3[2], ['預算數', '經常門', '核列']);
+assert.deepStrictEqual(lv3[5], ['預算數', '合計']);
+const h3 = thead(lv3.map(l => ({ label: l.join('－'), levels: l }))).map(row => row.map(x => `${x.text}:${x.colspan}x${x.rowspan}`));
+assert.deepStrictEqual(h3, [['計畫名稱:1x3', '預算數:5x1', '執行數:1x3'], ['經常門:2x1', '資本門:2x1', '合計:1x2'], ['原編:1x1', '核列:1x1', '原編:1x1', '核列:1x1']]);
+// 表名、單位列（第 1、2 列）有兩格以上的字也要略過；表頭從第 3 列開始
+const capGrid = (r0, r1) => [r0, r1, ['計畫名稱', '預算數', '執行數'], ['甲', '1', '2']];
+const capBlock = (g, mg = []) => block((r, c) => (g[r] || [])[c] || '', mg, 0, 3, 0, 2);
+assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['填表機關：', '', '單位：千元'])), { hr: 2, he: 2 });
+assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['機關：', '填表人：', '單位：元'])), { hr: 2, he: 2 });
+assert.deepStrictEqual(capBlock(capGrid(['○○計畫經費表', '', '115.10.24'], ['', '', '單位：千元']), [M(0, 0, 0, 1)]), { hr: 2, he: 2 }); // 表名合併＋日期
+assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['', '', '單位：千元'])), { hr: 2, he: 2 });
+// 範本庫分組：index.json 的分類、隱藏；沒寫的歸「未分類」排最後；index.json 本身不列
+const { fb_libraryGroups: groups } = require('./form-builder.js');
+const libEntries = lib([{ name: 'index.json', type: 'file' }, { name: '甲.json', type: 'file' }, { name: '乙.xlsx', type: 'file' }, { name: '丙.json', type: 'file' }, { name: '丁.json', type: 'file' }]);
+assert.ok(!libEntries.some(e => e.name === 'index'));
+const idx = { templates: { 甲: { category: '預算', description: 'd' }, 乙: { category: '決算' }, 丙: { category: '預算', hidden: true } } };
+assert.deepStrictEqual(groups(libEntries, idx).map(g => [g.category, g.items.map(i => i.name)]), [['決算', ['乙']], ['預算', ['甲']], ['未分類', ['丁']]]);
+assert.deepStrictEqual(groups(libEntries, idx, true).find(g => g.category === '預算').items.map(i => i.name).sort(), ['丙', '甲']);
+assert.deepStrictEqual(groups(libEntries).map(g => g.category), ['未分類']);
 console.log('form-builder: all checks passed');
