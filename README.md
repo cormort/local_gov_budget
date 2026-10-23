@@ -3,13 +3,13 @@
 用 GitHub Pages 取代線上表單：上傳 Excel 範本產生表單 → 各機關填寫並匯出 JSON 回傳 → 承辦彙整並匯出 Excel。
 全部是靜態頁面，沒有後端；填報資料只存在填表人的瀏覽器與回傳的 JSON 檔。
 
-網站：https://cormort.github.io/local_gov_budget/（首頁直接導向 `form-builder.html`）
+網站：https://cormort.github.io/local_gov_budget/（首頁就是表單；舊網址 `form-builder.html` 會自動導回首頁並保留 `?form=`）
 
 | 頁面 | 用途 |
 |---|---|
-| `form-builder.html` | 上傳 Excel 範本產生表單、匯出範本、填寫並匯出 JSON |
-| `form-builder.html?form=名稱` | 固定表單：讀 `forms/名稱.json`，沒有則讀 `forms/名稱.xlsx` |
-| `form-aggregate.html` | 匯入多份回傳 JSON → 繳交清單／依項目彙總／明細 → 匯出 Excel |
+| `index.html`（首頁） | 上傳 Excel 範本產生表單、匯出範本、填寫並匯出 JSON |
+| `?form=名稱` | 固定表單：讀 `forms/名稱.json`，沒有則讀 `forms/名稱.xlsx` |
+| `form-aggregate.html` | 匯入多份回傳 JSON 或已填好的 Excel → 繳交清單／依項目彙總／明細 → 匯出 Excel |
 
 發布表單與完整流程見 [`forms/README.md`](forms/README.md)。
 
@@ -28,7 +28,7 @@
 npm install
 npm test            # 公式轉換與求值的自我檢查
 npm run build:css   # 由 src/input.css 重建 budget-style.css（掃描根目錄所有 *.html、*.js）
-python3 -m http.server 8000   # http://localhost:8000/form-builder.html
+python3 -m http.server 8000   # http://localhost:8000/
 ```
 
 ## 授權

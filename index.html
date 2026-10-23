@@ -2,10 +2,81 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=form-builder.html">
-    <title>自訂表單查填</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com;">
+    <title>自訂表單查填（由 Excel 產生）</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="budget-style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="form-builder.js"></script>
 </head>
 <body>
-    <p><a href="form-builder.html">前往自訂表單查填</a></p>
+
+<nav class="bg-white border-b sticky top-0 z-50 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 text-white p-2 rounded-lg font-bold text-xl">🧩</div>
+            <div>
+                <h1 class="font-bold text-lg text-slate-800 leading-tight">自訂表單查填</h1>
+                <p class="text-xs text-slate-500">上傳 Excel 範本 → 自動產生表頭與表單</p>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button id="fb-btn-xlsx" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 上傳 Excel 範本</button>
+            <input type="file" id="fb-xlsx-file" class="hidden" accept=".xlsx,.xls">
+            <button id="fb-btn-template" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow" title="匯出為固定表單範本，放到 forms/ 資料夾供他人以網址開啟">📌 匯出範本</button>
+            <button id="fb-btn-fill-xlsx" class="hidden bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200" title="把已在 Excel 填好的檔案帶入表單（欄名須與表單一致）">📥 匯入已填 Excel</button>
+            <input type="file" id="fb-fill-xlsx-file" class="hidden" accept=".xlsx,.xls">
+            <button id="fb-btn-import"class="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200">📂 匯入 JSON</button>
+            <input type="file" id="fb-json-file" class="hidden" accept=".json">
+            <button id="fb-btn-export" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">💾 匯出 JSON</button>
+            <a id="fb-link-aggregate" href="form-aggregate.html" class="bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold border hover:bg-slate-200" title="匯入各機關回傳的 JSON 彙整">📊 彙整</a>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-[98%] mx-auto p-4">
+    <div class="excel-guide">
+        <b>範本規則：</b>第一個非空白列為表頭（可用合併儲存格做兩層表頭，欄名會成為「預算數－原編」；只有一格字的表名、單位列會自動略過），第一欄為項目名稱。第二列起的資料會帶入為預設項目；
+        儲存格若是公式（如 <code>=B2-C2</code>、<code>=SUM(B2:D2)</code>，限同一列的加減乘除），該欄即成為自動計算欄。項目名稱以「一、」「（一）」「1.」「（1）」編號時，上層項目的數值自動等於下層加總；沒有編號的合計、小計公式列會略過，由表尾合計自動計算。空白欄預設為數值欄；要文字欄請在任一資料列填入文字。<br><b>填寫：</b>可從 Excel 選取多格複製，點表格任一格按 Ctrl+V（Mac：⌘V）貼上，會從該格往右、往下填入，列不夠自動新增，公式欄自動跳過。
+    </div>
+
+    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div><label class="text-xs font-bold text-slate-400 uppercase">表單名稱</label><input type="text" id="fb-title" class="border-b-2 w-full p-2 outline-none font-bold focus:border-blue-500" readonly></div>
+        <div><label class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="fb-org" class="border-b-2 w-full p-2 outline-none"></div>
+        <div><label class="text-xs font-bold text-slate-400 uppercase">年度</label><input type="number" id="fb-year" class="border-b-2 w-full p-2 outline-none" value="115"></div>
+        <div><label class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="fb-user" class="border-b-2 w-full p-2 outline-none"></div>
+    </div>
+
+    <div id="fb-msg" class="text-sm text-slate-500 mb-4">尚未載入範本。</div>
+
+    <div id="fb-publish" class="excel-guide hidden">
+        <p class="font-bold mb-2">📌 範本「<span id="fb-publish-file"></span>」已下載，接著發布：</p>
+        <p class="mb-2">1. 點右邊按鈕開啟 GitHub 上傳頁，把剛下載的檔案拖進去，按「Commit changes」（同名檔案會直接覆蓋成新版）。檔名須正好是「<span id="fb-publish-file2"></span>」，若下載資料夾已有同名檔被自動改成「…(1).json」，請先改回。（也可以直接上傳原本的 Excel 檔，網址名稱就是 Excel 檔名；同名的 .json 與 .xlsx 都在時以 .json 為準。）
+            <a id="fb-publish-github" target="_blank" rel="noopener" class="bg-slate-800 text-white px-3 py-1 rounded-lg text-sm font-bold">前往 GitHub 發布 ↗</a></p>
+        <p class="mb-2">2. 約 1 分鐘後網站更新，把下面的連結傳給填報人（之後改版也是同一個連結）：</p>
+        <div class="flex gap-2 items-center">
+            <input type="text" id="fb-share-url" class="border w-full p-2 rounded-lg text-sm" readonly>
+            <button id="fb-btn-copy" class="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">複製連結</button>
+        </div>
+    </div>
+
+    <div id="fb-card" class="section-card hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h2 id="fb-heading" class="text-xl font-bold text-slate-800"></h2>
+            <button id="fb-btn-add" class="text-blue-600 font-bold text-sm">+ 新增</button>
+        </div>
+        <p id="fb-caption" class="text-sm text-slate-500 mb-2 whitespace-pre-line"></p>
+        <div class="overflow-x-auto">
+            <table class="budget-table w-full">
+                <thead id="fb-thead"></thead>
+                <tbody id="fb-tbody"></tbody>
+                <tfoot id="fb-tfoot" class="total-row"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

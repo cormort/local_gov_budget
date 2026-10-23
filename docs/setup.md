@@ -62,13 +62,13 @@ https://你的帳號.github.io/local_gov_budget/
 ## 步驟 5　發布你的第一份表單
 
 1. 準備 Excel 範本（規則見下方「範本規則」），檔名就是表單名稱，例如 `經費表.xlsx`
-2. 開啟 `https://你的帳號.github.io/local_gov_budget/form-builder.html`，按「📊 上傳 Excel 範本」，**先確認欄位、公式欄（🔒）都正確**
+2. 開啟 `https://你的帳號.github.io/local_gov_budget/`，按「📊 上傳 Excel 範本」，**先確認欄位、公式欄（🔒）都正確**
 3. 回到 GitHub 你的專案 → 點進 `forms` 資料夾 → **Add file** → **Upload files**
 4. 把 Excel 拖進去 → 按 **Commit changes**
 5. 等約 1 分鐘，把這個連結寄給填報人：
 
    ```
-   https://你的帳號.github.io/local_gov_budget/form-builder.html?form=經費表
+   https://你的帳號.github.io/local_gov_budget/?form=經費表
    ```
 
 > 也可以在 form-builder 按「📌 匯出範本」→「前往 GitHub 發布 ↗」，上傳匯出的 `.json`；畫面上的「複製連結」會自動帶出**你自己的**網址。

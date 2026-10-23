@@ -1,4 +1,4 @@
-// 自訂表單彙整：讀入多份 form-builder 匯出的 JSON（同一 template），產生繳交清單／依項目彙總／明細，可匯出 Excel
+// 自訂表單彙整：讀入多份 form-builder 匯出的 JSON 或已填好的 Excel（同一表單），產生繳交清單／依項目彙總／明細，可匯出 Excel
 // 公式欄在彙總時以加總後的數值重算（比率類欄位才正確），求值沿用 form-builder.js 的 fb_evalFormula
 
 let ag_tpl = null;      // 第一份檔案的 template，之後的檔案必須相同
@@ -14,12 +14,24 @@ async function ag_addFiles(files) {
     const notes = [];
     for (const file of files) {
         try {
+            // Excel：沒有機關欄位，以檔名當機關；與已匯入的表單只比對欄名（和填表頁匯入已填 Excel 同一規則）
+            if (/\.xlsx?$/i.test(file.name)) {
+                const { template, rows } = fb_readWorkbook(await file.arrayBuffer(), file.name);
+                if (!ag_tpl) ag_tpl = { ...template, title: '自訂表單', fromXlsx: true }; // 檔名是機關名，不能當表單名稱
+                const bad = fb_headerMismatch(ag_tpl.columns.map(c => c.label), template.columns.map(c => c.label));
+                if (bad) { notes.push(`${file.name}：${bad.split('\n')[0]}，略過`); continue; }
+                const org = file.name.replace(/\.[^.]+$/, '');
+                const dup = ag_subs.findIndex(s => s.org === org && s.year === '');
+                const sub = { file: file.name, org, year: '', user: '', rows: fb_rollup(rows, ag_tpl.columns) };
+                if (dup >= 0) ag_subs[dup] = sub; else ag_subs.push(sub);
+                continue;
+            }
             const data = JSON.parse(await file.text());
             if (!data.template || !Array.isArray(data.template.columns)) { notes.push(`${file.name}：不是自訂表單 JSON`); continue; }
             if (!ag_tpl) ag_tpl = data.template;
-            else if (ag_sig(data.template) !== ag_sig(ag_tpl)) { notes.push(`${file.name}：表單「${data.template.title}」與「${ag_tpl.title}」不同，略過`); continue; }
+            else if (ag_tpl.fromXlsx ? fb_headerMismatch(ag_tpl.columns.map(c => c.label), data.template.columns.map(c => c.label)) : ag_sig(data.template) !== ag_sig(ag_tpl)) { notes.push(`${file.name}：表單「${data.template.title}」與「${ag_tpl.title}」不同，略過`); continue; }
             const m = data.metadata || {};
-            const sub = { file: file.name, org: m.org || '(未填機關)', year: m.year || '', user: m.user || '', rows: data.rows || [] };
+            const sub = { file: file.name, org: m.org || '(未填機關)', year: m.year || '', user: m.user || '', rows: fb_rollup(data.rows || [], ag_tpl.columns) };
             const dup = ag_subs.findIndex(s => s.org === sub.org && s.year === sub.year);
             if (dup >= 0) { ag_subs[dup] = sub; notes.push(`${sub.org} ${sub.year} 年度重複，以 ${file.name} 取代`); }
             else ag_subs.push(sub);
@@ -39,15 +51,16 @@ function ag_msg(notes = []) {
 function ag_summary() {
     const cols = ag_tpl.columns, nameKey = cols[0].key, groups = new Map();
     const totalRow = { [nameKey]: '合計', _n: new Set() };
-    ag_subs.forEach(s => s.rows.forEach(r => {
+    ag_subs.forEach(s => { const parent = fb_parents(s.rows.map(r => r[nameKey])); s.rows.forEach((r, i) => {
         const name = String(r[nameKey] ?? '').trim();
         if (!name) return;
         if (!groups.has(name)) groups.set(name, { [nameKey]: name, _n: new Set() });
-        [groups.get(name), totalRow].forEach(g => {
+        // 合計只加最上層的列：有編號的下層項目已含在上層的小計裡
+        [groups.get(name), ...(parent[i] < 0 ? [totalRow] : [])].forEach(g => {
             g._n.add(s.org + '|' + s.year);
             cols.forEach(c => { if (c.type === 'num' && !c.formula) g[c.key] = (g[c.key] || 0) + ag_num(r[c.key]); });
         });
-    }));
+    }); });
     const rows = [...groups.values(), totalRow];
     rows.forEach(g => {
         cols.forEach(c => { if (c.type === 'num' && !c.formula) g[c.key] = g[c.key] || 0; });
@@ -120,7 +133,7 @@ function ag_render() {
 
 // ========== 4. 匯出 Excel ==========
 function ag_exportXlsx() {
-    if (!ag_subs.length) return alert('請先匯入 JSON');
+    if (!ag_subs.length) return alert('請先匯入檔案');
     const v = ag_views(), wb = XLSX.utils.book_new();
     [['依項目彙總', v.sum], ['明細', v.detail], ['繳交清單', v.subs]].forEach(([name, t]) => {
         const head = ag_headGrid(t.headers);

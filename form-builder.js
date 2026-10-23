@@ -86,6 +86,51 @@ function fb_cleanNum(s) {
     return isNaN(Number(t)) ? s.trim() : String(neg ? -Number(t) : Number(t));
 }
 
+// ========== 1b-2. 項目層級：依編號判斷，父項的數值欄自動 = 子項加總 ==========
+// 一、=1 （一）=2 1.=3 （1）=4；沒有編號 = 0（獨立項目，不當父項也不當子項）
+function fb_level(name) {
+    const n = String(name ?? '').trim();
+    if (/^[一二三四五六七八九十百]+[、.．]/.test(n)) return 1;
+    if (/^[（(][一二三四五六七八九十百]+[）)]/.test(n)) return 2;
+    if (/^\d+[.、．](?!\d)/.test(n)) return 3;
+    if (/^[（(]\d+[）)]/.test(n)) return 4;
+    return 0;
+}
+
+// 每列的父列索引（-1 = 最上層）：往上找最近一個編號層級較高的列；沒編號的列跳過
+function fb_parents(names) {
+    const lv = names.map(fb_level);
+    return lv.map((l, i) => {
+        if (!l) return -1;
+        for (let j = i - 1; j >= 0; j--) if (lv[j] && lv[j] < l) return j;
+        return -1;
+    });
+}
+
+// 資料列（{ 欄代號: 值 }）的父項數值欄改為子項加總；給沒有畫面的彙整頁用（填表頁在 fb_calc 一起算）
+function fb_rollup(rows, columns) {
+    const nums = columns.filter(c => c.type === 'num' && !c.formula), name = columns[0].key;
+    const parent = fb_parents(rows.map(r => r[name])), sums = rows.map(() => null);
+    for (let i = rows.length - 1; i >= 0; i--) {
+        if (sums[i]) nums.forEach(c => { rows[i][c.key] = +sums[i][c.key].toFixed(4); });
+        const p = parent[i];
+        if (p < 0) continue;
+        sums[p] ??= Object.fromEntries(nums.map(c => [c.key, 0]));
+        nums.forEach(c => { sums[p][c.key] += parseFloat(rows[i][c.key]) || 0; });
+    }
+    return rows;
+}
+
+// 公式是否參照了別列（例如合計列 =SUM(B3:B9)）
+const fb_refsOtherRow = (f, row) => [...f.toUpperCase().matchAll(/\$?[A-Z]+\$?(\d+)/g)].some(m => +m[1] !== row);
+
+// 填好的 Excel 匯入前比對欄名，不一致就拒絕（回傳錯誤訊息，一致回傳 null）
+function fb_headerMismatch(expected, got) {
+    if (expected.length !== got.length) return `欄位數量不符：表單 ${expected.length} 欄，檔案 ${got.length} 欄\n表單：${expected.join('、')}\n檔案：${got.join('、')}`;
+    const i = expected.findIndex((l, k) => l !== got[k]);
+    return i < 0 ? null : `第 ${i + 1} 欄應為「${expected[i]}」，檔案中為「${got[i]}」`;
+}
+
 // ========== 1c. 多列表頭（合併儲存格） ==========
 // textAt(r, c) 取儲存格文字；merges 為 SheetJS 的 ws['!merges']（{ s:{r,c}, e:{r,c} }，0 起算）
 const fb_mergeAt = (merges, r, c) => merges.find(m => r >= m.s.r && r <= m.e.r && c >= m.s.c && c <= m.e.c);
@@ -170,7 +215,7 @@ function fb_repoUrls(hostname, pathname) {
     };
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -198,16 +243,18 @@ function fb_readWorkbook(buf, fileName) {
         const col = { key, label, type: columns.length === 0 ? 'text' : 'num' };
         if (levels.length > 1) col.levels = levels;
         if (columns.length > 0) {
-            // 取表頭下方第一個公式當該欄公式
+            // 取表頭下方第一個同列公式當該欄公式；跨列公式（合計、小計列）不算，改由層級小計與表尾合計計算
+            let unsupported = null;
             for (let r = he + 1; r <= range.e.r; r++) {
                 const x = cell(r, c);
                 if (x && x.f) {
                     const expr = fb_translateFormula(x.f, r + 1);
-                    if (expr) col.formula = expr; else warnings.push(`「${label}」公式 =${x.f} 不支援，改為手填`);
-                    break;
+                    if (expr) { col.formula = expr; break; }
+                    if (!fb_refsOtherRow(x.f, r + 1)) unsupported ??= x.f;
                 }
                 if (x && x.t === 's' && x.v.trim()) col.type = 'text';
             }
+            if (!col.formula && unsupported) warnings.push(`「${label}」公式 =${unsupported} 不支援，改為手填`);
         }
         columns.push(col);
     }
@@ -221,9 +268,12 @@ function fb_readWorkbook(buf, fileName) {
     });
 
     // 資料列 → 預設項目（第一欄有值才算）
-    const rows = [];
+    // 沒有編號又用跨列公式加總的列（合計、小計）略過：表單由表尾合計與層級小計自動算，留著會重複加總
+    const rows = [], skipped = [];
     for (let r = he + 1; r <= range.e.r; r++) {
-        if (!text(r, XLSX.utils.decode_col(columns[0].key))) continue;
+        const name = text(r, XLSX.utils.decode_col(columns[0].key));
+        if (!name) continue;
+        if (!fb_level(name) && columns.some(c => { const x = cell(r, XLSX.utils.decode_col(c.key)); return x?.f && fb_refsOtherRow(x.f, r + 1); })) { skipped.push(name); continue; }
         const row = {};
         columns.forEach(c => {
             if (c.formula) return;
@@ -232,8 +282,19 @@ function fb_readWorkbook(buf, fileName) {
         });
         rows.push(row);
     }
+    if (skipped.length) warnings.push(`略過以公式加總的「${skipped.join('、')}」列（表單會自動計算合計）`);
 
-    return { template: { title: fileName.replace(/\.[^.]+$/, ''), sheet: wb.SheetNames[0], columns }, rows, warnings };
+    // 表頭上方的表名、「單位：千元」等文字列 → 顯示在表格上方
+    const caption = [];
+    for (let r = range.s.r; r < hr; r++) {
+        const line = [];
+        for (let c = range.s.c; c <= range.e.c; c++) if (text(r, c)) line.push(text(r, c));
+        if (line.length) caption.push(line.join(' '));
+    }
+
+    const template = { title: fileName.replace(/\.[^.]+$/, ''), sheet: wb.SheetNames[0], columns };
+    if (caption.length) template.caption = caption;
+    return { template, rows, warnings };
 }
 
 // ========== 3. 畫表 + 計算 ==========
@@ -244,6 +305,8 @@ function fb_render(template, rows) {
     document.getElementById('fb-publish').classList.add('hidden');
     document.getElementById('fb-title').value = template.title;
     document.getElementById('fb-heading').textContent = template.title;
+    document.getElementById('fb-caption').textContent = (template.caption || []).join('\n');
+    document.getElementById('fb-btn-fill-xlsx').classList.remove('hidden');
     const head = fb_theadRows(template.columns);
     document.getElementById('fb-thead').innerHTML = head.map((row, k) =>
         '<tr>' + (k === 0 ? `<th class="w-8" rowspan="${head.length}"></th>` : '') +
@@ -296,19 +359,31 @@ function fb_onPaste(e) {
 function fb_calc() {
     if (!fb_template) return;
     const cols = fb_template.columns, totals = {};
-    document.querySelectorAll('#fb-tbody tr').forEach(tr => {
-        const get = k => parseFloat(tr.querySelector('.v-' + k)?.value) || 0;
-        // 依欄序重算數次，讓公式欄可以參照其他公式欄
+    const trs = [...document.querySelectorAll('#fb-tbody tr')];
+    const parent = fb_parents(trs.map(tr => tr.querySelector('.v-' + cols[0].key).value));
+    const sums = trs.map(() => ({}));
+    // 由下往上：子列一定在父列下方，算到父列時子列已加進 sums；合計只加最上層的列，避免重複加總
+    for (let i = trs.length - 1; i >= 0; i--) {
+        const tr = trs[i], el = k => tr.querySelector('.v-' + k);
+        const get = k => parseFloat(el(k)?.value) || 0;
+        const isParent = parent.includes(i);
+        cols.forEach(c => {
+            if (c.type !== 'num' || c.formula) return;
+            el(c.key).readOnly = isParent;
+            if (isParent) el(c.key).value = +(sums[i][c.key] || 0).toFixed(4);
+        });
+        // 依欄序重算數次，讓公式欄可以參照其他公式欄；父列以加總後的值重算（比率類才正確）
         for (let pass = 0; pass < cols.length; pass++) {
-            cols.forEach(c => { if (c.formula) tr.querySelector('.v-' + c.key).value = +fb_evalFormula(c.formula, get).toFixed(4); });
+            cols.forEach(c => { if (c.formula) el(c.key).value = +fb_evalFormula(c.formula, get).toFixed(4); });
         }
+        const into = parent[i] >= 0 ? sums[parent[i]] : totals;
         cols.forEach(c => {
             if (c.type !== 'num') return;
             const v = get(c.key);
-            tr.querySelector('.v-' + c.key).classList.toggle('negative-value', v < 0);
-            totals[c.key] = (totals[c.key] || 0) + v; // ponytail: 合計一律直接加總，比率類公式欄的合計無意義
+            el(c.key).classList.toggle('negative-value', v < 0);
+            into[c.key] = (into[c.key] || 0) + v; // ponytail: 合計一律直接加總，比率類公式欄的合計無意義
         });
-    });
+    }
     cols.forEach(c => {
         const el = document.querySelector('#fb-tfoot .t-' + c.key);
         if (el) { el.value = (totals[c.key] || 0).toLocaleString(); el.classList.toggle('negative-value', (totals[c.key] || 0) < 0); }
@@ -337,7 +412,7 @@ function fb_exportJSON() {
     fb_saveJSON(data, `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
 }
 
-// 固定表單範本：放到 repo 的 forms/ 資料夾，以 form-builder.html?form=檔名 開啟
+// 固定表單範本：放到 repo 的 forms/ 資料夾，以 ?form=檔名 開啟
 // 目前表格的列（不含公式欄）會成為預設項目；不含機關／填表人
 function fb_exportTemplate() {
     if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
@@ -349,7 +424,7 @@ function fb_exportTemplate() {
     fb_msg('');
     document.getElementById('fb-publish-file').textContent = document.getElementById('fb-publish-file2').textContent = `${fb_template.title}.json`;
     document.getElementById('fb-publish-github').href = FB_UPLOAD_URL;
-    document.getElementById('fb-share-url').value = FB_SITE_URL + 'form-builder.html?form=' + encodeURIComponent(fb_template.title);
+    document.getElementById('fb-share-url').value = FB_SITE_URL + '?form=' + encodeURIComponent(fb_template.title);
     document.getElementById('fb-publish').classList.remove('hidden');
 }
 
@@ -420,6 +495,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const nf = template.columns.filter(c => c.formula).length;
             fb_msg(`已由「${file.name}」產生表單：${template.columns.length} 欄（${nf} 個公式欄）、${rows.length} 個預設項目。`, warnings);
         } catch (err) { alert('Excel 解析失敗：' + err.message); }
+    };
+    // 填表人把已在 Excel 填好的檔案匯入：欄名須與目前表單完全一致，表單結構不變，只換掉各列
+    $('fb-btn-fill-xlsx').onclick = () => $('fb-fill-xlsx-file').click();
+    $('fb-fill-xlsx-file').onchange = async e => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file || !fb_template) return;
+        try {
+            const { template, rows } = fb_readWorkbook(await file.arrayBuffer(), file.name);
+            const bad = fb_headerMismatch(fb_template.columns.map(c => c.label), template.columns.map(c => c.label));
+            if (bad) return alert('欄位與表單不一致，未匯入：\n' + bad);
+            fb_render(fb_template, rows);
+            fb_msg(`已由「${file.name}」匯入 ${rows.length} 列。`);
+        } catch (err) { alert('Excel 匯入失敗：' + err.message); }
     };
     $('fb-json-file').onchange = async e => {
         const file = e.target.files[0];
