@@ -294,7 +294,10 @@ function fb_readWorkbook(buf, fileName) {
 
     const template = { title: fileName.replace(/\.[^.]+$/, ''), sheet: wb.SheetNames[0], columns };
     if (caption.length) template.caption = caption;
-    return { template, rows, warnings };
+    // 由填表頁「匯出 Excel」產生的檔案，第二張工作表帶機關、年度、填表人
+    const info = wb.Sheets[FB_INFO_SHEET], metadata = {};
+    if (info) XLSX.utils.sheet_to_json(info, { header: 1 }).forEach(([k, v]) => { if (FB_INFO_KEYS[k]) metadata[FB_INFO_KEYS[k]] = String(v ?? '').trim(); });
+    return { template, rows, warnings, metadata };
 }
 
 // ========== 3. 畫表 + 計算 ==========
@@ -405,6 +408,34 @@ function fb_collectRows() {
 const fb_saveJSON = (data, fileName) =>
     saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), fileName);
 
+const FB_INFO_SHEET = '填報資訊', FB_INFO_KEYS = { 機關: 'org', 年度: 'year', 填表人: 'user' };
+
+// 已填的 Excel：欄位放回範本原本的欄（公式欄寫回 Excel 公式），可再匯入填表頁或直接拖進彙整頁
+function fb_exportXlsx() {
+    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
+    const val = id => document.getElementById(id).value;
+    const cols = fb_template.columns, caption = fb_template.caption || [], ws = {};
+    const put = (r, key, cell) => { ws[key + (r + 1)] = cell; };
+    caption.forEach((t, r) => put(r, 'A', { t: 's', v: t }));
+    const hr = caption.length;
+    cols.forEach(c => put(hr, c.key, { t: 's', v: c.label }));
+    fb_collectRows().forEach((row, i) => {
+        const r = hr + 1 + i;
+        cols.forEach(c => {
+            const v = row[c.key];
+            if (c.formula) put(r, c.key, { t: 'n', v: Number(v) || 0, f: c.formula.replace(/[A-Z]+/g, k => k + (r + 1)) });
+            else if (v !== '' && v !== undefined) put(r, c.key, typeof v === 'number' ? { t: 'n', v } : { t: 's', v: String(v) });
+        });
+    });
+    const lastCol = cols.map(c => XLSX.utils.decode_col(c.key)).reduce((a, b) => Math.max(a, b), 0);
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: hr + Math.max(1, fb_collectRows().length), c: lastCol } });
+    ws['!cols'] = cols.map((c, i) => ({ wch: i === 0 ? 24 : 14 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, (fb_template.sheet || fb_template.title).slice(0, 31));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(Object.keys(FB_INFO_KEYS).map(k => [k, val('fb-' + FB_INFO_KEYS[k])])), FB_INFO_SHEET);
+    XLSX.writeFile(wb, `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
+}
+
 function fb_exportJSON() {
     if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
     const val = id => document.getElementById(id).value;
@@ -476,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fb-btn-xlsx').onclick = () => $('fb-xlsx-file').click();
     $('fb-btn-import').onclick = () => $('fb-json-file').click();
     $('fb-btn-export').onclick = fb_exportJSON;
+    $('fb-btn-export-xlsx').onclick = fb_exportXlsx;
     $('fb-btn-template').onclick = fb_exportTemplate;
     $('fb-btn-copy').onclick = async () => {
         const url = $('fb-share-url');
@@ -503,9 +535,10 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = '';
         if (!file || !fb_template) return;
         try {
-            const { template, rows } = fb_readWorkbook(await file.arrayBuffer(), file.name);
+            const { template, rows, metadata } = fb_readWorkbook(await file.arrayBuffer(), file.name);
             const bad = fb_headerMismatch(fb_template.columns.map(c => c.label), template.columns.map(c => c.label));
             if (bad) return alert('欄位與表單不一致，未匯入：\n' + bad);
+            Object.entries(metadata).forEach(([k, v]) => { if (v) $('fb-' + k).value = v; });
             fb_render(fb_template, rows);
             fb_msg(`已由「${file.name}」匯入 ${rows.length} 列。`);
         } catch (err) { alert('Excel 匯入失敗：' + err.message); }

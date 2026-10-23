@@ -14,16 +14,17 @@ async function ag_addFiles(files) {
     const notes = [];
     for (const file of files) {
         try {
-            // Excel：沒有機關欄位，以檔名當機關；與已匯入的表單只比對欄名（和填表頁匯入已填 Excel 同一規則）
+            // Excel：與已匯入的表單只比對欄名（和填表頁匯入已填 Excel 同一規則）
             if (/\.xlsx?$/i.test(file.name)) {
-                const { template, rows } = fb_readWorkbook(await file.arrayBuffer(), file.name);
+                const { template, rows, metadata: m } = fb_readWorkbook(await file.arrayBuffer(), file.name);
                 if (!ag_tpl) ag_tpl = { ...template, title: '自訂表單', fromXlsx: true }; // 檔名是機關名，不能當表單名稱
                 const bad = fb_headerMismatch(ag_tpl.columns.map(c => c.label), template.columns.map(c => c.label));
                 if (bad) { notes.push(`${file.name}：${bad.split('\n')[0]}，略過`); continue; }
-                const org = file.name.replace(/\.[^.]+$/, '');
-                const dup = ag_subs.findIndex(s => s.org === org && s.year === '');
-                const sub = { file: file.name, org, year: '', user: '', rows: fb_rollup(rows, ag_tpl.columns) };
-                if (dup >= 0) ag_subs[dup] = sub; else ag_subs.push(sub);
+                // 填表頁匯出的 Excel 帶「填報資訊」工作表；沒有的話以檔名當機關
+                const sub = { file: file.name, org: m.org || file.name.replace(/\.[^.]+$/, ''), year: m.year || '', user: m.user || '', rows: fb_rollup(rows, ag_tpl.columns) };
+                const dup = ag_subs.findIndex(s => s.org === sub.org && s.year === sub.year);
+                if (dup >= 0) { ag_subs[dup] = sub; notes.push(`${sub.org} ${sub.year} 年度重複，以 ${file.name} 取代`); }
+                else ag_subs.push(sub);
                 continue;
             }
             const data = JSON.parse(await file.text());
