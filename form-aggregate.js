@@ -58,7 +58,7 @@ function ag_summary() {
         if (!groups.has(name)) groups.set(name, { [nameKey]: name, _n: new Set() });
         // 合計只加最上層的列：有編號的下層項目已含在上層的小計裡
         [groups.get(name), ...(parent[i] < 0 ? [totalRow] : [])].forEach(g => {
-            g._n.add(s.org + '|' + s.year);
+            if (cols.some(c => c.type === 'num' && !c.formula && ag_num(r[c.key]))) g._n.add(s.org + '|' + s.year); // 空白列不算有填報
             cols.forEach(c => { if (c.type === 'num' && !c.formula) g[c.key] = (g[c.key] || 0) + ag_num(r[c.key]); });
         });
     }); });
@@ -74,28 +74,8 @@ function ag_summary() {
 }
 
 // ========== 3. 畫面 ==========
-// headers 可混用字串與 template 欄位（有 levels 的欄位會排成多層表頭，與填報表單相同）
-// 回傳 thead 的列（給 HTML colspan/rowspan）以及等價的二維陣列＋合併範圍（給 Excel）
-function ag_headGrid(headers) {
-    const rows = fb_theadRows(headers.map(h => typeof h === 'string' ? { label: h } : h));
-    const D = rows.length, N = headers.length;
-    const aoa = [...Array(D)].map(() => Array(N).fill('')), merges = [];
-    const used = [...Array(D)].map(() => Array(N).fill(false));
-    rows.forEach((row, k) => {
-        let c = 0;
-        row.forEach(h => {
-            while (used[k][c]) c++;
-            aoa[k][c] = h.text;
-            for (let r = k; r < k + h.rowspan; r++) for (let cc = c; cc < c + h.colspan; cc++) used[r][cc] = true;
-            if (h.rowspan > 1 || h.colspan > 1) merges.push({ s: { r: k, c }, e: { r: k + h.rowspan - 1, c: c + h.colspan - 1 } });
-            c += h.colspan;
-        });
-    });
-    return { rows, aoa, merges };
-}
-
 function ag_table(headId, bodyId, headers, rows) {
-    document.getElementById(headId).innerHTML = ag_headGrid(headers).rows.map(row =>
+    document.getElementById(headId).innerHTML = fb_headGrid(headers).rows.map(row =>
         '<tr>' + row.map(h => `<th colspan="${h.colspan}" rowspan="${h.rowspan}">${ag_esc(h.text)}</th>`).join('') + '</tr>').join('');
     document.getElementById(bodyId).innerHTML = rows.map(r =>
         '<tr>' + r.map(v => `<td class="${typeof v === 'number' ? 'text-right' : 'text-left'} px-2${typeof v === 'number' && v < 0 ? ' negative-value' : ''}">${ag_fmt(v)}</td>`).join('') + '</tr>').join('');
@@ -137,7 +117,7 @@ function ag_exportXlsx() {
     if (!ag_subs.length) return alert('請先匯入檔案');
     const v = ag_views(), wb = XLSX.utils.book_new();
     [['依項目彙總', v.sum], ['明細', v.detail], ['繳交清單', v.subs]].forEach(([name, t]) => {
-        const head = ag_headGrid(t.headers);
+        const head = fb_headGrid(t.headers);
         const ws = XLSX.utils.aoa_to_sheet([...head.aoa, ...t.rows]);
         ws['!merges'] = head.merges;
         ws['!cols'] = t.headers.map((h, i) => ({ wch: i === 0 ? 20 : 14 }));

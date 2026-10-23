@@ -70,12 +70,18 @@ assert.ok(urls('localhost', '/form-builder.html').upload.includes('/cormort/loca
 const { fb_level: lvl, fb_parents: parents, fb_refsOtherRow: other, fb_headerMismatch: mismatch } = require('./form-builder.js');
 assert.deepStrictEqual(['一、人事費', '（一）薪資', '1.本俸', '(1)主管', '說明', '二、業務費', '1.加班', '1.5億元'].map(lvl), [1, 2, 3, 4, 0, 1, 3, 0]);
 assert.deepStrictEqual(parents(['一、人事費', '（一）薪資', '1.本俸', '2.加給', '說明', '（二）獎金', '二、業務費', '合計']), [-1, 0, 1, 1, -1, 0, -1, -1]);
+// 真實查填表：沒編號的基金屬於上方「一、作業基金」；縮排的分基金屬於上方沒縮排的基金
+assert.deepStrictEqual(parents(['合計', '一、作業基金', '行政院國家發展基金', '營建建設基金', '二、特別收入基金', '離島建設基金']), [-1, -1, 1, 1, -1, 4]);
+assert.deepStrictEqual(parents(['交通作業基金', '  民航事業作業基金', '  國道公路建設管理基金', '經濟作業基金']), [-1, 0, 0, -1]);
+assert.deepStrictEqual(parents(['甲', '乙', '丙']), [-1, -1, -1]); // 沒編號、沒縮排的清單都是同一層
 assert.deepStrictEqual(parents(['1.甲', '(1)a', '2.乙']), [-1, 0, -1]); // 最上層不是「一、」也可以
 assert.strictEqual(other('SUM(B3:B9)', 10), true);
 assert.strictEqual(other('B10-C10', 10), false);
+assert.strictEqual(other('[1]大基金!$M$41', 24), false); // 外部連結取值，不是合計列
 assert.strictEqual(mismatch(['項目', '預算數'], ['項目', '預算數']), null);
 assert.ok(mismatch(['項目', '預算數'], ['項目']).includes('欄位數量不符'));
 assert.ok(mismatch(['項目', '預算數'], ['項目', '決算數']).includes('第 2 欄'));
+assert.strictEqual(mismatch(['說明\r\n(執行率低於80%者)'], ['說明\n(執行率低於80%者)']), null); // 換行不同不算
 const { fb_rollup: rollup } = require('./form-builder.js');
 const rcols = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B*2' }];
 assert.deepStrictEqual(rollup([{ A: '一、甲', B: '' }, { A: '（一）a', B: 1 }, { A: '1.x', B: 2 }, { A: '2.y', B: '3' }, { A: '二、乙', B: 9 }], rcols).map(r => r.B), [5, 5, 2, '3', 9]);

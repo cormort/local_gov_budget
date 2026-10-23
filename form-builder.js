@@ -97,12 +97,25 @@ function fb_level(name) {
     return 0;
 }
 
-// 每列的父列索引（-1 = 最上層）：往上找最近一個編號層級較高的列；沒編號的列跳過
+// 每列的深度：有編號照編號；沒編號的列是上方最近一個編號項目的下層（「一、作業基金」下的各基金），
+// 前面有空白再深一層（「交通作業基金」下縮排的「  民航事業作業基金」）；合計、小計、註、說明列為 0（不參與加總層級）
+// ponytail: 縮排只分「有／沒有」一層，多層縮排要再細分時改成依空白數
+function fb_depths(names) {
+    let last = 0;
+    return names.map(n => {
+        const s = String(n ?? ''), l = fb_level(s);
+        if (l) return (last = l);
+        if (!s.trim() || /^[\s\u3000]*(合計|總計|小計|註|備註|附註|說明)/.test(s)) return 0;
+        return last + 1 + (/^[\s\u3000]/.test(s) ? 1 : 0);
+    });
+}
+
+// 每列的父列索引（-1 = 最上層）：往上找最近一個深度較淺的列
 function fb_parents(names) {
-    const lv = names.map(fb_level);
-    return lv.map((l, i) => {
+    const d = fb_depths(names);
+    return d.map((l, i) => {
         if (!l) return -1;
-        for (let j = i - 1; j >= 0; j--) if (lv[j] && lv[j] < l) return j;
+        for (let j = i - 1; j >= 0; j--) if (d[j] && d[j] < l) return j;
         return -1;
     });
 }
@@ -121,13 +134,14 @@ function fb_rollup(rows, columns) {
     return rows;
 }
 
-// 公式是否參照了別列（例如合計列 =SUM(B3:B9)）
-const fb_refsOtherRow = (f, row) => [...f.toUpperCase().matchAll(/\$?[A-Z]+\$?(\d+)/g)].some(m => +m[1] !== row);
+// 公式是否參照了同一工作表的別列（例如合計列 =SUM(B3:B9)）；跨工作表或外部連結（=[1]大基金!$M$41）只是取值，不算
+const fb_refsOtherRow = (f, row) => !f.includes('!') && [...f.toUpperCase().matchAll(/\$?[A-Z]+\$?(\d+)/g)].some(m => +m[1] !== row);
 
 // 填好的 Excel 匯入前比對欄名，不一致就拒絕（回傳錯誤訊息，一致回傳 null）
 function fb_headerMismatch(expected, got) {
     if (expected.length !== got.length) return `欄位數量不符：表單 ${expected.length} 欄，檔案 ${got.length} 欄\n表單：${expected.join('、')}\n檔案：${got.join('、')}`;
-    const i = expected.findIndex((l, k) => l !== got[k]);
+    const norm = s => String(s).replace(/\s+/g, ''); // 儲存格內換行（\r\n 或 \n）、空白不算差異
+    const i = expected.findIndex((l, k) => norm(l) !== norm(got[k]));
     return i < 0 ? null : `第 ${i + 1} 欄應為「${expected[i]}」，檔案中為「${got[i]}」`;
 }
 
@@ -200,6 +214,26 @@ function fb_theadRows(columns) {
     return rows;
 }
 
+// headers 可混用字串與 template 欄位（有 levels 的欄位會排成多層表頭，與填報表單相同）
+// 回傳 thead 的列（給 HTML colspan/rowspan）以及等價的二維陣列＋合併範圍（給 Excel）
+function fb_headGrid(headers) {
+    const rows = fb_theadRows(headers.map(h => typeof h === 'string' ? { label: h } : h));
+    const D = rows.length, N = headers.length;
+    const aoa = [...Array(D)].map(() => Array(N).fill('')), merges = [];
+    const used = [...Array(D)].map(() => Array(N).fill(false));
+    rows.forEach((row, k) => {
+        let c = 0;
+        row.forEach(h => {
+            while (used[k][c]) c++;
+            aoa[k][c] = h.text;
+            for (let r = k; r < k + h.rowspan; r++) for (let cc = c; cc < c + h.colspan; cc++) used[r][cc] = true;
+            if (h.rowspan > 1 || h.colspan > 1) merges.push({ s: { r: k, c }, e: { r: k + h.rowspan - 1, c: c + h.colspan - 1 } });
+            c += h.colspan;
+        });
+    });
+    return { rows, aoa, merges };
+}
+
 // 「前往 GitHub 發布」與分享連結跟著網站所在的帳號／repo 走，別人複製這個專案後不必改程式
 // alice.github.io/local_gov_budget/… → github.com/alice/local_gov_budget；本機開發時用原作者的 repo
 function fb_repoUrls(hostname, pathname) {
@@ -226,7 +260,7 @@ function fb_libraryEntries(items) {
     return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_libraryEntries };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_libraryEntries, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -375,7 +409,8 @@ function fb_calc() {
     if (!fb_template) return;
     const cols = fb_template.columns, totals = {};
     const trs = [...document.querySelectorAll('#fb-tbody tr')];
-    const parent = fb_parents(trs.map(tr => tr.querySelector('.v-' + cols[0].key).value));
+    const names = trs.map(tr => tr.querySelector('.v-' + cols[0].key).value);
+    const parent = fb_parents(names), depth = fb_depths(names);
     const sums = trs.map(() => ({}));
     // 由下往上：子列一定在父列下方，算到父列時子列已加進 sums；合計只加最上層的列，避免重複加總
     for (let i = trs.length - 1; i >= 0; i--) {
@@ -384,7 +419,7 @@ function fb_calc() {
         const isParent = parent.includes(i);
         // 項目名稱依層級縮排，上層項目粗體
         const nameEl = el(cols[0].key);
-        nameEl.style.paddingLeft = `${Math.max(fb_level(nameEl.value) - 1, 0) * 1.5 + 0.25}rem`;
+        nameEl.style.paddingLeft = `${Math.max(depth[i] - 1, 0) * 1.5 + 0.25}rem`;
         nameEl.style.fontWeight = isParent ? '700' : '';
         cols.forEach(c => {
             if (c.type !== 'num' || c.formula) return;
@@ -434,18 +469,32 @@ function fb_exportXlsx(blank = false) {
     const cols = fb_template.columns, caption = fb_template.caption || [], ws = {};
     const put = (r, key, cell) => { ws[key + (r + 1)] = cell; };
     caption.forEach((t, r) => put(r, 'A', { t: 's', v: t }));
-    const hr = caption.length;
-    cols.forEach(c => put(hr, c.key, { t: 's', v: c.label }));
-    fb_collectRows().forEach((row, i) => {
-        const r = hr + 1 + i;
+    // 表頭照範本排成多層並合併儲存格（再匯入時欄名一樣串成「預算數－原編」，可通過比對）
+    const head = fb_headGrid(cols), colOf = idx => XLSX.utils.decode_col(cols[idx].key);
+    head.aoa.forEach((line, k) => line.forEach((t, idx) => { if (t) put(caption.length + k, cols[idx].key, { t: 's', v: t }); }));
+    ws['!merges'] = head.merges.map(m => ({ s: { r: caption.length + m.s.r, c: colOf(m.s.c) }, e: { r: caption.length + m.e.r, c: colOf(m.e.c) } }));
+    const hr = caption.length + head.aoa.length - 1; // 最後一列表頭
+    // 上層項目與最後的合計列寫成 Excel 公式（加總下層／最上層），在 Excel 裡填也會自動算；再匯入時合計列會被略過
+    const rows = fb_collectRows(), parent = fb_parents(rows.map(r => r[cols[0].key]));
+    const sumOf = (key, idx) => idx.length ? idx.map(j => key + (hr + 2 + j)).join('+') : '0';
+    const numCell = (c, r, v, f) => put(r, c.key, { t: 'n', v: Number(v) || 0, f });
+    rows.forEach((row, i) => {
+        const r = hr + 1 + i, kids = rows.map((_, j) => j).filter(j => parent[j] === i);
         cols.forEach(c => {
             const v = row[c.key];
-            if (c.formula) put(r, c.key, { t: 'n', v: Number(v) || 0, f: c.formula.replace(/[A-Z]+/g, k => k + (r + 1)) });
+            if (c.formula) numCell(c, r, v, c.formula.replace(/[A-Z]+/g, k => k + (r + 1)));
+            else if (c.type === 'num' && kids.length) numCell(c, r, v, sumOf(c.key, kids));
             else if (v !== '' && v !== undefined) put(r, c.key, typeof v === 'number' ? { t: 'n', v } : { t: 's', v: String(v) });
         });
     });
+    const tr = hr + 1 + rows.length, roots = rows.map((_, j) => j).filter(j => parent[j] < 0);
+    put(tr, cols[0].key, { t: 's', v: '合計' });
+    cols.slice(1).forEach(c => {
+        if (c.formula) numCell(c, tr, 0, c.formula.replace(/[A-Z]+/g, k => k + (tr + 1)));
+        else if (c.type === 'num') numCell(c, tr, 0, 'SUM(' + sumOf(c.key, roots).replace(/\+/g, ',') + ')');
+    });
     const lastCol = cols.map(c => XLSX.utils.decode_col(c.key)).reduce((a, b) => Math.max(a, b), 0);
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: hr + Math.max(1, fb_collectRows().length), c: lastCol } });
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: tr, c: lastCol } });
     ws['!cols'] = cols.map((c, i) => ({ wch: i === 0 ? 24 : 14 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, (fb_template.sheet || fb_template.title).slice(0, 31));
