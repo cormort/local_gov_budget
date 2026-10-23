@@ -122,4 +122,11 @@ assert.deepStrictEqual(lv3[2], ['預算數', '經常門', '核列']);
 assert.deepStrictEqual(lv3[5], ['預算數', '合計']);
 const h3 = thead(lv3.map(l => ({ label: l.join('－'), levels: l }))).map(row => row.map(x => `${x.text}:${x.colspan}x${x.rowspan}`));
 assert.deepStrictEqual(h3, [['計畫名稱:1x3', '預算數:5x1', '執行數:1x3'], ['經常門:2x1', '資本門:2x1', '合計:1x2'], ['原編:1x1', '核列:1x1', '原編:1x1', '核列:1x1']]);
+// 表名、單位列（第 1、2 列）有兩格以上的字也要略過；表頭從第 3 列開始
+const capGrid = (r0, r1) => [r0, r1, ['計畫名稱', '預算數', '執行數'], ['甲', '1', '2']];
+const capBlock = (g, mg = []) => block((r, c) => (g[r] || [])[c] || '', mg, 0, 3, 0, 2);
+assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['填表機關：', '', '單位：千元'])), { hr: 2, he: 2 });
+assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['機關：', '填表人：', '單位：元'])), { hr: 2, he: 2 });
+assert.deepStrictEqual(capBlock(capGrid(['○○計畫經費表', '', '115.10.24'], ['', '', '單位：千元']), [M(0, 0, 0, 1)]), { hr: 2, he: 2 }); // 表名合併＋日期
+assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['', '', '單位：千元'])), { hr: 2, he: 2 });
 console.log('form-builder: all checks passed');

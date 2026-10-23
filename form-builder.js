@@ -197,8 +197,12 @@ function fb_mergedText(textAt, merges, r, c) {
 // - 表頭內有橫向合併（如「預算數」跨三欄）且下一列在該範圍內有文字 → 下一列是子表頭
 function fb_headerBlock(textAt, merges, r0, r1, c0, c1) {
     const filled = r => { let n = 0; for (let c = c0; c <= c1; c++) if (textAt(r, c)) n++; return n; };
+    // 表名、單位列：空白、只有一格字、每格都是「標籤：值」（單位：千元、填表機關：），或第一欄橫向合併超過半寬（表名）
+    const texts = r => { const t = []; for (let c = c0; c <= c1; c++) if (textAt(r, c)) t.push(textAt(r, c)); return t; };
+    const isTitle = r => merges.some(m => m.s.r === r && m.s.c === c0 && (m.e.c - m.s.c + 1) * 2 > c1 - c0 + 1);
+    const isCaption = r => { const t = texts(r); return !t.length || (c1 > c0 && t.length === 1) || t.every(x => /[：:]/.test(x)) || isTitle(r); };
     let hr = r0;
-    while (hr <= r1 && (filled(hr) === 0 || (c1 > c0 && filled(hr) === 1))) hr++; // ponytail: 單欄範本的表頭若只有一格會被當表名跳過
+    while (hr <= r1 && isCaption(hr)) hr++; // ponytail: 單欄範本的表頭若只有一格會被當表名跳過
     if (hr > r1) return null;
     let he = hr, changed = true;
     while (changed) {
