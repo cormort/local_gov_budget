@@ -290,9 +290,15 @@ if (typeof document === 'undefined') { /* node 測試用 */ } else {
 // ========== 2. 讀 Excel 範本 ==========
 let fb_template = null;
 
-function fb_readWorkbook(buf, fileName) {
-    const wb = XLSX.read(buf, { type: 'array', cellFormula: true, sheetStubs: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+// 工作表：預設讀第一個沒隱藏的；sheet 可指定名稱。buf 可以是檔案內容或已讀好的 workbook（換工作表時不必重讀）
+const fb_openWorkbook = buf => buf.SheetNames ? buf : XLSX.read(buf, { type: 'array', cellFormula: true, sheetStubs: true });
+const fb_visibleSheets = wb => wb.SheetNames.filter((n, i) => !wb.Workbook?.Sheets?.[i]?.Hidden);
+
+function fb_readWorkbook(buf, fileName, sheet) {
+    const wb = fb_openWorkbook(buf);
+    if (sheet && !wb.Sheets[sheet]) throw new Error(`找不到工作表「${sheet}」`);
+    sheet = sheet || fb_visibleSheets(wb)[0] || wb.SheetNames[0];
+    const ws = wb.Sheets[sheet];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     const cell = (r, c) => ws[XLSX.utils.encode_cell({ r, c })];
     const text = (r, c) => { const x = cell(r, c); return x ? String(x.w ?? x.v ?? '').trim() : ''; };
@@ -361,12 +367,28 @@ function fb_readWorkbook(buf, fileName) {
         if (line.length) caption.push(line.join(' '));
     }
 
-    const template = { title: fileName.replace(/\.[^.]+$/, ''), sheet: wb.SheetNames[0], columns };
+    const template = { title: fileName.replace(/\.[^.]+$/, ''), sheet, columns };
     if (caption.length) template.caption = caption;
     // 由填表頁「匯出 Excel」產生的檔案，第二張工作表帶機關、年度、填表人
     const info = wb.Sheets[FB_INFO_SHEET], metadata = {};
     if (info) XLSX.utils.sheet_to_json(info, { header: 1 }).forEach(([k, v]) => { if (FB_INFO_KEYS[k]) metadata[FB_INFO_KEYS[k]] = String(v ?? '').trim(); });
-    return { template, rows, warnings, metadata };
+    return { template, rows, warnings, metadata, sheet, sheets: fb_visibleSheets(wb) };
+}
+
+// 已填的 Excel（填表頁匯入、彙整頁）：先找與範本同名的工作表，再逐一找欄名與表單一致的工作表；
+// 都不符就回傳第一個嘗試的結果，讓呼叫端照常顯示欄名不符的訊息
+function fb_readMatching(buf, fileName, labels, preferred) {
+    const wb = fb_openWorkbook(buf);
+    const order = [...new Set([preferred, ...fb_visibleSheets(wb)].filter(n => n && wb.Sheets[n]))];
+    let first = null;
+    for (const name of order) {
+        try {
+            const parsed = fb_readWorkbook(wb, fileName, name);
+            if (!fb_headerMismatch(labels, parsed.template.columns.map(c => c.label))) return parsed;
+            first ??= parsed;
+        } catch (e) { /* 空白或沒有表頭的工作表，試下一個 */ }
+    }
+    return first || fb_readWorkbook(wb, fileName);
 }
 
 // ========== 3. 畫表 + 計算 ==========
@@ -628,17 +650,24 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     $('fb-btn-add').onclick = () => { fb_addRow(); fb_calc(); };
 
+    // 範本有多個工作表時顯示下拉選單，換工作表就重新產生表單
+    let tplBook = null, tplName = '';
+    const loadTemplate = sheet => {
+        const { template, rows, warnings, sheets } = fb_readWorkbook(tplBook, tplName, sheet);
+        fb_render(template, rows);
+        $('fb-sheet').innerHTML = sheets.map(n => `<option${n === template.sheet ? ' selected' : ''}>${fb_esc(n)}</option>`).join('');
+        $('fb-sheet-box').classList.toggle('hidden', sheets.length < 2);
+        const nf = template.columns.filter(c => c.formula).length;
+        fb_msg(`已由「${tplName}」工作表「${template.sheet}」產生表單：${template.columns.length} 欄（${nf} 個公式欄）、${rows.length} 個預設項目。`, warnings);
+    };
     $('fb-xlsx-file').onchange = async e => {
         const file = e.target.files[0];
         e.target.value = '';
         if (!file) return;
-        try {
-            const { template, rows, warnings } = fb_readWorkbook(await file.arrayBuffer(), file.name);
-            fb_render(template, rows);
-            const nf = template.columns.filter(c => c.formula).length;
-            fb_msg(`已由「${file.name}」產生表單：${template.columns.length} 欄（${nf} 個公式欄）、${rows.length} 個預設項目。`, warnings);
-        } catch (err) { alert('Excel 解析失敗：' + err.message); }
+        try { tplBook = fb_openWorkbook(await file.arrayBuffer()); tplName = file.name; loadTemplate(); }
+        catch (err) { alert('Excel 解析失敗：' + err.message); }
     };
+    $('fb-sheet').onchange = e => { try { loadTemplate(e.target.value); } catch (err) { alert('Excel 解析失敗：' + err.message); } };
     // 填表人把已在 Excel 填好的檔案匯入：欄名須與目前表單完全一致，表單結構不變，只換掉各列
     $('fb-btn-fill-xlsx').onclick = () => $('fb-fill-xlsx-file').click();
     $('fb-fill-xlsx-file').onchange = async e => {
@@ -646,12 +675,12 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = '';
         if (!file || !fb_template) return;
         try {
-            const { template, rows, metadata } = fb_readWorkbook(await file.arrayBuffer(), file.name);
+            const { template, rows, metadata, sheet, sheets } = fb_readMatching(await file.arrayBuffer(), file.name, fb_template.columns.map(c => c.label), fb_template.sheet);
             const bad = fb_headerMismatch(fb_template.columns.map(c => c.label), template.columns.map(c => c.label));
             if (bad) return alert('欄位與表單不一致，未匯入：\n' + bad);
             Object.entries(metadata).forEach(([k, v]) => { if (v) $('fb-' + k).value = v; });
             fb_render(fb_template, rows);
-            fb_msg(`已由「${file.name}」匯入 ${rows.length} 列。`);
+            fb_msg(`已由「${file.name}」${sheets.length > 1 ? `工作表「${sheet}」` : ''}匯入 ${rows.length} 列。`);
         } catch (err) { alert('Excel 匯入失敗：' + err.message); }
     };
     $('fb-json-file').onchange = async e => {
