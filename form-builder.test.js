@@ -88,4 +88,15 @@ assert.deepStrictEqual(rollup([{ A: '一、甲', B: '' }, { A: '（一）a', B: 
 const { fb_libraryEntries: lib } = require('./form-builder.js');
 assert.deepStrictEqual(lib([{ name: 'README.md', type: 'file' }, { name: '乙表.xlsx', type: 'file' }, { name: '甲表.xlsx', type: 'file' }, { name: '甲表.json', type: 'file' }, { name: 'old', type: 'dir' }]),
     [{ name: '乙表', file: '乙表.xlsx' }, { name: '甲表', file: '甲表.json' }].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')));
+// 彙整檢查：清單型（各填各的）才抓重複；經費表型（大家填同一批項目）不算
+const { fb_itemOwners: owners, fb_sameNums: same } = require('./form-builder.js');
+const oc = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B*2' }];
+const sub = (...rows) => ({ rows: rows.map(([A, B]) => ({ A, B })) });
+let o = owners([sub(['一、作業基金', 9], ['甲基金', 5], ['乙基金', '']), sub(['一、作業基金', 0], ['甲基金', ''], ['乙基金', 7]), sub(['甲基金', 5], ['丙基金', 1], ['丁基金', 2])], oc);
+assert.strictEqual(o.oneOwner, true);
+assert.deepStrictEqual([...o.owners].map(([k, v]) => [k, v.length]), [['甲基金', 2], ['乙基金', 1], ['丙基金', 1], ['丁基金', 1]]); // 上層「一、」不算
+o = owners([sub(['人事費', 1], ['業務費', 2]), sub(['人事費', 3], ['業務費', 4])], oc);
+assert.strictEqual(o.oneOwner, false);
+assert.strictEqual(same({ B: 5, C: 1 }, { B: '5', C: 2 }, oc), true);  // 公式欄不比
+assert.strictEqual(same({ B: 5 }, { B: 6 }, oc), false);
 console.log('form-builder: all checks passed');

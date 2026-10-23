@@ -134,6 +134,30 @@ function fb_rollup(rows, columns) {
     return rows;
 }
 
+// 列有沒有填數字（公式欄不算）；兩列的數值欄是否完全相同
+const fb_hasData = (r, cols) => cols.some(c => c.type === 'num' && !c.formula && parseFloat(r[c.key]));
+const fb_sameNums = (a, b, cols) => cols.every(c => c.type !== 'num' || c.formula || (parseFloat(a[c.key]) || 0) === (parseFloat(b[c.key]) || 0));
+
+// 彙整檢查（借鏡 excel_merge）：每個項目有哪幾份檔案填了數字，只看沒有下層的列（上層是加總出來的）
+// subs: [{ rows }] → { owners: Map(項目 → [{ s, i }]), oneOwner }
+// oneOwner：過半項目只有一份在填 → 「各填各的」清單型表（如各基金填自己那列），同項目多份即重複；
+//           各機關填同一批項目的表（如經費表）每項都有多份，不算重複
+function fb_itemOwners(subs, cols) {
+    const key = cols[0].key, owners = new Map();
+    subs.forEach((s, si) => {
+        const parent = fb_parents(s.rows.map(r => r[key]));
+        s.rows.forEach((r, i) => {
+            const name = String(r[key] ?? '').trim();
+            if (!name || parent.includes(i) || !fb_hasData(r, cols)) return;
+            if (!owners.has(name)) owners.set(name, []);
+            owners.get(name).push({ s: si, i });
+        });
+    });
+    const filled = [...owners.values()];
+    const oneOwner = subs.length > 1 && filled.length > 0 && filled.filter(o => o.length === 1).length / filled.length >= 0.5;
+    return { owners, oneOwner };
+}
+
 // 公式是否參照了同一工作表的別列（例如合計列 =SUM(B3:B9)）；跨工作表或外部連結（=[1]大基金!$M$41）只是取值，不算
 const fb_refsOtherRow = (f, row) => !f.includes('!') && [...f.toUpperCase().matchAll(/\$?[A-Z]+\$?(\d+)/g)].some(m => +m[1] !== row);
 
@@ -260,7 +284,7 @@ function fb_libraryEntries(items) {
     return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_libraryEntries, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_hasData, fb_sameNums, fb_itemOwners, fb_libraryEntries, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========

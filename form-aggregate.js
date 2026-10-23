@@ -2,7 +2,8 @@
 // 公式欄在彙總時以加總後的數值重算（比率類欄位才正確），求值沿用 form-builder.js 的 fb_evalFormula
 
 let ag_tpl = null;      // 第一份檔案的 template，之後的檔案必須相同
-let ag_subs = [];       // [{ file, org, year, user, rows }]
+let ag_subs = [];       // [{ file, org, year, user, rows }]；rows 保留原值，列上 _off = true 表示重複填報時不採計
+let ag_oneOwner = null; // 是否檢查重複填報：null = 依資料自動判斷（fb_itemOwners），true / false = 使用者指定
 
 const ag_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const ag_sig = t => JSON.stringify([t.title, t.columns.map(c => [c.key, c.label, c.type, c.formula || ''])]);
@@ -21,7 +22,7 @@ async function ag_addFiles(files) {
                 const bad = fb_headerMismatch(ag_tpl.columns.map(c => c.label), template.columns.map(c => c.label));
                 if (bad) { notes.push(`${file.name}：${bad.split('\n')[0]}，略過`); continue; }
                 // 填表頁匯出的 Excel 帶「填報資訊」工作表；沒有的話以檔名當機關
-                const sub = { file: file.name, org: m.org || file.name.replace(/\.[^.]+$/, ''), year: m.year || '', user: m.user || '', rows: fb_rollup(rows, ag_tpl.columns) };
+                const sub = { file: file.name, org: m.org || file.name.replace(/\.[^.]+$/, ''), year: m.year || '', user: m.user || '', rows };
                 const dup = ag_subs.findIndex(s => s.org === sub.org && s.year === sub.year);
                 if (dup >= 0) { ag_subs[dup] = sub; notes.push(`${sub.org} ${sub.year} 年度重複，以 ${file.name} 取代`); }
                 else ag_subs.push(sub);
@@ -32,14 +33,39 @@ async function ag_addFiles(files) {
             if (!ag_tpl) ag_tpl = data.template;
             else if (ag_tpl.fromXlsx ? fb_headerMismatch(ag_tpl.columns.map(c => c.label), data.template.columns.map(c => c.label)) : ag_sig(data.template) !== ag_sig(ag_tpl)) { notes.push(`${file.name}：表單「${data.template.title}」與「${ag_tpl.title}」不同，略過`); continue; }
             const m = data.metadata || {};
-            const sub = { file: file.name, org: m.org || '(未填機關)', year: m.year || '', user: m.user || '', rows: fb_rollup(data.rows || [], ag_tpl.columns) };
+            const sub = { file: file.name, org: m.org || '(未填機關)', year: m.year || '', user: m.user || '', rows: data.rows || [] };
             const dup = ag_subs.findIndex(s => s.org === sub.org && s.year === sub.year);
             if (dup >= 0) { ag_subs[dup] = sub; notes.push(`${sub.org} ${sub.year} 年度重複，以 ${file.name} 取代`); }
             else ag_subs.push(sub);
         } catch (err) { notes.push(`${file.name}：${err.message}`); }
     }
+    ag_defaultOff();
     ag_render();
     ag_msg(notes);
+}
+
+// 重複填報的預設：數字完全相同 → 只採計第一份；數字不同 → 全部先採計，等使用者勾選（已勾過的列不動）
+function ag_defaultOff() {
+    if (!ag_tpl) return;
+    const cols = ag_tpl.columns;
+    fb_itemOwners(ag_subs, cols).owners.forEach(list => {
+        const rows = list.map(o => ag_subs[o.s].rows[o.i]);
+        const same = rows.every(r => fb_sameNums(r, rows[0], cols));
+        rows.forEach((r, k) => { if (r._off === undefined && list.length > 1) r._off = same && k > 0; });
+    });
+}
+
+const ag_checkDup = () => ag_oneOwner ?? fb_itemOwners(ag_subs, ag_tpl.columns).oneOwner;
+
+// 實際採計的列：不採計的列數值歸零，再重算上層小計（excel 的上層快取值、JSON 的上層值都不直接相信）
+function ag_effRows(s) {
+    const cols = ag_tpl.columns, on = ag_checkDup();
+    return fb_rollup(s.rows.map(r => {
+        if (!(on && r._off)) return { ...r };
+        const z = { ...r };
+        cols.forEach(c => { if (c.type === 'num' && !c.formula) z[c.key] = ''; });
+        return z;
+    }), cols);
 }
 
 function ag_msg(notes = []) {
@@ -52,13 +78,13 @@ function ag_msg(notes = []) {
 function ag_summary() {
     const cols = ag_tpl.columns, nameKey = cols[0].key, groups = new Map();
     const totalRow = { [nameKey]: '合計', _n: new Set() };
-    ag_subs.forEach(s => { const parent = fb_parents(s.rows.map(r => r[nameKey])); s.rows.forEach((r, i) => {
+    ag_subs.forEach(s => { const rows = ag_effRows(s), parent = fb_parents(rows.map(r => r[nameKey])); rows.forEach((r, i) => {
         const name = String(r[nameKey] ?? '').trim();
         if (!name) return;
         if (!groups.has(name)) groups.set(name, { [nameKey]: name, _n: new Set() });
         // 合計只加最上層的列：有編號的下層項目已含在上層的小計裡
         [groups.get(name), ...(parent[i] < 0 ? [totalRow] : [])].forEach(g => {
-            if (cols.some(c => c.type === 'num' && !c.formula && ag_num(r[c.key]))) g._n.add(s.org + '|' + s.year); // 空白列不算有填報
+            if (fb_hasData(r, cols)) g._n.add(s.org + '|' + s.year); // 空白列不算有填報
             cols.forEach(c => { if (c.type === 'num' && !c.formula) g[c.key] = (g[c.key] || 0) + ag_num(r[c.key]); });
         });
     }); });
@@ -69,6 +95,11 @@ function ag_summary() {
             cols.forEach(c => { if (c.formula) g[c.key] = fb_evalFormula(c.formula, k => g[k] || 0); });
         }
         g._count = g._n.size;
+    });
+    // 狀態：沒有任何一份填數字 → 未填報；清單型的表同一項目仍有多份採計 → 重複
+    const on = ag_checkDup(), owners = fb_itemOwners(ag_subs, cols).owners;
+    rows.forEach(g => {
+        g._status = g === totalRow ? '' : !g._count ? '❌ 未填報' : on && owners.get(g[nameKey])?.length > 1 && g._count > 1 ? '⚠️ 重複' : '✅';
     });
     return rows;
 }
@@ -85,18 +116,49 @@ function ag_views() {
     const cols = ag_tpl.columns;
     const cell = (c, v) => c.type === 'num' ? (v === '' || v === undefined ? '' : ag_num(v)) : String(v ?? '');
     const detail = [];
-    ag_subs.forEach(s => s.rows.forEach(r => {
-        if (!String(r[cols[0].key] ?? '').trim()) return;
-        // 明細的公式欄以該列數值重算，不信任檔案內的值
-        const calc = { ...r };
-        cols.forEach(c => { if (c.formula) calc[c.key] = fb_evalFormula(c.formula, k => ag_num(calc[k])); });
-        detail.push([s.org, s.year, ...cols.map(c => cell(c, calc[c.key]))]);
-    }));
+    let blank = 0;
+    const filled = ag_subs.map(s => {
+        let n = 0;
+        ag_effRows(s).forEach(r => {
+            if (!String(r[cols[0].key] ?? '').trim()) return;
+            if (!fb_hasData(r, cols)) { blank++; return; } // 明細只列有數字的列
+            n++;
+            // 明細的公式欄以該列數值重算，不信任檔案內的值
+            const calc = { ...r };
+            cols.forEach(c => { if (c.formula) calc[c.key] = fb_evalFormula(c.formula, k => ag_num(calc[k])); });
+            detail.push([s.org, s.year, ...cols.map(c => cell(c, calc[c.key]))]);
+        });
+        return n;
+    });
     return {
-        subs: { headers: ['機關', '年度', '填表人', '項目數', '檔名'], rows: ag_subs.map(s => [s.org, s.year, s.user, s.rows.length, s.file]) },
-        sum: { headers: [...cols, '填報機關數'], rows: ag_summary().map(g => [...cols.map(c => c.type === 'num' ? g[c.key] : (c === cols[0] ? g[c.key] : '')), g._count]) },
+        subs: { headers: ['機關', '年度', '填表人', '項目數', '有數字的列', '檔名'], rows: ag_subs.map((s, i) => [s.org, s.year, s.user, s.rows.length, filled[i], s.file]) },
+        sum: { headers: [...cols, '填報機關數', '狀態'], rows: ag_summary().map(g => [...cols.map(c => c.type === 'num' ? g[c.key] : (c === cols[0] ? g[c.key] : '')), g._count, g._status]) },
         detail: { headers: ['機關', '年度', ...cols], rows: detail },
+        blank,
     };
+}
+
+// 重複填報審核：清單型的表，同一項目有多份填數字 → 逐列勾選是否採計
+function ag_renderDups() {
+    const cols = ag_tpl.columns, on = ag_checkDup(), auto = fb_itemOwners(ag_subs, cols);
+    const nums = cols.filter(c => c.type === 'num' && !c.formula);
+    document.getElementById('ag-dup-mode').checked = on;
+    document.getElementById('ag-dup-auto').textContent = ag_oneOwner === null ? `（自動判斷：${auto.oneOwner ? '各項目多半只有一份在填，視為清單型' : '各份填同一批項目，不檢查'}）` : '（手動設定）';
+    const groups = on ? [...auto.owners].filter(([, l]) => l.length > 1) : [];
+    document.getElementById('ag-dup-card').classList.toggle('hidden', !groups.length);
+    if (!groups.length) return;
+    document.getElementById('ag-dup-title').textContent = `⚠️ 重複填報（${groups.length} 項）`;
+    document.getElementById('ag-dup-head').innerHTML = '<tr>' + ['採計', '項目', '機關', ...nums.map(c => c.label), '說明'].map(h => `<th>${ag_esc(h)}</th>`).join('') + '</tr>';
+    document.getElementById('ag-dup').innerHTML = groups.map(([name, list]) => {
+        const rows = list.map(o => ({ o, r: ag_subs[o.s].rows[o.i] }));
+        const same = rows.every(x => fb_sameNums(x.r, rows[0].r, cols));
+        return rows.map(({ o, r }, k) => `<tr class="${r._off ? 'opacity-50' : ''}${k === 0 ? ' border-t-2 border-slate-400' : ''}">
+            <td class="text-center"><input type="checkbox" class="ag-dup-use" data-s="${o.s}" data-i="${o.i}"${r._off ? '' : ' checked'}></td>
+            <td class="text-left px-2 font-bold">${k === 0 ? ag_esc(name) : ''}</td>
+            <td class="text-left px-2" title="${ag_esc(ag_subs[o.s].file)}">${ag_esc(ag_subs[o.s].org)}</td>
+            ${nums.map(c => `<td class="text-right px-2">${ag_fmt(ag_num(r[c.key]))}</td>`).join('')}
+            <td class="text-left px-2 text-xs">${k === 0 ? (same ? '數字相同，預設只採計第一份' : '數字不同，請勾選要採計的') : ''}</td></tr>`).join('');
+    }).join('');
 }
 
 function ag_render() {
@@ -110,6 +172,8 @@ function ag_render() {
     const esc = rows => rows.map(r => r.map(x => typeof x === 'number' ? x : ag_esc(x)));
     ag_table('ag-sum-head', 'ag-sum', v.sum.headers, esc(v.sum.rows));
     ag_table('ag-detail-head', 'ag-detail', v.detail.headers, esc(v.detail.rows));
+    document.getElementById('ag-detail-title').textContent = `明細（${v.detail.rows.length} 列有數字` + (v.blank ? `，略過 ${v.blank} 列空白）` : '）');
+    ag_renderDups();
 }
 
 // ========== 4. 匯出 Excel ==========
@@ -135,7 +199,13 @@ document.addEventListener('DOMContentLoaded', () => {
     drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
     drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); ag_addFiles([...e.dataTransfer.files]); });
     $('ag-btn-xlsx').onclick = ag_exportXlsx;
-    $('ag-btn-clear').onclick = () => { ag_tpl = null; ag_subs = []; ag_render(); ag_msg(); };
+    $('ag-btn-clear').onclick = () => { ag_tpl = null; ag_subs = []; ag_oneOwner = null; ag_render(); ag_msg(); };
+    $('ag-dup-mode').onchange = e => { ag_oneOwner = e.target.checked; ag_defaultOff(); ag_render(); };
+    $('ag-dup').addEventListener('change', e => {
+        if (!e.target.classList.contains('ag-dup-use')) return;
+        ag_subs[+e.target.dataset.s].rows[+e.target.dataset.i]._off = !e.target.checked;
+        ag_render();
+    });
     $('ag-subs').addEventListener('click', e => {
         if (!e.target.classList.contains('ag-del')) return;
         ag_subs.splice(+e.target.dataset.i, 1);

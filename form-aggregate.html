@@ -45,11 +45,20 @@
             <div class="overflow-x-auto"><table class="budget-table w-full"><thead id="ag-subs-head"></thead><tbody id="ag-subs"></tbody></table></div>
         </div>
         <div class="section-card">
+            <label class="text-sm text-slate-600"><input type="checkbox" id="ag-dup-mode"> 每個項目只應由一份檔案填報（檢查重複填報）</label>
+            <span id="ag-dup-auto" class="text-xs text-slate-400"></span>
+            <div id="ag-dup-card" class="hidden mt-4">
+                <h2 id="ag-dup-title" class="text-xl font-bold text-amber-700 mb-1"></h2>
+                <p class="text-sm text-slate-500 mb-3">同一項目有多份檔案填了數字。勾選要採計的列；不採計的列不進彙總、明細與匯出。</p>
+                <div class="overflow-x-auto"><table class="budget-table w-full"><thead id="ag-dup-head"></thead><tbody id="ag-dup"></tbody></table></div>
+            </div>
+        </div>
+        <div class="section-card">
             <h2 class="text-xl font-bold text-slate-800 mb-4">依項目彙總</h2>
             <div class="overflow-x-auto"><table class="budget-table w-full"><thead id="ag-sum-head"></thead><tbody id="ag-sum"></tbody></table></div>
         </div>
         <div class="section-card">
-            <h2 class="text-xl font-bold text-slate-800 mb-4">明細（各機關各項目）</h2>
+            <h2 id="ag-detail-title" class="text-xl font-bold text-slate-800 mb-4">明細</h2>
             <div class="overflow-x-auto"><table class="budget-table w-full"><thead id="ag-detail-head"></thead><tbody id="ag-detail"></tbody></table></div>
         </div>
     </div>
