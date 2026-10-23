@@ -99,4 +99,12 @@ o = owners([sub(['人事費', 1], ['業務費', 2]), sub(['人事費', 3], ['業
 assert.strictEqual(o.oneOwner, false);
 assert.strictEqual(same({ B: 5, C: 1 }, { B: '5', C: 2 }, oc), true);  // 公式欄不比
 assert.strictEqual(same({ B: 5 }, { B: 6 }, oc), false);
+// 多工作表格式；舊的單一工作表 JSON 轉成新格式
+const { fb_normalize: norm } = require('./form-builder.js');
+const oldJson = { template: { title: '經費表', sheet: '工作表1', columns: [{ key: 'A', label: '項目' }], caption: ['單位：千元'] }, rows: [{ A: '甲' }] };
+assert.deepStrictEqual(norm(oldJson), { title: '經費表', sheets: [{ name: '工作表1', columns: [{ key: 'A', label: '項目' }], caption: ['單位：千元'] }], tables: { 工作表1: [{ A: '甲' }] } });
+assert.strictEqual(norm({ template: { title: 'x', columns: [] } }).sheets[0].name, 'x'); // 更舊的沒有 sheet
+const newJson = { template: { title: 't', sheets: [{ name: 'a', columns: [] }, { name: 'b', columns: [] }] }, tables: { a: [], b: [{}] } };
+assert.deepStrictEqual(norm(newJson).sheets.map(s => s.name), ['a', 'b']);
+assert.throws(() => norm({ template: {} }));
 console.log('form-builder: all checks passed');

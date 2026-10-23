@@ -72,6 +72,20 @@ body {
     font-weight: bold;
 }
 
+.fb-tab {
+    padding: 8px 16px;
+    border-radius: 10px 10px 0 0;
+    background: #e2e8f0;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.fb-tab-on {
+    background: #64748b;
+    color: white;
+}
+
 .section-card {
     background: white;
     padding: 24px;

@@ -50,8 +50,8 @@
         <div><label class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="fb-user" class="border-b-2 w-full p-2 outline-none"></div>
     </div>
 
-    <div id="fb-sheet-box" class="hidden text-sm text-slate-600 mb-2">📑 這個 Excel 有多個工作表，範本使用：
-        <select id="fb-sheet" class="border rounded px-2 py-1 text-sm"></select></div>
+    <div id="fb-sheet-box" class="hidden text-sm text-slate-600 mb-2 excel-guide">📑 這個 Excel 有多個工作表，勾選要填寫的（每個是一個分頁）：
+        <div id="fb-sheet-list" class="mt-1"></div></div>
     <div id="fb-msg" class="text-sm text-slate-500 mb-4">尚未載入範本。</div>
 
     <div id="fb-library" class="section-card hidden">
@@ -73,6 +73,7 @@
             <button id="fb-btn-blank-xlsx" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 下載查填用 Excel</button></p>
     </div>
 
+    <div id="fb-tabs" class="flex flex-wrap gap-1"></div>
     <div id="fb-card" class="section-card hidden">
         <div class="flex justify-between items-center mb-4">
             <h2 id="fb-heading" class="text-xl font-bold text-slate-800"></h2>

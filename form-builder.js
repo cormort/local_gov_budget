@@ -134,6 +134,18 @@ function fb_rollup(rows, columns) {
     return rows;
 }
 
+// 多工作表表單：template = { title, sheets: [{ name, columns, caption }] }，資料 tables = { 工作表名: rows }
+// 舊格式（template.columns + rows，單一工作表）讀進來時轉成新格式，已發布的範本與回傳檔照樣能用
+function fb_normalize(data) {
+    const t = data.template || {};
+    if (Array.isArray(t.sheets)) return { title: t.title, sheets: t.sheets, tables: data.tables || {} };
+    if (!Array.isArray(t.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
+    const name = t.sheet || t.title || '表單';
+    const sheet = { name, columns: t.columns };
+    if (t.caption) sheet.caption = t.caption;
+    return { title: t.title, sheets: [sheet], tables: { [name]: data.rows || [] } };
+}
+
 // 列有沒有填數字（公式欄不算）；兩列的數值欄是否完全相同
 const fb_hasData = (r, cols) => cols.some(c => c.type === 'num' && !c.formula && parseFloat(r[c.key]));
 const fb_sameNums = (a, b, cols) => cols.every(c => c.type !== 'num' || c.formula || (parseFloat(a[c.key]) || 0) === (parseFloat(b[c.key]) || 0));
@@ -284,15 +296,17 @@ function fb_libraryEntries(items) {
     return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_hasData, fb_sameNums, fb_itemOwners, fb_libraryEntries, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
-let fb_template = null;
+let fb_template = null; // 目前分頁的工作表 { title, sheet, columns, caption }
+let fb_form = null;     // 整份表單 { title, sheets, tables, cur }；其他分頁的列存在 tables，換分頁時才畫到畫面上
 
 // 工作表：預設讀第一個沒隱藏的；sheet 可指定名稱。buf 可以是檔案內容或已讀好的 workbook（換工作表時不必重讀）
-const fb_openWorkbook = buf => buf.SheetNames ? buf : XLSX.read(buf, { type: 'array', cellFormula: true, sheetStubs: true });
-const fb_visibleSheets = wb => wb.SheetNames.filter((n, i) => !wb.Workbook?.Sheets?.[i]?.Hidden);
+// 用 function 宣告（不用 const）：這段在 if 區塊裡，彙整頁要能當全域函數呼叫
+function fb_openWorkbook(buf) { return buf.SheetNames ? buf : XLSX.read(buf, { type: 'array', cellFormula: true, sheetStubs: true }); }
+function fb_visibleSheets(wb) { return wb.SheetNames.filter((n, i) => !wb.Workbook?.Sheets?.[i]?.Hidden); }
 
 function fb_readWorkbook(buf, fileName, sheet) {
     const wb = fb_openWorkbook(buf);
@@ -353,7 +367,8 @@ function fb_readWorkbook(buf, fileName, sheet) {
         columns.forEach(c => {
             if (c.formula) return;
             const x = cell(r, XLSX.utils.decode_col(c.key));
-            row[c.key] = x ? (c.type === 'num' && typeof x.v === 'number' ? x.v : String(x.v ?? '')) : '';
+            // 錯誤值（#DIV/0! 等，SheetJS 存成 t:'e'、v 為錯誤代碼）當空白，不然空白列會被當成有填數字
+            row[c.key] = x && x.t !== 'e' ? (c.type === 'num' && typeof x.v === 'number' ? x.v : String(x.v ?? '')) : '';
         });
         rows.push(row);
     }
@@ -375,20 +390,63 @@ function fb_readWorkbook(buf, fileName, sheet) {
     return { template, rows, warnings, metadata, sheet, sheets: fb_visibleSheets(wb) };
 }
 
-// 已填的 Excel（填表頁匯入、彙整頁）：先找與範本同名的工作表，再逐一找欄名與表單一致的工作表；
-// 都不符就回傳第一個嘗試的結果，讓呼叫端照常顯示欄名不符的訊息
-function fb_readMatching(buf, fileName, labels, preferred) {
-    const wb = fb_openWorkbook(buf);
-    const order = [...new Set([preferred, ...fb_visibleSheets(wb)].filter(n => n && wb.Sheets[n]))];
-    let first = null;
-    for (const name of order) {
-        try {
-            const parsed = fb_readWorkbook(wb, fileName, name);
-            if (!fb_headerMismatch(labels, parsed.template.columns.map(c => c.label))) return parsed;
-            first ??= parsed;
-        } catch (e) { /* 空白或沒有表頭的工作表，試下一個 */ }
-    }
-    return first || fb_readWorkbook(wb, fileName);
+const fb_samePrefix = (a, b, n) => [...a].slice(0, n).join('') === [...b].slice(0, n).join('') && [...a].length >= n;
+
+// 已填的 Excel（填表頁匯入、彙整頁）：表單的每個工作表，先找同名工作表；沒有同名的，再從其他工作表找欄名一致的
+// （排除表單其他工作表的名稱與已被認領的，免得兩張表頭相同的表互搶）。回傳 { found: { 表單工作表: 解析結果 }, notes, metadata }
+function fb_matchSheets(buf, fileName, sheets) {
+    const wb = fb_openWorkbook(buf), formNames = new Set(sheets.map(s => s.name)), used = new Set();
+    const found = {}, notes = [];
+    let metadata = {};
+    sheets.forEach(s => {
+        const labels = s.columns.map(c => c.label);
+        const same = wb.Sheets[s.name] ? [s.name] : [];
+        // 改過名的工作表要名稱相近（開頭 4 字相同，如「114非營業(環保基金)」）或只剩這一張；
+        // 否則欄名相同的「113非營業(供參)」這類往年資料會被誤認
+        const pool = fb_visibleSheets(wb).filter(n => !formNames.has(n) && !used.has(n) && n !== FB_INFO_SHEET);
+        const others = pool.length === 1 ? pool : pool.filter(n => fb_samePrefix(n, s.name, 4));
+        for (const n of same.length ? same : others) {
+            let p;
+            try { p = fb_readWorkbook(wb, fileName, n); } catch (e) { continue; }
+            const bad = fb_headerMismatch(labels, p.template.columns.map(c => c.label));
+            if (!bad) { found[s.name] = p; used.add(n); metadata = p.metadata; return; }
+            if (same.length) { notes.push(`工作表「${n}」${bad.split('\n')[0]}`); return; }
+        }
+        notes.push(`找不到工作表「${s.name}」（也沒有欄名一致的工作表）`);
+    });
+    return { found, notes, metadata };
+}
+
+// ========== 2b. 多工作表：分頁 ==========
+// 目前分頁的列存回 fb_form（換分頁、匯出前）
+function fb_saveSheet() {
+    if (fb_form && fb_form.cur !== null) fb_form.tables[fb_form.sheets[fb_form.cur].name] = fb_collectRows();
+}
+
+function fb_showSheet(i) {
+    fb_saveSheet();
+    fb_form.cur = i;
+    const s = fb_form.sheets[i];
+    fb_render({ title: fb_form.title, sheet: s.name, columns: s.columns, caption: s.caption }, fb_form.tables[s.name] || []);
+    document.querySelectorAll('#fb-tabs .fb-tab').forEach((b, k) => b.classList.toggle('fb-tab-on', k === i));
+}
+
+function fb_renderForm(form) {
+    fb_form = { title: form.title, sheets: form.sheets, tables: { ...form.tables }, cur: null };
+    document.getElementById('fb-library').classList.add('hidden');
+    document.getElementById('fb-publish').classList.add('hidden');
+    document.getElementById('fb-tabs').innerHTML = form.sheets.length > 1
+        ? form.sheets.map((s, i) => `<button class="fb-tab" data-i="${i}">${fb_esc(s.name)}</button>`).join('') : '';
+    fb_showSheet(0);
+}
+
+// fb_readWorkbook 的結果（可多個工作表）→ 表單
+function fb_formFromParsed(title, list) {
+    return {
+        title,
+        sheets: list.map(p => ({ name: p.sheet, columns: p.template.columns, ...(p.template.caption ? { caption: p.template.caption } : {}) })),
+        tables: Object.fromEntries(list.map(p => [p.sheet, p.rows])),
+    };
 }
 
 // ========== 3. 畫表 + 計算 ==========
@@ -396,8 +454,6 @@ const fb_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '
 
 function fb_render(template, rows) {
     fb_template = template;
-    document.getElementById('fb-library').classList.add('hidden');
-    document.getElementById('fb-publish').classList.add('hidden');
     document.getElementById('fb-title').value = template.title;
     document.getElementById('fb-heading').textContent = template.title;
     document.getElementById('fb-caption').textContent = (template.caption || []).join('\n');
@@ -505,14 +561,12 @@ function fb_collectRows() {
 const fb_saveJSON = (data, fileName) =>
     saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), fileName);
 
-const FB_INFO_SHEET = '填報資訊', FB_INFO_KEYS = { 機關: 'org', 年度: 'year', 填表人: 'user' };
+var FB_INFO_SHEET = '填報資訊', FB_INFO_KEYS = { 機關: 'org', 年度: 'year', 填表人: 'user' }; // var：彙整頁也要讀得到
 
 // 已填的 Excel：欄位放回範本原本的欄（公式欄寫回 Excel 公式），可再匯入填表頁或直接拖進彙整頁
 // blank = 發起人產生給查填者的空白查填檔（填報資訊留白，由查填者在 Excel 裡填）
-function fb_exportXlsx(blank = false) {
-    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
-    const val = id => blank ? '' : document.getElementById(id).value;
-    const cols = fb_template.columns, caption = fb_template.caption || [], ws = {};
+function fb_sheetToWs(sheet, rows) {
+    const cols = sheet.columns, caption = sheet.caption || [], ws = {};
     const put = (r, key, cell) => { ws[key + (r + 1)] = cell; };
     caption.forEach((t, r) => put(r, 'A', { t: 's', v: t }));
     // 表頭照範本排成多層並合併儲存格（再匯入時欄名一樣串成「預算數－原編」，可通過比對）
@@ -521,7 +575,7 @@ function fb_exportXlsx(blank = false) {
     ws['!merges'] = head.merges.map(m => ({ s: { r: caption.length + m.s.r, c: colOf(m.s.c) }, e: { r: caption.length + m.e.r, c: colOf(m.e.c) } }));
     const hr = caption.length + head.aoa.length - 1; // 最後一列表頭
     // 上層項目與最後的合計列寫成 Excel 公式（加總下層／最上層），在 Excel 裡填也會自動算；再匯入時合計列會被略過
-    const rows = fb_collectRows(), parent = fb_parents(rows.map(r => r[cols[0].key]));
+    const parent = fb_parents(rows.map(r => r[cols[0].key]));
     const sumOf = (key, idx) => idx.length ? idx.map(j => key + (hr + 2 + j)).join('+') : '0';
     const numCell = (c, r, v, f) => put(r, c.key, { t: 'n', v: Number(v) || 0, f });
     rows.forEach((row, i) => {
@@ -542,32 +596,44 @@ function fb_exportXlsx(blank = false) {
     const lastCol = cols.map(c => XLSX.utils.decode_col(c.key)).reduce((a, b) => Math.max(a, b), 0);
     ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: tr, c: lastCol } });
     ws['!cols'] = cols.map((c, i) => ({ wch: i === 0 ? 24 : 14 }));
+    return ws;
+}
+
+// 已填的 Excel：每個工作表一張（名稱照範本），最後一張「填報資訊」；可再匯入填表頁或直接拖進彙整頁
+// blank = 發起人產生給查填者的空白查填檔（填報資訊留白，由查填者在 Excel 裡填）
+function fb_exportXlsx(blank = false) {
+    if (!fb_form) return alert('請先上傳 Excel 範本或匯入 JSON');
+    fb_saveSheet();
+    const val = id => blank ? '' : document.getElementById(id).value;
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, (fb_template.sheet || fb_template.title).slice(0, 31));
+    fb_form.sheets.forEach(s => XLSX.utils.book_append_sheet(wb, fb_sheetToWs(s, fb_form.tables[s.name] || []), s.name.slice(0, 31)));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(Object.keys(FB_INFO_KEYS).map(k => [k, val('fb-' + FB_INFO_KEYS[k])])), FB_INFO_SHEET);
-    XLSX.writeFile(wb, blank ? `${fb_template.title}_查填.xlsx` : `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
+    XLSX.writeFile(wb, blank ? `${fb_form.title}_查填.xlsx` : `${fb_form.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
 }
 
 function fb_exportJSON() {
-    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
+    if (!fb_form) return alert('請先上傳 Excel 範本或匯入 JSON');
+    fb_saveSheet();
     const val = id => document.getElementById(id).value;
-    const data = { template: fb_template, metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, rows: fb_collectRows() };
-    fb_saveJSON(data, `${fb_template.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
+    const data = { template: { title: fb_form.title, sheets: fb_form.sheets }, metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, tables: fb_form.tables };
+    fb_saveJSON(data, `${fb_form.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
 }
 
 // 固定表單範本：放到 repo 的 forms/ 資料夾，以 ?form=檔名 開啟
 // 目前表格的列（不含公式欄）會成為預設項目；不含機關／填表人
 function fb_exportTemplate() {
-    if (!fb_template) return alert('請先上傳 Excel 範本或匯入 JSON');
-    const rows = fb_collectRows().map(r => {
-        fb_template.columns.forEach(c => { if (c.formula) delete r[c.key]; });
-        return r;
-    });
-    fb_saveJSON({ template: fb_template, rows }, `${fb_template.title}.json`);
+    if (!fb_form) return alert('請先上傳 Excel 範本或匯入 JSON');
+    fb_saveSheet();
+    const tables = Object.fromEntries(fb_form.sheets.map(s => [s.name, (fb_form.tables[s.name] || []).map(r => {
+        const x = { ...r };
+        s.columns.forEach(c => { if (c.formula) delete x[c.key]; });
+        return x;
+    })]));
+    fb_saveJSON({ template: { title: fb_form.title, sheets: fb_form.sheets }, tables }, `${fb_form.title}.json`);
     fb_msg('');
-    document.getElementById('fb-publish-file').textContent = document.getElementById('fb-publish-file2').textContent = `${fb_template.title}.json`;
+    document.getElementById('fb-publish-file').textContent = document.getElementById('fb-publish-file2').textContent = `${fb_form.title}.json`;
     document.getElementById('fb-publish-github').href = FB_UPLOAD_URL;
-    document.getElementById('fb-share-url').value = FB_SITE_URL + '?form=' + encodeURIComponent(fb_template.title);
+    document.getElementById('fb-share-url').value = FB_SITE_URL + '?form=' + encodeURIComponent(fb_form.title);
     document.getElementById('fb-publish').classList.remove('hidden');
 }
 
@@ -594,18 +660,19 @@ async function fb_loadLibrary() {
 }
 
 function fb_load(data) {
-    if (!data.template || !Array.isArray(data.template.columns)) throw new Error('不是自訂表單的 JSON（缺 template）');
+    const form = fb_normalize(data);
     const m = data.metadata || {};
     document.getElementById('fb-org').value = m.org || '';
     if (m.year) document.getElementById('fb-year').value = m.year;
     document.getElementById('fb-user').value = m.user || '';
-    fb_render(data.template, data.rows || []);
+    fb_renderForm(form);
+    return form;
 }
 
 function fb_importJSON(text) {
-    const data = JSON.parse(text);
-    fb_load(data);
-    fb_msg(`已匯入「${data.template.title}」，${(data.rows || []).length} 列。`);
+    const form = fb_load(JSON.parse(text));
+    const n = Object.values(form.tables).reduce((a, r) => a + r.length, 0);
+    fb_msg(`已匯入「${form.title}」，${form.sheets.length > 1 ? form.sheets.length + ' 個工作表、' : ''}${n} 列。`);
 }
 
 // ?form=名稱 → 讀 forms/名稱.json；沒有的話直接讀 forms/名稱.xlsx（可只上傳 Excel，不必先匯出範本）
@@ -618,8 +685,9 @@ async function fb_loadFixedForm(name) {
     else {
         const xres = await fetch(base + '.xlsx', { cache: 'no-cache' });
         if (!xres.ok) throw new Error(`找不到固定表單「${name}」（forms/ 裡沒有 ${name}.json 或 ${name}.xlsx）`);
+        // ponytail: 直接放 xlsx 只讀第一個工作表；多工作表的表單請發布「匯出範本」的 .json
         const parsed = fb_readWorkbook(await xres.arrayBuffer(), name + '.xlsx');
-        fb_render(parsed.template, parsed.rows);
+        fb_renderForm(fb_formFromParsed(name, [parsed]));
         warnings = parsed.warnings;
     }
     document.getElementById('fb-btn-xlsx').classList.add('hidden');
@@ -650,15 +718,26 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     $('fb-btn-add').onclick = () => { fb_addRow(); fb_calc(); };
 
-    // 範本有多個工作表時顯示下拉選單，換工作表就重新產生表單
+    // 範本有多個工作表時列出勾選框，勾幾個就有幾個分頁要填（預設第一個）；改勾選即重新產生表單
     let tplBook = null, tplName = '';
-    const loadTemplate = sheet => {
-        const { template, rows, warnings, sheets } = fb_readWorkbook(tplBook, tplName, sheet);
-        fb_render(template, rows);
-        $('fb-sheet').innerHTML = sheets.map(n => `<option${n === template.sheet ? ' selected' : ''}>${fb_esc(n)}</option>`).join('');
-        $('fb-sheet-box').classList.toggle('hidden', sheets.length < 2);
-        const nf = template.columns.filter(c => c.formula).length;
-        fb_msg(`已由「${tplName}」工作表「${template.sheet}」產生表單：${template.columns.length} 欄（${nf} 個公式欄）、${rows.length} 個預設項目。`, warnings);
+    const loadTemplate = names => {
+        const all = fb_visibleSheets(tplBook);
+        names = names || [all[0] || tplBook.SheetNames[0]];
+        const list = [], warnings = [];
+        names.forEach(n => {
+            try {
+                const p = fb_readWorkbook(tplBook, tplName, n);
+                list.push(p);
+                warnings.push(...p.warnings.map(w => names.length > 1 ? `［${n}］${w}` : w));
+            } catch (err) { warnings.push(`［${n}］${err.message}，略過`); }
+        });
+        if (!list.length) throw new Error(warnings.join('；'));
+        const form = fb_formFromParsed(tplName.replace(/\.[^.]+$/, ''), list);
+        fb_renderForm(form);
+        $('fb-sheet-list').innerHTML = all.map(n => `<label class="mr-3 whitespace-nowrap"><input type="checkbox" class="fb-sheet-pick" value="${fb_esc(n)}"${names.includes(n) ? ' checked' : ''}> ${fb_esc(n)}</label>`).join('');
+        $('fb-sheet-box').classList.toggle('hidden', all.length < 2);
+        const rows = list.reduce((a, p) => a + p.rows.length, 0), nc = list.reduce((a, p) => a + p.template.columns.length, 0);
+        fb_msg(`已由「${tplName}」產生表單：${list.length > 1 ? list.length + ' 個工作表、' : `工作表「${list[0].sheet}」、`}${nc} 欄、${rows} 個預設項目。`, warnings);
     };
     $('fb-xlsx-file').onchange = async e => {
         const file = e.target.files[0];
@@ -667,20 +746,30 @@ document.addEventListener('DOMContentLoaded', () => {
         try { tplBook = fb_openWorkbook(await file.arrayBuffer()); tplName = file.name; loadTemplate(); }
         catch (err) { alert('Excel 解析失敗：' + err.message); }
     };
-    $('fb-sheet').onchange = e => { try { loadTemplate(e.target.value); } catch (err) { alert('Excel 解析失敗：' + err.message); } };
-    // 填表人把已在 Excel 填好的檔案匯入：欄名須與目前表單完全一致，表單結構不變，只換掉各列
+    $('fb-sheet-list').addEventListener('change', () => {
+        const names = [...document.querySelectorAll('.fb-sheet-pick:checked')].map(c => c.value);
+        if (!names.length) return alert('至少要勾選一個工作表');
+        try { loadTemplate(names); } catch (err) { alert('Excel 解析失敗：' + err.message); }
+    });
+    $('fb-tabs').addEventListener('click', e => { const b = e.target.closest('.fb-tab'); if (b) fb_showSheet(+b.dataset.i); });
+    // 填表人把已在 Excel 填好的檔案匯入：每個工作表欄名須與表單一致，表單結構不變，只換掉各列
     $('fb-btn-fill-xlsx').onclick = () => $('fb-fill-xlsx-file').click();
     $('fb-fill-xlsx-file').onchange = async e => {
         const file = e.target.files[0];
         e.target.value = '';
-        if (!file || !fb_template) return;
+        if (!fb_form || !file) return;
         try {
-            const { template, rows, metadata, sheet, sheets } = fb_readMatching(await file.arrayBuffer(), file.name, fb_template.columns.map(c => c.label), fb_template.sheet);
-            const bad = fb_headerMismatch(fb_template.columns.map(c => c.label), template.columns.map(c => c.label));
-            if (bad) return alert('欄位與表單不一致，未匯入：\n' + bad);
+            const { found, notes, metadata } = fb_matchSheets(await file.arrayBuffer(), file.name, fb_form.sheets);
+            const hit = Object.keys(found);
+            if (!hit.length) return alert('欄位與表單不一致，未匯入：\n' + notes.join('\n'));
+            fb_saveSheet();
+            hit.forEach(n => { fb_form.tables[n] = found[n].rows; });
             Object.entries(metadata).forEach(([k, v]) => { if (v) $('fb-' + k).value = v; });
-            fb_render(fb_template, rows);
-            fb_msg(`已由「${file.name}」${sheets.length > 1 ? `工作表「${sheet}」` : ''}匯入 ${rows.length} 列。`);
+            fb_form.cur = null; // 目前分頁也換成匯入的資料，不要再把畫面上的舊列存回去
+            fb_showSheet(fb_form.sheets.findIndex(s => s.name === hit[0]));
+            const n = hit.reduce((a, k) => a + found[k].rows.length, 0);
+            const where = hit.map(k => found[k].sheet === k ? `「${k}」` : `「${k}」← 工作表「${found[k].sheet}」`).join('、');
+            fb_msg(`已由「${file.name}」匯入 ${n} 列（${where}）。`, notes);
         } catch (err) { alert('Excel 匯入失敗：' + err.message); }
     };
     $('fb-json-file').onchange = async e => {

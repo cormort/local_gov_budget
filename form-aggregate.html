@@ -33,7 +33,7 @@
 <div class="max-w-[98%] mx-auto p-4">
     <div id="ag-drop" class="drop-zone rounded-xl p-12 text-center cursor-pointer mb-6">
         <p class="text-white font-bold text-lg">把各機關回傳的 JSON 或已填好的 Excel 拖到這裡，或點此選擇（可多選；Excel 沒有填報資訊時以檔名當機關名稱）</p>
-        <p class="text-slate-400 text-sm">只接受同一份表單（表頭與公式相同）的檔案；同機關同年度重複上傳會以後者取代</p>
+        <p class="text-slate-400 text-sm">只接受同一份表單（工作表與欄名相同）的檔案；多工作表的表單可先拖入「匯出範本」的 .json；同機關同年度重複上傳會以後者取代</p>
         <input type="file" id="ag-file" class="hidden" accept=".json,.xlsx,.xls" multiple>
     </div>
 
@@ -44,6 +44,7 @@
             <h2 id="ag-subs-title" class="text-xl font-bold text-slate-800 mb-4">繳交清單</h2>
             <div class="overflow-x-auto"><table class="budget-table w-full"><thead id="ag-subs-head"></thead><tbody id="ag-subs"></tbody></table></div>
         </div>
+        <div id="ag-tabs" class="flex flex-wrap gap-1"></div>
         <div class="section-card">
             <label class="text-sm text-slate-600"><input type="checkbox" id="ag-dup-mode"> 每個項目只應由一份檔案填報（檢查重複填報）</label>
             <span id="ag-dup-auto" class="text-xs text-slate-400"></span>
