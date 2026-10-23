@@ -129,4 +129,12 @@ assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['填表機關：
 assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['機關：', '填表人：', '單位：元'])), { hr: 2, he: 2 });
 assert.deepStrictEqual(capBlock(capGrid(['○○計畫經費表', '', '115.10.24'], ['', '', '單位：千元']), [M(0, 0, 0, 1)]), { hr: 2, he: 2 }); // 表名合併＋日期
 assert.deepStrictEqual(capBlock(capGrid(['○○表', '', ''], ['', '', '單位：千元'])), { hr: 2, he: 2 });
+// 範本庫分組：index.json 的分類、隱藏；沒寫的歸「未分類」排最後；index.json 本身不列
+const { fb_libraryGroups: groups } = require('./form-builder.js');
+const libEntries = lib([{ name: 'index.json', type: 'file' }, { name: '甲.json', type: 'file' }, { name: '乙.xlsx', type: 'file' }, { name: '丙.json', type: 'file' }, { name: '丁.json', type: 'file' }]);
+assert.ok(!libEntries.some(e => e.name === 'index'));
+const idx = { templates: { 甲: { category: '預算', description: 'd' }, 乙: { category: '決算' }, 丙: { category: '預算', hidden: true } } };
+assert.deepStrictEqual(groups(libEntries, idx).map(g => [g.category, g.items.map(i => i.name)]), [['決算', ['乙']], ['預算', ['甲']], ['未分類', ['丁']]]);
+assert.deepStrictEqual(groups(libEntries, idx, true).find(g => g.category === '預算').items.map(i => i.name).sort(), ['丙', '甲']);
+assert.deepStrictEqual(groups(libEntries).map(g => g.category), ['未分類']);
 console.log('form-builder: all checks passed');

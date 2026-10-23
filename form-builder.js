@@ -290,17 +290,36 @@ function fb_repoUrls(hostname, pathname) {
     };
 }
 
+// 範本庫的說明資料：forms/index.json = { templates: { 表單名稱: { category, description, year, deadline, hidden } } }
+// 由管理頁（manage.html）維護；沒有寫到的表單照樣列出，歸在「未分類」
+const FB_INDEX = 'index.json';
+const FB_NO_CATEGORY = '未分類';
+
+// 依分類分組（分類照名稱排序、未分類最後），預設不列隱藏的範本
+function fb_libraryGroups(entries, index = {}, showHidden = false) {
+    const meta = index.templates || {}, groups = new Map();
+    entries.forEach(e => {
+        const m = meta[e.name] || {};
+        if (m.hidden && !showHidden) return;
+        const cat = (m.category || '').trim() || FB_NO_CATEGORY;
+        if (!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat).push({ ...e, meta: m });
+    });
+    return [...groups].map(([category, items]) => ({ category, items }))
+        .sort((a, b) => (a.category === FB_NO_CATEGORY) - (b.category === FB_NO_CATEGORY) || a.category.localeCompare(b.category, 'zh-Hant'));
+}
+
 // 範本庫：GitHub API 列出的 forms/ 檔案 → [{ name, file }]；同名的 .json 與 .xlsx 只列一次（.json 為準，與 ?form= 相同）
 function fb_libraryEntries(items) {
     const byName = new Map();
-    items.filter(x => x.type === 'file' && /\.(json|xlsx)$/i.test(x.name)).forEach(x => {
+    items.filter(x => x.type === 'file' && /\.(json|xlsx)$/i.test(x.name) && x.name !== FB_INDEX).forEach(x => {
         const name = x.name.replace(/\.[^.]+$/, '');
         if (!byName.has(name) || /\.json$/i.test(x.name)) byName.set(name, x.name);
     });
     return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryGroups, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -648,18 +667,26 @@ const { upload: FB_UPLOAD_URL, site: FB_SITE_URL, api: FB_API_URL } = fb_repoUrl
 async function fb_loadLibrary() {
     const list = document.getElementById('fb-library-list');
     try {
-        const res = await fetch(FB_API_URL, { cache: 'no-cache' });
+        const [res, idx] = await Promise.all([
+            fetch(FB_API_URL, { cache: 'no-cache' }),
+            fetch('forms/' + FB_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        ]);
         if (!res.ok) throw new Error(res.status === 403 ? 'GitHub 查詢次數已達上限，請稍後再試' : `讀取失敗（${res.status}）`);
-        const entries = fb_libraryEntries(await res.json());
-        list.innerHTML = entries.length ? entries.map(e => {
-            const link = FB_SITE_URL + '?form=' + encodeURIComponent(e.name);
+        const groups = fb_libraryGroups(fb_libraryEntries(await res.json()), idx);
+        const today = new Date().toISOString().slice(0, 10);
+        list.innerHTML = groups.length ? groups.map(g => `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${fb_esc(g.category)}</li>` + g.items.map(e => {
+            const link = FB_SITE_URL + '?form=' + encodeURIComponent(e.name), m = e.meta;
+            const when = [m.year ? `${fb_esc(m.year)} 年度` : '', m.deadline ? `<span class="${m.deadline < today ? 'text-red-600' : ''}">截止 ${fb_esc(m.deadline)}</span>` : ''].filter(Boolean).join('・');
             return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
-                <span class="font-bold text-slate-800 mr-auto">${fb_esc(e.name)}</span>
+                <div class="mr-auto"><span class="font-bold text-slate-800">${fb_esc(e.name)}</span>
+                    ${when ? `<span class="text-xs text-slate-500 ml-2">${when}</span>` : ''}
+                    ${m.description ? `<div class="text-xs text-slate-500">${fb_esc(m.description)}</div>` : ''}</div>
                 <a href="?form=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開啟填報</a>
                 <button class="fb-lib-copy bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" data-link="${fb_esc(link)}">複製連結</button>
-                <a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">下載範本檔（${fb_esc(e.file.split('.').pop())}）</a>
+                <a href="?form=${encodeURIComponent(e.name)}&blank=1" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載空白的查填用 Excel，寄給習慣用 Excel 的填報人">查填用 Excel</a>
+                <a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">範本檔（${fb_esc(e.file.split('.').pop())}）</a>
             </li>`;
-        }).join('') : '<li class="py-2 text-slate-500">forms/ 裡還沒有表單。</li>';
+        }).join('')).join('') : '<li class="py-2 text-slate-500">forms/ 裡還沒有表單。</li>';
     } catch (err) { list.innerHTML = `<li class="py-2 text-slate-500">⚠️ ${fb_esc(err.message)}</li>`; }
 }
 
@@ -789,8 +816,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.classList.contains('fb-del')) { e.target.closest('tr').remove(); fb_calc(); }
     });
 
-    const form = new URLSearchParams(location.search).get('form');
-    if (form) fb_loadFixedForm(form).catch(err => fb_msg('⚠️ ' + err.message));
+    const params = new URLSearchParams(location.search), form = params.get('form');
+    // ?form=名稱&blank=1：範本庫的「查填用 Excel」，載入表單後直接下載空白查填檔
+    if (form) fb_loadFixedForm(form).then(() => { if (params.get('blank')) fb_exportXlsx(true); }).catch(err => fb_msg('⚠️ ' + err.message));
     else { $('fb-library').classList.remove('hidden'); fb_loadLibrary(); }
     $('fb-library-list').addEventListener('click', async e => {
         const btn = e.target.closest('.fb-lib-copy');
