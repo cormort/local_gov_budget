@@ -166,6 +166,7 @@ const { fb_cleanRows: cleanRows } = require('./form-builder.js');
     const w = cleanRows(rows, [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num' }, { key: 'D', type: 'text' }]);
     assert.deepStrictEqual(rows, [{ A: '甲', B: 1234, C: -300, D: 'x' }, { A: '乙', B: '', C: 5, D: '' }]);
     assert.strictEqual(w, '1 格不是數字，已當空白：B3「無」');
+    assert.strictEqual(cleanRows([{ A: '丙', B: '無' }], [{ key: 'A', type: 'text' }, { key: 'B', label: '原編', type: 'num' }]), '1 格不是數字，已當空白：「丙」原編「無」');
     assert.strictEqual(cleanRows([{ A: 'a', B: 1 }], [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }]), null);
 }
 // 年度預設
@@ -184,4 +185,8 @@ assert.strictEqual(guessYear('2026表', undefined, oct2026), '115'); // 四位�
     const t = [['○○表', '', ''], ['項目名稱', '原編', '增編']];
     assert.deepStrictEqual(block((r, c) => t[r]?.[c] ?? '', [M(0, 0, 0, 2)], 0, 1, 0, 2), { hr: 1, he: 1 });
 }
+// API 讀不到時以 index.json 備援
+const { fb_libraryFromIndex: fromIndex } = require('./form-builder.js');
+assert.deepStrictEqual(fromIndex({ templates: { 乙: {}, 甲: { hidden: true } } }).map(e => [e.name, e.file]), [['乙', null], ['甲', null]]);
+assert.deepStrictEqual(fromIndex({}), []);
 console.log('form-builder: all checks passed');
