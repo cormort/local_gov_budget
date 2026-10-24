@@ -212,4 +212,10 @@ const so = subsOf(['臺北市', '新北市', '桃園市'], ['台北市', '新 �
 assert.deepStrictEqual(so.rows.map(r => r.org + ':' + r.status), ['臺北市:done', '新北市:done', '桃園市:missing', '高雄市:extra']);
 assert.deepStrictEqual([so.done, so.total], [2, 3]);
 assert.deepStrictEqual(subsOf([], ['甲']).rows.map(r => r.status), ['extra']);
+// 今天用本地日期：台灣 10/25 凌晨 3 點（UTC 還是 10/24）也算 10/25
+const { fb_today: today } = require('./form-builder.js');
+assert.strictEqual(today(new Date(2026, 9, 25, 3, 0)), '2026-10-25');
+assert.strictEqual(today(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
+assert.strictEqual(status({ start: '2026-10-25' }, today(new Date(2026, 9, 25, 3, 0))), 'open');
+assert.strictEqual(status({ deadline: '2026-10-24' }, today(new Date(2026, 9, 25, 3, 0))), 'closed');
 console.log('form-builder: all checks passed');

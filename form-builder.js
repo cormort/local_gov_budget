@@ -345,7 +345,9 @@ function fb_libraryGroups(entries, index = {}, showHidden = false) {
 // 調查專案的狀態（依發起日期 start、截止日 deadline，YYYY-MM-DD）：未開始／進行中／已結束；兩個都沒填就是空字串
 const FB_STATUS = { upcoming: '未開始', open: '進行中', closed: '已結束' };
 const FB_BADGE = { upcoming: 'bg-slate-200 text-slate-700', open: 'bg-green-100 text-green-800', closed: 'bg-red-100 text-red-700' };
-function fb_libraryStatus(m = {}, today = new Date().toISOString().slice(0, 10)) {
+// 今天的日期 YYYY-MM-DD，用電腦的本地時間（toISOString 是 UTC，台灣凌晨 0～8 點會算成前一天）
+const fb_today = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function fb_libraryStatus(m = {}, today = fb_today()) {
     if (m.start && m.start > today) return 'upcoming';
     if (m.deadline && m.deadline < today) return 'closed';
     return m.start || m.deadline ? 'open' : '';
@@ -406,7 +408,7 @@ function fb_libraryEntries(items) {
 // GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
 const fb_libraryFromIndex = index => Object.keys(index.templates || {}).map(name => ({ name, file: null })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_submissions, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_today, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_submissions, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -887,7 +889,7 @@ function fb_surveyInfo(e) {
 }
 
 function fb_renderSurveys() {
-    const all = fb_surveyEntries(fb_svIndex), today = new Date().toISOString().slice(0, 10);
+    const all = fb_surveyEntries(fb_svIndex), today = fb_today();
     const q = document.getElementById('fb-sv-q').value, stf = document.getElementById('fb-sv-status').value;
     const empty = '<li class="py-2 text-slate-500">還沒有調查專案。到範本庫按「以此範本發起調查」，或 ⚙️ 管理 →「調查專案」新增。</li>';
     // 調查專案：依狀態分組（進行中、未開始、已結束、未設期間）

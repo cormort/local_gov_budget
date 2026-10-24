@@ -7,7 +7,7 @@ const mg_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '
 const mg_repoApi = fb_repoUrls(location.hostname, location.pathname).api.replace(/\/contents\/forms$/, '');
 const mg_siteUrl = fb_repoUrls(location.hostname, location.pathname).site;
 const mg_path = name => 'forms/' + encodeURIComponent(name);
-const mg_today = () => new Date().toISOString().slice(0, 10);
+const mg_today = () => fb_today();
 let mg_token = '';
 let mg_files = [];      // GitHub API 列出的 forms/ 檔案（含 sha）
 let mg_index = { templates: {} }, mg_indexSha = null;

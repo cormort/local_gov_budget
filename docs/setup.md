@@ -65,26 +65,30 @@ https://你的帳號.github.io/local_gov_budget/
 2. 開啟 `https://你的帳號.github.io/local_gov_budget/`，按「📊 上傳 Excel 範本」，**先確認欄位、公式欄（🔒）都正確**
 3. 回到 GitHub 你的專案 → 點進 `forms` 資料夾 → **Add file** → **Upload files**
 4. 把 Excel 拖進去 → 按 **Commit changes**
-5. 等約 1 分鐘，把這個連結寄給填報人：
+5. 等約 1 分鐘，開啟 `https://你的帳號.github.io/local_gov_budget/manage.html`，貼上 GitHub 權杖，在「調查專案」**發起調查**：選剛上傳的範本，填代號（例如 `115經費`）、發起單位、用途、年度、發起日、截止日與應繳機關
+6. 回到首頁「調查專案」分頁，按該調查的「複製連結」，把這個連結寄給填報人：
 
    ```
-   https://你的帳號.github.io/local_gov_budget/?form=經費表
+   https://你的帳號.github.io/local_gov_budget/?survey=115經費
    ```
 
-> 也可以在 form-builder 按「📌 匯出範本」→「前往 GitHub 發布 ↗」，上傳匯出的 `.json`；畫面上的「複製連結」會自動帶出**你自己的**網址。
+> **正式收件請寄 `?survey=` 連結。** `?form=經費表` 這種範本連結也能填，但沒有應繳名單、截止提醒，回傳檔也不帶調查代號，彙整時無法對帳「已繳／未繳」，也擋不住別次調查的檔案。
+>
+> 也可以在首頁按「📌 匯出範本」→「前往 GitHub 發布 ↗」，上傳匯出的 `.json` 當範本。
 
 ## 步驟 6　收件與彙整
 
 1. 填報人填好後按「💾 匯出 JSON」，用 email 等方式回傳給你
-2. 開啟 `https://你的帳號.github.io/local_gov_budget/form-aggregate.html`
-3. 把所有 JSON 一次拖進去 → 檢查繳交清單 → 按「📥 匯出 Excel」
+2. 在首頁「調查專案」按該調查的「彙整」（網址是 `form-aggregate.html?survey=115經費`）
+3. 把所有 JSON 一次拖進去 → 檢查繳交清單（已繳／未繳／不在名單）→ 按「📥 匯出 Excel」
 
 ## 日常操作
 
 | 想做的事 | 怎麼做 |
 |---|---|
 | 修改表單 | 改好 Excel，用**同一個檔名**再上傳到 `forms/`（會覆蓋舊版），連結不變 |
-| 新增另一份表單 | 用不同檔名上傳到 `forms/`，連結的 `?form=` 換成新檔名 |
+| 新增另一份表單 | 用不同檔名上傳到 `forms/`，再到管理頁用它發起調查 |
+| 同一份表單再收一次（例如明年） | 管理頁發起新的調查（新代號），寄新的 `?survey=` 連結；兩次的回傳檔與草稿互不干擾 |
 | 讓同事也能發布表單 | Settings → **Collaborators** → **Add people**，輸入對方的 GitHub 帳號；對方接受邀請後即可上傳 |
 | 取得原作者的新功能 | 專案首頁按 **Sync fork** → **Update branch** |
 

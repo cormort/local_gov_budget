@@ -6,9 +6,11 @@
 |---|---|---|
 | 1. 建表單 | 承辦 | 首頁上傳 Excel 範本 → 確認欄位與公式 → 「📌 匯出範本」得到 `名稱.json`；同一區塊可「📊 下載查填用 Excel」給習慣用 Excel 的填報人 |
 | 2. 發布 | 承辦 | 把 `名稱.json`（或直接把 Excel `名稱.xlsx`）放到本資料夾，commit 並推上 `main`；部署完成後網址生效 |
-| 3. 填報 | 各機關 | 開啟 `https://帳號.github.io/local_gov_budget/?form=名稱`（本站帳號為 cormort；自行架設見 [`docs/setup.md`](../docs/setup.md)），填寫（可手填或「📥 匯入已填 Excel」）後「💾 匯出 JSON」或「📊 匯出 Excel」，以 email 等方式回傳 |
-| 4. 彙整 | 承辦 | 開啟 `form-aggregate.html`，把所有回傳的 JSON（或各機關「📊 匯出 Excel」的檔案；其他 Excel 以檔名當機關名稱）一次拖入 → 繳交清單／依項目彙總／明細 → 「📥 匯出 Excel」 |
+| 3. 發起調查 | 承辦 | 管理頁（`manage.html`）以這份範本發起調查專案（代號、發起單位、用途、期間、應繳機關），首頁「調查專案」複製查填連結 `?survey=代號` 寄給填報人 |
+| 4. 填報 | 各機關 | 開啟 `https://帳號.github.io/local_gov_budget/?survey=代號`（本站帳號為 cormort；自行架設見 [`docs/setup.md`](../docs/setup.md)），填寫（可手填或「📥 匯入已填 Excel」）後「💾 匯出 JSON」或「📊 匯出 Excel」，以 email 等方式回傳 |
+| 5. 彙整 | 承辦 | 首頁「調查專案」按「彙整」（`form-aggregate.html?survey=代號`），把所有回傳的 JSON（或各機關「📊 匯出 Excel」的檔案；其他 Excel 以檔名當機關名稱）一次拖入 → 繳交清單／依項目彙總／明細 → 「📥 匯出 Excel」 |
 
+- **正式收件請寄 `?survey=` 連結。** `?form=名稱` 範本連結仍可填，但沒有應繳名單、截止提醒與調查代號，彙整時無法對帳已繳／未繳。
 - 修改同名範本即更新表單；已開啟舊版的人重新整理即可。
 - **多個工作表要填的表單**請發布「匯出範本」的 `.json`（直接放 `.xlsx` 只會用第一個工作表）；彙整時也建議先拖入這份範本 `.json`，再拖入各機關回傳的檔案。
 - `?form=名稱` 先找 `名稱.json`，沒有才讀 `名稱.xlsx`；兩者都在時以 .json 為準（改版請改同一種檔案）。
