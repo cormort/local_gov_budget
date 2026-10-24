@@ -1,13 +1,17 @@
-// 範本庫管理：用 GitHub Contents API 直接改 repo 的 forms/（上傳、覆蓋、改名、刪除）與 forms/index.json（分類、說明、年度、截止日、隱藏）
+// 範本與調查管理：用 GitHub Contents API 直接改 repo
+//   forms/（範本檔）、forms/index.json（範本的分類、說明、隱藏）、surveys/index.json（調查專案）
 // 權杖只放 sessionStorage（關分頁即清除）；網站本身沒有後端，寫入都是瀏覽器直接呼叫 api.github.com
 
 const MG_KEY = 'local_gov_budget.token';
 const mg_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const mg_repoApi = fb_repoUrls(location.hostname, location.pathname).api.replace(/\/contents\/forms$/, '');
+const mg_siteUrl = fb_repoUrls(location.hostname, location.pathname).site;
 const mg_path = name => 'forms/' + encodeURIComponent(name);
+const mg_today = () => new Date().toISOString().slice(0, 10);
 let mg_token = '';
 let mg_files = [];      // GitHub API 列出的 forms/ 檔案（含 sha）
 let mg_index = { templates: {} }, mg_indexSha = null;
+let mg_sv = { surveys: {} }, mg_svSha = null;
 
 // ========== GitHub API ==========
 async function mg_api(path, opts = {}) {
@@ -27,57 +31,79 @@ const mg_b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8
 const mg_b64text = text => mg_b64(new TextEncoder().encode(text));
 const mg_unb64text = b64 => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), c => c.charCodeAt(0)));
 
-// 寫檔：sha 有給就是覆蓋，沒給就是新增
-const mg_put = (file, contentB64, message, sha) =>
-    mg_api('/contents/' + mg_path(file), { method: 'PUT', body: JSON.stringify({ message, content: contentB64, ...(sha ? { sha } : {}) }) });
+// 寫檔（path 是 repo 內路徑，各段已編碼）：sha 有給就是覆蓋，沒給就是新增
+const mg_putPath = (path, contentB64, message, sha) =>
+    mg_api('/contents/' + path, { method: 'PUT', body: JSON.stringify({ message, content: contentB64, ...(sha ? { sha } : {}) }) });
+const mg_put = (file, contentB64, message, sha) => mg_putPath(mg_path(file), contentB64, message, sha);
 const mg_delete = (file, sha, message) =>
     mg_api('/contents/' + mg_path(file), { method: 'DELETE', body: JSON.stringify({ message, sha }) });
+const mg_svPath = FB_SURVEY_INDEX.split('/').map(encodeURIComponent).join('/');
 
 // ========== 讀取 ==========
 async function mg_load() {
-    const [list, idx] = await Promise.all([
+    const [list, idx, sv] = await Promise.all([
         mg_api('/contents/forms', { allow404: true }),
         mg_api('/contents/' + mg_path(FB_INDEX), { allow404: true }),
+        mg_api('/contents/' + mg_svPath, { allow404: true }),
     ]);
     mg_files = (list || []).filter(x => x.type === 'file');
     mg_indexSha = idx ? idx.sha : null;
     mg_index = idx ? JSON.parse(mg_unb64text(idx.content)) : { templates: {} };
     mg_index.templates ||= {};
+    mg_svSha = sv ? sv.sha : null;
+    mg_sv = sv ? JSON.parse(mg_unb64text(sv.content)) : { surveys: {} };
+    mg_sv.surveys ||= {};
     mg_render();
+    mg_renderSurveys();
 }
 
-// 每份範本的查填網址（與首頁範本庫「複製連結」相同）
-const mg_siteUrl = fb_repoUrls(location.hostname, location.pathname).site;
-const mg_fillUrl = name => mg_siteUrl + '?form=' + encodeURIComponent(name);
+const mg_templateNames = () => fb_libraryEntries(mg_files).map(e => e.name);
+const mg_usedBy = form => Object.entries(mg_sv.surveys).filter(([, s]) => s.form === form).map(([id]) => id);
+const mg_badge = (st, text) => `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${FB_BADGE[st] || 'bg-slate-200 text-slate-600'}">${text}</span>`;
+const mg_copyBtn = url => `<div class="flex gap-1 items-center"><code class="text-xs text-slate-500 break-all">${mg_esc(decodeURIComponent(url))}</code>
+    <button class="mg-copy text-blue-600 text-xs font-bold whitespace-nowrap" data-url="${mg_esc(url)}">複製</button></div>`;
+// 有用過的值做成下拉建議
+const mg_options = (values, id) => {
+    document.getElementById(id).innerHTML = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant')).map(c => `<option value="${mg_esc(c)}">`).join('');
+};
 
+// ========== 範本 ==========
 function mg_render() {
     const t = mg_index.templates;
     const q = document.getElementById('mg-q').value, onlyHidden = document.getElementById('mg-only-hidden').checked;
     const all = fb_libraryEntries(mg_files);
     const entries = all.filter(e => fb_libraryMatch({ ...e, meta: t[e.name] }, q) && (!onlyHidden || t[e.name]?.hidden));
-    const cats = [...new Set(Object.values(t).map(m => m.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-    document.getElementById('mg-categories').innerHTML = cats.map(c => `<option value="${mg_esc(c)}">`).join('');
-    const input = (name, key, extra = '') => `<input type="text" class="mg-meta text-left border rounded" data-name="${mg_esc(name)}" data-key="${key}" value="${mg_esc(t[name]?.[key])}" ${extra}>`;
-    document.getElementById('mg-list').innerHTML = entries.length ? entries.map(e => `<tr>
-        <td class="text-left px-2"><div class="font-bold whitespace-nowrap">${mg_esc(e.name)}</div>
-            <div class="flex gap-1 items-center"><code class="text-xs text-slate-500 break-all">${mg_esc(decodeURIComponent(mg_fillUrl(e.name)))}</code>
-            <button class="mg-copy text-blue-600 text-xs font-bold whitespace-nowrap" data-url="${mg_esc(mg_fillUrl(e.name))}">複製</button></div></td>
-        <td class="text-left px-2 text-xs">${mg_esc(mg_files.filter(f => f.name.replace(/\.[^.]+$/, '') === e.name && f.name !== FB_INDEX).map(f => f.name).join('、'))}</td>
-        <td>${input(e.name, 'category', 'list="mg-categories" placeholder="未分類"')}</td>
-        <td>${input(e.name, 'description')}</td>
-        <td style="min-width:70px">${input(e.name, 'year')}</td>
-        <td><input type="date" class="mg-meta border rounded" data-name="${mg_esc(e.name)}" data-key="deadline" value="${mg_esc(t[e.name]?.deadline)}"></td>
-        <td class="text-center"><input type="checkbox" class="mg-meta" data-name="${mg_esc(e.name)}" data-key="hidden"${t[e.name]?.hidden ? ' checked' : ''}></td>
-        <td class="whitespace-nowrap px-2">
-            <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="text-blue-600 text-sm font-bold">開啟</a>
-            <button class="mg-rename text-slate-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">改名</button>
-            <button class="mg-delete text-red-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">刪除</button>
-        </td></tr>`).join('') : `<tr><td colspan="8" class="text-slate-500 p-3">${all.length ? '沒有符合的範本。' : 'forms/ 裡還沒有範本，請從上面上傳。'}</td></tr>`;
+    mg_options(Object.values(t).map(m => m.category), 'mg-categories');
+    const field = (name, key, label, extra = '') => `<label class="text-xs text-slate-500">${label}
+        <input type="text" class="mg-meta block w-full border rounded p-1 text-sm text-slate-800" data-name="${mg_esc(name)}" data-key="${key}" value="${mg_esc(t[name]?.[key])}" ${extra}></label>`;
+    document.getElementById('mg-list').innerHTML = entries.length ? entries.map(e => {
+        const m = t[e.name] || {}, used = mg_usedBy(e.name);
+        return `<div class="border rounded-xl p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
+        <div class="flex flex-wrap items-start gap-2 mb-3">
+            <div class="mr-auto min-w-0">
+                <span class="font-bold text-slate-800">${mg_esc(e.name)}</span>
+                ${m.hidden ? mg_badge('', '隱藏') : ''}
+                <span class="text-xs text-slate-400 ml-1">${mg_esc(mg_files.filter(f => f.name.replace(/\.[^.]+$/, '') === e.name && f.name !== FB_INDEX).map(f => f.name).join('、'))}</span>
+                <div class="text-xs text-slate-500">${used.length ? `用於調查：${used.map(mg_esc).join('、')}` : '尚未用於任何調查'}</div>
+            </div>
+            <div class="whitespace-nowrap">
+                <button class="mg-new-from text-blue-600 text-sm font-bold" data-name="${mg_esc(e.name)}">以此發起調查</button>
+                <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="text-slate-600 text-sm font-bold ml-2">預覽</a>
+                <button class="mg-rename text-slate-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">改名</button>
+                <button class="mg-delete text-red-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">刪除</button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            ${field(e.name, 'category', '分類', 'list="mg-categories" placeholder="未分類"')}
+            <div class="col-span-2">${field(e.name, 'description', '說明')}</div>
+            <label class="text-xs text-slate-500 flex items-end gap-1 pb-1"><input type="checkbox" class="mg-meta" data-name="${mg_esc(e.name)}" data-key="hidden"${m.hidden ? ' checked' : ''}> 隱藏（不列在範本庫）</label>
+        </div></div>`;
+    }).join('') : `<p class="text-slate-500 p-3">${all.length ? '沒有符合的範本。' : 'forms/ 裡還沒有範本，請從上面上傳。'}</p>`;
     document.getElementById('mg-count').textContent = `${entries.length}／${all.length} 份`;
+    document.getElementById('mg-new-form').innerHTML = mg_templateNames().map(n => `<option>${mg_esc(n)}</option>`).join('');
 }
 
-// ========== 寫入 ==========
-// 表格上的值收回 mg_index（空白的欄位不存，整列都空就刪掉那筆）；查詢時沒顯示的範本保留原值
+// 範本卡片上的值收回 mg_index（空白的欄位不存）；查詢時沒顯示的範本保留原值
 function mg_collect() {
     const t = { ...mg_index.templates }, shown = new Set([...document.querySelectorAll('.mg-meta')].map(el => el.dataset.name));
     shown.forEach(n => delete t[n]);
@@ -96,8 +122,8 @@ async function mg_saveIndex(message = '範本庫：更新分類與說明') {
 
 // 上傳前先確認是能用的表單，壞檔不發布
 async function mg_check(file) {
-    const name = file.name.replace(/\.[^.]+$/, '');
-    if (!name || name === 'index' || /[\\/]|\.\./.test(name)) throw new Error('檔名不能當表單名稱');
+    const bad = fb_badName(file.name.replace(/\.[^.]+$/, ''));
+    if (bad) throw new Error('檔名不能當範本名稱：' + bad);
     if (/\.json$/i.test(file.name)) {
         const form = fb_normalize(JSON.parse(await file.text()));
         return `${form.sheets.length} 個工作表`;
@@ -114,7 +140,7 @@ async function mg_upload(files) {
             const name = file.name.replace(/\.[^.]+$/, '');
             const old = mg_files.find(f => f.name === file.name);
             const twin = mg_files.find(f => f.name !== file.name && f.name.replace(/\.[^.]+$/, '') === name);
-            if (old && !confirm(`「${file.name}」已存在，要覆蓋成新版嗎？（分享連結不變）`)) continue;
+            if (old && !confirm(`「${file.name}」已存在，要覆蓋成新版嗎？（用它的調查專案會改用新版）`)) continue;
             if (twin && /\.xlsx$/i.test(file.name)) bad.push(`${file.name}：已有同名的 ${twin.name}（.json 優先），這份 Excel 不會被使用`);
             await mg_put(file.name, mg_b64(new Uint8Array(await file.arrayBuffer())), `範本庫：${old ? '更新' : '新增'} ${file.name}`, old?.sha);
             done.push(`${file.name}（${info}）`);
@@ -124,13 +150,15 @@ async function mg_upload(files) {
     mg_status([done.length ? `已上傳 ${done.join('、')}` : '', ...bad].filter(Boolean).join('；'), !!bad.length);
 }
 
-// 改名 = 用新檔名寫入同樣內容、刪掉舊檔、說明資料搬到新名稱；舊連結會失效
+// 範本改名 = 用新檔名寫入同樣內容、刪掉舊檔、說明資料搬到新名稱；用它的調查專案一併改指向新名稱
 async function mg_rename(name) {
-    const to = prompt(`把「${name}」改名為：（舊的分享連結會失效）`, name)?.trim();
+    const to = prompt(`把範本「${name}」改名為：（範本的預覽網址會變；用它的調查專案會自動改用新名稱）`, name)?.trim();
     if (!to || to === name) return;
-    if (to === 'index' || /[\\/]|\.\./.test(to)) return alert('這個名稱不能用');
-    if (fb_libraryEntries(mg_files).some(e => e.name === to)) return alert(`已經有「${to}」`);
+    const bad = fb_badName(to);
+    if (bad) return alert(bad);
+    if (mg_templateNames().includes(to)) return alert(`已經有「${to}」`);
     mg_collect();
+    mg_collectSv();
     for (const f of mg_files.filter(f => f.name.replace(/\.[^.]+$/, '') === name && f.name !== FB_INDEX)) {
         const src = await mg_api('/contents/' + mg_path(f.name));
         const ext = f.name.slice(name.length);
@@ -138,18 +166,123 @@ async function mg_rename(name) {
         await mg_delete(f.name, f.sha, `範本庫：${f.name} 改名為 ${to + ext}`);
     }
     if (mg_index.templates[name]) { mg_index.templates[to] = mg_index.templates[name]; delete mg_index.templates[name]; await mg_saveIndex(`範本庫：${name} 改名為 ${to}`); }
+    const used = mg_usedBy(name);
+    if (used.length) { used.forEach(id => { mg_sv.surveys[id].form = to; }); await mg_saveSurveys(`調查專案：範本 ${name} 改名為 ${to}`); }
     await mg_load();
-    mg_status(`已改名為「${to}」，新連結：./?form=${to}`);
+    mg_status(`已改名為「${to}」${used.length ? `，調查 ${used.join('、')} 已改用新名稱` : ''}`);
 }
 
 async function mg_remove(name) {
+    const used = mg_usedBy(name);
+    if (used.length) return alert(`範本「${name}」還有調查專案在用：${used.join('、')}\n請先刪除這些專案，或把範本設為「隱藏」。`);
     const files = mg_files.filter(f => f.name.replace(/\.[^.]+$/, '') === name && f.name !== FB_INDEX);
-    if (!confirm(`確定刪除「${name}」（${files.map(f => f.name).join('、')}）？\n分享連結會失效；之後要復原只能從 GitHub 的歷史紀錄找回。\n只是不想列在首頁的話，請改用「隱藏」。`)) return;
+    if (!confirm(`確定刪除範本「${name}」（${files.map(f => f.name).join('、')}）？\n之後要復原只能從 GitHub 的歷史紀錄找回。只是不想列出的話，請改用「隱藏」。`)) return;
     mg_collect();
     for (const f of files) await mg_delete(f.name, f.sha, `範本庫：刪除 ${f.name}`);
     if (mg_index.templates[name]) { delete mg_index.templates[name]; await mg_saveIndex(`範本庫：刪除 ${name} 的說明`); }
     await mg_load();
-    mg_status(`已刪除「${name}」`);
+    mg_status(`已刪除範本「${name}」`);
+}
+
+// ========== 調查專案 ==========
+const mg_lines = text => text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+function mg_renderSurveys() {
+    const all = fb_surveyEntries(mg_sv, true), today = mg_today();
+    const q = document.getElementById('mg-sv-q').value, st = document.getElementById('mg-sv-status').value;
+    const entries = all.filter(e => fb_libraryMatch(e, q, '', st, today));
+    mg_options(Object.values(mg_sv.surveys).map(s => s.unit), 'mg-units');
+    const forms = mg_templateNames();
+    const input = (id, key, label, type = 'text', extra = '') => `<label class="text-xs text-slate-500">${label}
+        <input type="${type}" class="mg-sv block w-full border rounded p-1 text-sm text-slate-800" data-id="${mg_esc(id)}" data-key="${key}" value="${mg_esc(mg_sv.surveys[id][key])}" ${extra}></label>`;
+    document.getElementById('mg-sv-list').innerHTML = entries.length ? entries.map(e => {
+        const m = e.meta, status = fb_libraryStatus(m, today), url = mg_siteUrl + '?survey=' + encodeURIComponent(e.name);
+        const missing = m.form && !forms.includes(m.form);
+        return `<div class="border rounded-xl p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
+        <div class="flex flex-wrap items-start gap-2 mb-3">
+            <div class="mr-auto min-w-0">
+                <span class="font-bold text-slate-800">${mg_esc(m.title || e.name)}</span>
+                ${status ? mg_badge(status, FB_STATUS[status]) : ''}${m.hidden ? mg_badge('', '隱藏') : ''}
+                <span class="text-xs text-slate-400 ml-1">代號 ${mg_esc(e.name)}</span>
+                ${missing ? `<div class="text-xs text-red-600 font-bold">⚠️ 範本「${mg_esc(m.form)}」不存在，填報人會打不開</div>` : ''}
+                ${mg_copyBtn(url)}
+            </div>
+            <div class="whitespace-nowrap">
+                <a href="./?survey=${encodeURIComponent(e.name)}" target="_blank" class="text-blue-600 text-sm font-bold">開啟</a>
+                <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" target="_blank" class="text-green-700 text-sm font-bold ml-2">彙整</a>
+                <button class="mg-sv-end text-slate-600 text-sm font-bold ml-2" data-id="${mg_esc(e.name)}" title="截止日設為今天">提前結束</button>
+                <button class="mg-sv-del text-red-600 text-sm font-bold ml-2" data-id="${mg_esc(e.name)}">刪除</button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="col-span-2">${input(e.name, 'title', '調查名稱')}</div>
+            <label class="text-xs text-slate-500">範本<select class="mg-sv block w-full border rounded p-1 text-sm text-slate-800" data-id="${mg_esc(e.name)}" data-key="form">
+                ${[...new Set([...forms, m.form].filter(Boolean))].map(n => `<option${n === m.form ? ' selected' : ''}>${mg_esc(n)}</option>`).join('')}</select></label>
+            ${input(e.name, 'unit', '發起單位', 'text', 'list="mg-units"')}
+            ${input(e.name, 'start', '發起日期', 'date')}
+            ${input(e.name, 'deadline', '截止日', 'date')}
+            ${input(e.name, 'year', '年度')}
+            <label class="text-xs text-slate-500 flex items-end gap-1 pb-1"><input type="checkbox" class="mg-sv" data-id="${mg_esc(e.name)}" data-key="hidden"${m.hidden ? ' checked' : ''}> 隱藏（首頁不列，連結照樣能用）</label>
+            <div class="col-span-2 md:col-span-4">${input(e.name, 'purpose', '用途')}</div>
+            <label class="text-xs text-slate-500 col-span-2 md:col-span-4">應繳機關（每行一個；${(m.respondents || []).length} 個）
+                <textarea rows="2" class="mg-sv block w-full border rounded p-1 text-sm text-slate-800" data-id="${mg_esc(e.name)}" data-key="respondents">${mg_esc((m.respondents || []).join('\n'))}</textarea></label>
+        </div></div>`;
+    }).join('') : `<p class="text-slate-500 p-3">${all.length ? '沒有符合的調查。' : '還沒有調查專案，請從上面「發起新調查」。'}</p>`;
+    document.getElementById('mg-sv-count').textContent = `${entries.length}／${all.length} 個`;
+}
+
+// 專案卡片上的值收回 mg_sv（空白欄位不存）；查詢時沒顯示的專案保留原值
+function mg_collectSv() {
+    document.querySelectorAll('.mg-sv').forEach(el => {
+        const s = mg_sv.surveys[el.dataset.id], key = el.dataset.key;
+        if (!s) return;
+        const v = el.type === 'checkbox' ? el.checked : key === 'respondents' ? mg_lines(el.value) : el.value.trim();
+        if (v && (!Array.isArray(v) || v.length)) s[key] = v; else delete s[key];
+    });
+}
+
+async function mg_saveSurveys(message = '調查專案：更新') {
+    const r = await mg_putPath(mg_svPath, mg_b64text(JSON.stringify(mg_sv, null, 2) + '\n'), message, mg_svSha);
+    mg_svSha = r.content.sha;
+}
+
+async function mg_createSurvey() {
+    const $ = id => document.getElementById(id);
+    const id = $('mg-new-id').value.trim(), form = $('mg-new-form').value;
+    const bad = fb_badName(id);
+    if (bad) return alert('調查代號：' + bad);
+    if (mg_sv.surveys[id]) return alert(`已經有代號「${id}」的調查`);
+    if (!form) return alert('請先選範本');
+    mg_collectSv();
+    const s = { title: $('mg-new-title').value.trim() || id, form };
+    ['unit', 'purpose', 'year', 'start', 'deadline'].forEach(k => { const v = $('mg-new-' + k).value.trim(); if (v) s[k] = v; });
+    const resp = mg_lines($('mg-new-resp').value);
+    if (resp.length) s.respondents = resp;
+    mg_sv.surveys[id] = s;
+    await mg_saveSurveys(`調查專案：新增 ${id}`);
+    ['id', 'title', 'unit', 'purpose', 'year', 'start', 'deadline', 'resp'].forEach(k => { $('mg-new-' + k).value = ''; });
+    mg_renderSurveys();
+    mg_render(); // 範本卡片的「用於調查」
+    mg_status(`已建立調查「${s.title}」，查填網址：${mg_siteUrl}?survey=${id}（約 1 分鐘後生效）`);
+}
+
+async function mg_endSurvey(id) {
+    if (!confirm(`把調查「${mg_sv.surveys[id].title || id}」的截止日設為今天？`)) return;
+    mg_collectSv();
+    mg_sv.surveys[id].deadline = mg_today();
+    await mg_saveSurveys(`調查專案：${id} 提前結束`);
+    mg_renderSurveys();
+    mg_status(`已結束調查「${id}」`);
+}
+
+async function mg_deleteSurvey(id) {
+    if (!confirm(`確定刪除調查「${mg_sv.surveys[id].title || id}」？\n查填網址會失效（範本不受影響）。只是不想列出的話，請改用「隱藏」。`)) return;
+    mg_collectSv();
+    delete mg_sv.surveys[id];
+    await mg_saveSurveys(`調查專案：刪除 ${id}`);
+    mg_renderSurveys();
+    mg_render();
+    mg_status(`已刪除調查「${id}」`);
 }
 
 // ========== 畫面 ==========
@@ -157,6 +290,14 @@ function mg_status(text, warn = false) {
     const el = document.getElementById('mg-status');
     el.textContent = text;
     el.className = 'text-sm ' + (warn ? 'text-red-600' : 'text-slate-500');
+}
+
+// 從範本庫「以此範本發起調查」進來（?form=範本）：選好範本、捲到發起新調查
+function mg_startFrom(form) {
+    if (!form || !mg_templateNames().includes(form)) return;
+    document.getElementById('mg-new-form').value = form;
+    document.getElementById('surveys').scrollIntoView();
+    document.getElementById('mg-new-id').focus();
 }
 
 async function mg_connect(token) {
@@ -171,6 +312,7 @@ async function mg_connect(token) {
         document.getElementById('mg-token').value = '';
         await mg_load();
         mg_status(`已連線 ${repo.full_name}`);
+        mg_startFrom(new URLSearchParams(location.search).get('form'));
     } catch (err) {
         mg_token = '';
         document.getElementById('mg-main').classList.add('hidden');
@@ -198,13 +340,16 @@ document.addEventListener('DOMContentLoaded', () => {
         mg_status('已清除權杖');
     };
     $('mg-reload').onclick = mg_run(mg_load);
-    $('mg-save').onclick = mg_run(async () => { mg_collect(); await mg_saveIndex(); mg_status('已儲存分類與說明（約 1 分鐘後首頁更新）'); });
+    $('mg-save').onclick = mg_run(async () => { mg_collect(); await mg_saveIndex(); mg_render(); mg_status('已儲存範本分類與說明（約 1 分鐘後首頁更新）'); });
     $('mg-upload').onchange = mg_run(async e => { const files = [...e.target.files]; e.target.value = ''; await mg_upload(files); });
-    // 搜尋前先把表格上改到一半的值收回，免得重畫時不見
-    const refilter = () => { mg_collect(); mg_render(); };
-    $('mg-q').addEventListener('input', refilter);
-    $('mg-only-hidden').addEventListener('change', refilter);
-    $('mg-list').addEventListener('click', async e => {
+    $('mg-sv-save').onclick = mg_run(async () => { mg_collectSv(); await mg_saveSurveys(); mg_renderSurveys(); mg_status('已儲存調查專案（約 1 分鐘後首頁更新）'); });
+    $('mg-new-create').onclick = mg_run(mg_createSurvey);
+    // 搜尋前先把卡片上改到一半的值收回，免得重畫時不見
+    $('mg-q').addEventListener('input', () => { mg_collect(); mg_render(); });
+    $('mg-only-hidden').addEventListener('change', () => { mg_collect(); mg_render(); });
+    $('mg-sv-q').addEventListener('input', () => { mg_collectSv(); mg_renderSurveys(); });
+    $('mg-sv-status').addEventListener('change', () => { mg_collectSv(); mg_renderSurveys(); });
+    document.addEventListener('click', async e => {
         const c = e.target.closest('.mg-copy');
         if (!c) return;
         await navigator.clipboard.writeText(c.dataset.url).catch(() => {});
@@ -213,8 +358,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     $('mg-list').addEventListener('click', mg_run(async e => {
         const b = e.target.closest('button');
+        if (b?.classList.contains('mg-new-from')) mg_startFrom(b.dataset.name);
         if (b?.classList.contains('mg-rename')) await mg_rename(b.dataset.name);
         if (b?.classList.contains('mg-delete')) await mg_remove(b.dataset.name);
+    }));
+    $('mg-sv-list').addEventListener('click', mg_run(async e => {
+        const b = e.target.closest('button');
+        if (b?.classList.contains('mg-sv-end')) await mg_endSurvey(b.dataset.id);
+        if (b?.classList.contains('mg-sv-del')) await mg_deleteSurvey(b.dataset.id);
     }));
     let saved = '';
     try { saved = sessionStorage.getItem(MG_KEY) || ''; } catch (e) { /* 同上 */ }
