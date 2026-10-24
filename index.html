@@ -91,7 +91,22 @@
             <h2 class="text-xl font-bold text-slate-800">📚 範本庫</h2>
             <a href="manage.html" class="text-sm text-slate-500 hover:text-blue-600" title="上傳、改名、刪除範本，編輯分類與說明（需要 GitHub 權杖）">⚙️ 管理範本庫</a>
         </div>
-        <p class="text-sm text-slate-500 mb-3">forms/ 資料夾裡已發布的表單。開啟填報，或下載範本檔修改後另存新檔名上傳，就是一份新表單。</p>
+        <p class="text-sm text-slate-500 mb-2">forms/ 資料夾裡已發布的表單，每份表單對應一個固定的查填網址。開啟填報，或下載範本檔修改後另存新檔名上傳，就是一份新表單。</p>
+        <details class="text-sm text-slate-600 mb-3"><summary class="cursor-pointer text-blue-600">分享連結會變嗎？</summary>
+            <div class="mt-2">查填網址是 <code>…/local_gov_budget/?form=表單名稱</code>，表單名稱就是 forms/ 裡的檔名。
+            <table class="budget-table mt-2 text-xs"><thead><tr><th>做了什麼</th><th>連結</th></tr></thead><tbody>
+                <tr><td class="text-left px-2">修改表單內容（欄位、項目、公式），用<b>同一個檔名</b>重新上傳</td><td class="px-2">不變</td></tr>
+                <tr><td class="text-left px-2">改分類、說明、年度、截止日，或設為隱藏（隱藏的連結照樣能用）</td><td class="px-2">不變</td></tr>
+                <tr><td class="text-left px-2">在管理頁<b>改名</b>（換檔名）</td><td class="px-2 text-red-600">變了，舊連結失效</td></tr>
+                <tr><td class="text-left px-2"><b>刪除</b>表單</td><td class="px-2 text-red-600">失效</td></tr>
+                <tr><td class="text-left px-2">GitHub 帳號或專案名稱改了</td><td class="px-2 text-red-600">網址前半段都會變</td></tr>
+            </tbody></table>
+            <p class="mt-2">建議：每年同一份調查可沿用同一張表，用「年度」欄區分；欄位每年不同就每年一個新檔名（如「114決算…」「115決算…」），舊年度設為隱藏。已寄出的連結盡量不要改名，要改就上傳新表單、把舊的隱藏。</p></div>
+        </details>
+        <div class="flex flex-wrap gap-2 mb-2">
+            <input type="search" id="fb-lib-q" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋表單名稱、說明、分類、年度（空白分隔多個字）">
+            <select id="fb-lib-cat" class="border rounded-lg p-2 text-sm"><option value="">全部分類</option></select>
+        </div>
         <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
     </div>
 
