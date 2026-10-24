@@ -457,6 +457,9 @@ function fb_showSheet(i) {
 function fb_renderForm(form) {
     fb_form = { title: form.title, sheets: form.sheets, tables: { ...form.tables }, cur: null };
     document.getElementById('fb-library').classList.add('hidden');
+    document.getElementById('fb-hub').classList.add('hidden');
+    document.getElementById('fb-work').classList.remove('hidden');
+    document.querySelectorAll('.fb-needs-form').forEach(b => b.classList.remove('hidden'));
     document.getElementById('fb-publish').classList.add('hidden');
     document.getElementById('fb-tabs').innerHTML = form.sheets.length > 1
         ? form.sheets.map((s, i) => `<button class="fb-tab" data-i="${i}">${fb_esc(s.name)}</button>`).join('') : '';
@@ -820,7 +823,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(location.search), form = params.get('form');
     // ?form=名稱&blank=1：範本庫的「查填用 Excel」，載入表單後直接下載空白查填檔
     if (form) fb_loadFixedForm(form).then(() => { if (params.get('blank')) fb_exportXlsx(true); }).catch(err => fb_msg('⚠️ ' + err.message));
-    else { $('fb-library').classList.remove('hidden'); fb_loadLibrary(); }
+    else { $('fb-hub').classList.remove('hidden'); $('fb-library').classList.remove('hidden'); fb_loadLibrary(); }
+    $('fb-hub-new').onclick = () => $('fb-xlsx-file').click();
     $('fb-library-list').addEventListener('click', async e => {
         const btn = e.target.closest('.fb-lib-copy');
         if (!btn) return;

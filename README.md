@@ -7,7 +7,7 @@
 
 | 頁面 | 用途 |
 |---|---|
-| `index.html`（首頁） | 上傳 Excel 範本產生表單、匯出範本、填寫並匯出 JSON |
+| `index.html`（首頁） | 承辦入口：①建立新表單 ②發出查填 ③彙整回傳檔 ④管理範本庫，下方是範本庫。上傳 Excel 範本產生表單、匯出範本、填寫並匯出 JSON |
 | `?form=名稱` | 固定表單：讀 `forms/名稱.json`，沒有則讀 `forms/名稱.xlsx` |
 | `manage.html` | 範本庫管理：貼上 GitHub 權杖後上傳、覆蓋、改名、刪除 `forms/` 的範本，編輯分類、說明、年度、截止日、是否隱藏（存在 `forms/index.json`） |
 | `form-aggregate.html` | 匯入多份回傳 JSON 或已填好的 Excel → 繳交清單／依項目彙總／明細 → 匯出 Excel |
