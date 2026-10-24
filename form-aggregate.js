@@ -7,6 +7,10 @@ let ag_subs = [];       // [{ file, org, year, user, tables: { 工作表名: row
 let ag_oneOwner = {};   // 各工作表是否檢查重複填報：沒設定 = 依資料自動判斷（fb_itemOwners），true / false = 使用者指定
 let ag_cur = 0;         // 目前顯示的工作表
 let ag_fixed = false;   // 由 ?form= 載入的範本：清空回傳檔時保留表單
+let ag_survey = null;   // 由 ?survey= 開啟的調查專案 { id, title, form, respondents, … }
+
+// 回傳檔帶的調查代號不是這次的調查 → 不收（沒帶代號的自製 Excel、舊 JSON 照收）
+const ag_otherSurvey = m => ag_survey && m.survey && m.survey !== ag_survey.id;
 
 const ag_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const ag_num = fb_num; // 文字格式的 "1,234" 用 parseFloat 會變成 1
@@ -53,6 +57,7 @@ async function ag_addFiles(files) {
                 const { found, notes: miss, metadata: m } = fb_matchSheets(buf, file.name, ag_form.sheets);
                 const hit = Object.keys(found);
                 if (!hit.length) { notes.push(`${file.name}：${miss.join('；')}，略過`); continue; }
+                if (ag_otherSurvey(m)) { notes.push(`${file.name}：是調查「${m.survey}」的回傳檔，不是這次調查，略過`); continue; }
                 if (miss.length) notes.push(`${file.name}：${miss.join('；')}`);
                 const bad = hit.flatMap(n => found[n].warnings.filter(w => w.includes('不是數字')));
                 if (bad.length) notes.push(`${file.name}：${bad.join('；')}`);
@@ -71,6 +76,7 @@ async function ag_addFiles(files) {
             else { const bad = ag_formMismatch(form); if (bad) { notes.push(`${file.name}：${bad}，略過`); continue; } }
             if (!data.metadata) { notes.push(`${file.name}：範本（不是回傳檔），已用來決定表單`); continue; } // 「匯出範本」的 .json
             const m = data.metadata;
+            if (ag_otherSurvey(m)) { notes.push(`${file.name}：是調查「${m.survey}」的回傳檔，不是這次調查，略過`); continue; }
             ag_addSub({ file: file.name, org: m.org || '(未填機關)', year: m.year || '', user: m.user || '', tables: form.tables }, notes);
         } catch (err) { notes.push(`${file.name}：${err.message}`); }
     }
@@ -94,8 +100,21 @@ async function ag_loadForm(name) {
     document.getElementById('ag-msg').textContent = `表單「${ag_form.title}」${ag_form.sheets.length > 1 ? `（${ag_form.sheets.length} 個工作表）` : ''}：已載入範本，請拖入各機關回傳的 JSON 或 Excel。`;
 }
 
+// ?survey=代號：讀專案 → 載入專案用的範本；繳交清單依應繳名單列出已繳／未繳
+async function ag_loadSurvey(id) {
+    if (fb_badName(id)) throw new Error('調查代號不合法：' + id);
+    const idx = await fetch(FB_SURVEY_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    const s = idx.surveys?.[id];
+    if (!s) throw new Error(`找不到調查「${id}」`);
+    ag_survey = { id, ...s };
+    await ag_loadForm(s.form);
+    const n = (s.respondents || []).length;
+    document.getElementById('ag-msg').textContent = `調查「${s.title || id}」（範本：${s.form}）：已載入${n ? `，應繳 ${n} 個機關` : ''}，請拖入各機關回傳的 JSON 或 Excel。`;
+    document.title = `${s.title || id}｜彙整`;
+}
+
 function ag_msg(notes = []) {
-    const base = ag_form ? `表單「${ag_form.title}」${ag_form.sheets.length > 1 ? `（${ag_form.sheets.length} 個工作表）` : ''}：已匯入 ${ag_subs.length} 份。` : '尚未匯入檔案。';
+    const base = ag_form ? `${ag_survey ? `調查「${ag_survey.title || ag_survey.id}」` : `表單「${ag_form.title}」`}${ag_form.sheets.length > 1 ? `（${ag_form.sheets.length} 個工作表）` : ''}：已匯入 ${ag_subs.length} 份。` : '尚未匯入檔案。';
     document.getElementById('ag-msg').textContent = base + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
 }
 
@@ -170,11 +189,20 @@ function ag_table(headId, bodyId, headers, rows) {
         '<tr>' + r.map(v => `<td class="${typeof v === 'number' ? 'text-right' : 'text-left'} px-2${typeof v === 'number' && v < 0 ? ' negative-value' : ''}">${ag_fmt(v)}</td>`).join('') + '</tr>').join('');
 }
 
+// 繳交清單；調查專案有應繳名單時，名單上的機關逐一列出（沒交的也列），名單外的標出來。index：對應 ag_subs（未繳交為 null）
 function ag_subsView() {
     const multi = ag_form.sheets.length > 1;
+    const row = s => [s.org, s.year, s.user, multi ? ag_form.sheets.map((_, k) => ag_filled(s, k)).join('／') : ag_filled(s, 0), s.file];
+    const headers = ['機關', '年度', '填表人', multi ? `有數字的列（${ag_form.sheets.map(s => s.name).join('／')}）` : '有數字的列', '檔名'];
+    const expected = ag_survey?.respondents || [];
+    if (!expected.length) return { headers, rows: ag_subs.map(row), index: ag_subs.map((_, i) => i) };
+    const res = fb_submissions(expected, ag_subs.map(s => s.org));
+    const label = { done: '✅ 已繳交', missing: '❌ 未繳交', extra: '⚠️ 不在名單' };
     return {
-        headers: ['機關', '年度', '填表人', multi ? `有數字的列（${ag_form.sheets.map(s => s.name).join('／')}）` : '有數字的列', '檔名'],
-        rows: ag_subs.map(s => [s.org, s.year, s.user, multi ? ag_form.sheets.map((_, k) => ag_filled(s, k)).join('／') : ag_filled(s, 0), s.file]),
+        headers: [...headers, '狀態'],
+        rows: res.rows.map(r => [...(r.index === undefined ? [r.org, '', '', '', ''] : row(ag_subs[r.index])), label[r.status]]),
+        index: res.rows.map(r => r.index ?? null),
+        done: res.done, total: res.total,
     };
 }
 
@@ -227,9 +255,9 @@ function ag_render() {
     ag_cur = Math.min(ag_cur, ag_form.sheets.length - 1);
     const esc = rows => rows.map(r => r.map(x => typeof x === 'number' ? x : ag_esc(x))); // 字串先跳脫，數字留給 ag_table 格式化並靠右
     const subs = ag_subsView();
-    document.getElementById('ag-subs-title').textContent = `繳交清單（${ag_subs.length} 份）`;
+    document.getElementById('ag-subs-title').textContent = subs.total ? `繳交清單（已繳 ${subs.done}／應繳 ${subs.total}，共收 ${ag_subs.length} 份）` : `繳交清單（${ag_subs.length} 份）`;
     ag_table('ag-subs-head', 'ag-subs', [...subs.headers, ''], esc(subs.rows).map((r, i) =>
-        [...r, `<button class="ag-del text-red-500 font-bold" data-i="${i}" title="移除">×</button>`]));
+        [...r, subs.index[i] === null ? '' : `<button class="ag-del text-red-500 font-bold" data-i="${subs.index[i]}" title="移除">×</button>`]));
     document.getElementById('ag-tabs').innerHTML = ag_form.sheets.length > 1
         ? ag_form.sheets.map((s, k) => `<button class="fb-tab${k === ag_cur ? ' fb-tab-on' : ''}" data-k="${k}">${ag_esc(s.name)}</button>`).join('') : '';
     const v = ag_sheetViews(ag_cur);
@@ -283,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!ag_subs.length) { if (!ag_fixed) ag_form = null; ag_oneOwner = {}; ag_cur = 0; }
         ag_render(); ag_msg();
     });
-    const form = new URLSearchParams(location.search).get('form');
-    if (form) ag_loadForm(form).catch(err => ag_msg([err.message]));
+    const params = new URLSearchParams(location.search), form = params.get('form'), survey = params.get('survey');
+    if (survey) ag_loadSurvey(survey).catch(err => ag_msg([err.message]));
+    else if (form) ag_loadForm(form).catch(err => ag_msg([err.message]));
 });

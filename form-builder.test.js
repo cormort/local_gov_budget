@@ -200,4 +200,16 @@ assert.strictEqual(status({ deadline: '2026-10-23' }, D), 'closed');
 const it2 = { name: '基金調查', meta: { unit: '主計總處基金預算處', purpose: '彙編決算書表', deadline: '2026-10-01' } };
 assert.ok(match(it2, '基金預算處 決算書'));
 assert.ok(match(it2, '', '', 'closed', D) && !match(it2, '', '', 'open', D));
+// 調查專案：代號檢查、清單排序、繳交對照
+const { fb_badName: bad, fb_surveyEntries: surveys, fb_submissions: subsOf } = require('./form-builder.js');
+assert.strictEqual(bad('115決算購建'), null);
+assert.strictEqual(bad('114.1調查'), null);   // 單一個點可以
+for (const x of ['', ' ', 'a/b', 'a b', '../x', '.x', 'a?b', 'a#b', 'index']) assert.ok(bad(x), x);
+const sv = surveys({ surveys: { 舊: { start: '2025-01-01' }, 新: { start: '2026-10-01' }, 藏: { hidden: true, start: '2026-12-01' } } });
+assert.deepStrictEqual(sv.map(s => s.name), ['新', '舊']);
+assert.ok(match({ name: '115決算購建', meta: { title: '115年度決算購建固定資產', form: '114決算購建固定資產執行情形' } }, '年度決算'));
+const so = subsOf(['臺北市', '新北市', '桃園市'], ['台北市', '新 北 市', '高雄市']);
+assert.deepStrictEqual(so.rows.map(r => r.org + ':' + r.status), ['臺北市:done', '新北市:done', '桃園市:missing', '高雄市:extra']);
+assert.deepStrictEqual([so.done, so.total], [2, 3]);
+assert.deepStrictEqual(subsOf([], ['甲']).rows.map(r => r.status), ['extra']);
 console.log('form-builder: all checks passed');

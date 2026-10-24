@@ -39,44 +39,80 @@
 </nav>
 
 <div class="max-w-[98%] mx-auto p-4">
-    <!-- 承辦入口：沒有 ?form= 也還沒載入範本時顯示；填報人一律從 ?form= 連結進來，看不到這區 -->
+    <!-- 承辦入口：沒有 ?form= / ?survey= 也還沒載入範本時顯示（填報人通常從專案連結進來，看不到這區）。四大部分各一個分頁 -->
     <div id="fb-hub" class="hidden">
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-            <div class="section-card !mb-0 flex flex-col">
-                <h2 class="text-lg font-bold text-slate-800 mb-1">① 建立新表單</h2>
-                <p class="text-sm text-slate-600 mb-3 flex-1">上傳 Excel 範本，自動產生表頭與表單，再「📌 匯出範本」發布到範本庫。</p>
+        <div class="flex flex-wrap gap-1" role="tablist">
+            <button class="fb-tab fb-hub-tab" data-tab="surveys">📋 調查專案</button><button class="fb-tab fb-hub-tab" data-tab="templates">📚 範本庫</button><button class="fb-tab fb-hub-tab" data-tab="fill">✏️ 查填</button><button class="fb-tab fb-hub-tab" data-tab="agg">📊 彙整</button>
+            <a href="manage.html" class="ml-auto self-center text-sm text-slate-500 hover:text-blue-600" title="範本與調查專案的新增、修改、刪除（需要 GitHub 權杖）">⚙️ 管理</a>
+        </div>
+
+        <div class="section-card fb-hub-panel" data-tab="surveys">
+            <div class="flex flex-wrap justify-between items-center gap-2 mb-1">
+                <h2 class="text-xl font-bold text-slate-800">📋 調查專案</h2>
+                <a href="manage.html#surveys" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow">＋ 發起新調查</a>
+            </div>
+            <p class="text-sm text-slate-500 mb-2">每次實際收件是一個調查專案：用哪份範本、發起單位、用途、期間、應繳機關。每個專案有自己的查填網址，寄給填報人；收件後按「彙整」。</p>
+            <details class="text-sm text-slate-600 mb-3"><summary class="cursor-pointer text-blue-600">分享連結會變嗎？</summary>
+                <div class="mt-2">查填網址是 <code>…/local_gov_budget/?survey=調查代號</code>。
+                <table class="budget-table mt-2 text-xs"><thead><tr><th>做了什麼</th><th>連結</th></tr></thead><tbody>
+                    <tr><td class="text-left px-2">修改專案的名稱、發起單位、用途、期間、應繳機關，或設為隱藏</td><td class="px-2">不變</td></tr>
+                    <tr><td class="text-left px-2">修改專案用的範本內容，用<b>同一個檔名</b>重新上傳</td><td class="px-2">不變（填報人開到的是新版）</td></tr>
+                    <tr><td class="text-left px-2"><b>刪除</b>專案，或刪除它用的範本</td><td class="px-2 text-red-600">失效</td></tr>
+                    <tr><td class="text-left px-2">GitHub 帳號或專案名稱改了</td><td class="px-2 text-red-600">網址前半段都會變</td></tr>
+                </tbody></table>
+                <p class="mt-2">同一份範本每年再調查一次，就再發起一個新專案（例如代號「114決算購建」「115決算購建」），各有各的網址與繳交清單，彙整時也不會混在一起。</p></div>
+            </details>
+            <div class="flex flex-wrap gap-2 mb-2">
+                <input type="search" id="fb-sv-q" aria-label="搜尋調查" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋調查名稱、代號、範本、發起單位、用途、年度">
+                <select id="fb-sv-status" aria-label="調查狀態" class="border rounded-lg p-2 text-sm"><option value="">全部狀態</option><option value="open">進行中</option><option value="upcoming">未開始</option><option value="closed">已結束</option></select>
+            </div>
+            <ul id="fb-survey-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+        </div>
+
+        <div class="fb-hub-panel" data-tab="templates">
+            <div class="section-card">
+                <h2 class="text-lg font-bold text-slate-800 mb-1">建立新範本</h2>
+                <p class="text-sm text-slate-600 mb-3">上傳 Excel 範本，自動產生表頭與表單，再「📌 匯出範本」發布到範本庫（或到 ⚙️ 管理頁直接上傳）。</p>
                 <button id="fb-hub-new" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">📊 上傳 Excel 範本</button>
                 <details class="text-xs text-slate-500 mt-3"><summary class="cursor-pointer text-blue-600">範本規則</summary><p class="mt-1"><b>範本規則：</b>第一個非空白列為表頭（可用合併儲存格做兩層表頭，欄名會成為「預算數－原編」；只有一格字的表名、單位列會自動略過），第一欄為項目名稱。第二列起的資料會帶入為預設項目；
         儲存格若是公式（如 <code>=B2-C2</code>、<code>=SUM(B2:D2)</code>，限同一列的加減乘除），該欄即成為自動計算欄。項目名稱以「一、」「（一）」「1.」「（1）」編號時，上層項目的數值自動等於下層加總；沒有編號的合計、小計公式列會略過，由表尾合計自動計算。空白欄預設為數值欄；要文字欄請在任一資料列填入文字。</p></details>
             </div>
-            <div class="section-card !mb-0 flex flex-col">
-                <h2 class="text-lg font-bold text-slate-800 mb-1">② 發出查填</h2>
-                <p class="text-sm text-slate-600 mb-3 flex-1">在下方範本庫找到表單：「複製連結」寄給填報人；習慣用 Excel 的另寄「查填用 Excel」。</p>
-                <a href="#fb-library" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow text-center hover:bg-blue-700">📚 到範本庫</a>
+            <div id="fb-library" class="section-card">
+                <h2 class="text-xl font-bold text-slate-800 mb-1">📚 範本庫</h2>
+                <p class="text-sm text-slate-500 mb-2">可重複使用的表單（欄位、項目、公式）。要收件時，按「以此範本發起調查」建立調查專案。</p>
+                <div class="flex flex-wrap gap-2 mb-2">
+                    <input type="search" id="fb-lib-q" aria-label="搜尋範本" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋範本名稱、說明、分類（空白分隔多個字）">
+                    <select id="fb-lib-cat" aria-label="分類" class="border rounded-lg p-2 text-sm"><option value="">全部分類</option></select>
+                </div>
+                <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
             </div>
-            <div class="section-card !mb-0 flex flex-col">
-                <h2 class="text-lg font-bold text-slate-800 mb-1">③ 彙整回傳檔</h2>
-                <p class="text-sm text-slate-600 mb-3 flex-1">在範本庫按該表單的「彙整」（已載入範本），把各機關回傳的 JSON／Excel 一次拖入。</p>
-                <a href="#fb-library" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow text-center hover:bg-blue-700">📚 到範本庫</a>
-                <a href="form-aggregate.html" class="text-xs text-slate-500 mt-2 text-center hover:text-blue-600">或開啟空白彙整頁（不在範本庫的表單）</a>
-            </div>
-            <div class="section-card !mb-0 flex flex-col">
-                <h2 class="text-lg font-bold text-slate-800 mb-1">④ 管理範本庫</h2>
-                <p class="text-sm text-slate-600 mb-3 flex-1">上傳、更新、改名、刪除範本，編輯分類、說明、年度、截止日與是否隱藏（需要 GitHub 權杖）。</p>
-                <a href="manage.html" class="bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow text-center hover:bg-slate-800">⚙️ 管理範本庫</a>
-            </div>
+        </div>
+
+        <div class="section-card fb-hub-panel" data-tab="fill">
+            <h2 class="text-xl font-bold text-slate-800 mb-1">✏️ 查填</h2>
+            <p class="text-sm text-slate-500 mb-3">填報人請用承辦寄來的連結；也可以在這裡選進行中的調查開始填寫。填到一半的資料會自動存在這台電腦，重新開啟同一份調查時可還原。</p>
+            <ul id="fb-fill-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+            <p class="text-sm text-slate-500 mt-3">已有匯出的 JSON 要繼續填？<button id="fb-hub-import" class="text-blue-600 font-bold">📂 匯入 JSON</button></p>
+        </div>
+
+        <div class="section-card fb-hub-panel" data-tab="agg">
+            <h2 class="text-xl font-bold text-slate-800 mb-1">📊 彙整</h2>
+            <p class="text-sm text-slate-500 mb-3">選調查專案進入彙整頁（已載入範本與應繳名單），把各機關回傳的 JSON／Excel 一次拖入；別的調查的檔案會被擋下。</p>
+            <ul id="fb-agg-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+            <a href="form-aggregate.html" class="text-sm text-slate-500 hover:text-blue-600">或開啟空白彙整頁（沒有建立專案的表單）</a>
         </div>
     </div>
 
     <!-- 表單：上傳範本、匯入 JSON 或從 ?form= 開啟後才顯示 -->
     <div id="fb-work" class="hidden">
+    <div id="fb-survey-bar" class="hidden excel-guide !text-sm"></div>
     <div class="excel-guide">
         <b>填寫：</b>可從 Excel 選取多格複製，點表格任一格按 Ctrl+V（Mac：⌘V）貼上，會從該格往右、往下填入，列不夠自動新增，公式欄自動跳過。
     </div>
 
     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6">
         <div><label for="fb-title" class="text-xs font-bold text-slate-400 uppercase">表單名稱</label><input type="text" id="fb-title" class="border-b-2 w-full p-2 outline-none font-bold focus:border-blue-500" readonly></div>
-        <div><label for="fb-org" class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="fb-org" class="border-b-2 w-full p-2 outline-none"></div>
+        <div><label for="fb-org" class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="fb-org" list="fb-orgs" class="border-b-2 w-full p-2 outline-none"></div>
         <div><label for="fb-year" class="text-xs font-bold text-slate-400 uppercase">年度</label><input type="number" id="fb-year" class="border-b-2 w-full p-2 outline-none"></div>
         <div><label for="fb-user" class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="fb-user" class="border-b-2 w-full p-2 outline-none"></div>
     </div>
@@ -90,31 +126,6 @@
         <button id="fb-draft-discard" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border ml-1">捨棄</button>
         <span class="text-xs text-slate-500 ml-2">（直接開始填寫會取代這份草稿）</span></div>
     <div id="fb-msg" class="text-sm text-slate-500 mb-4"></div>
-
-    <div id="fb-library" class="section-card hidden">
-        <div class="flex justify-between items-center mb-1">
-            <h2 class="text-xl font-bold text-slate-800">📚 範本庫</h2>
-            <a href="manage.html" class="text-sm text-slate-500 hover:text-blue-600" title="上傳、改名、刪除範本，編輯分類與說明（需要 GitHub 權杖）">⚙️ 管理範本庫</a>
-        </div>
-        <p class="text-sm text-slate-500 mb-2">forms/ 資料夾裡已發布的表單，每份表單對應一個固定的查填網址。開啟填報，或下載範本檔修改後另存新檔名上傳，就是一份新表單。</p>
-        <details class="text-sm text-slate-600 mb-3"><summary class="cursor-pointer text-blue-600">分享連結會變嗎？</summary>
-            <div class="mt-2">查填網址是 <code>…/local_gov_budget/?form=表單名稱</code>，表單名稱就是 forms/ 裡的檔名。
-            <table class="budget-table mt-2 text-xs"><thead><tr><th>做了什麼</th><th>連結</th></tr></thead><tbody>
-                <tr><td class="text-left px-2">修改表單內容（欄位、項目、公式），用<b>同一個檔名</b>重新上傳</td><td class="px-2">不變</td></tr>
-                <tr><td class="text-left px-2">改分類、說明、年度、截止日，或設為隱藏（隱藏的連結照樣能用）</td><td class="px-2">不變</td></tr>
-                <tr><td class="text-left px-2">在管理頁<b>改名</b>（換檔名）</td><td class="px-2 text-red-600">變了，舊連結失效</td></tr>
-                <tr><td class="text-left px-2"><b>刪除</b>表單</td><td class="px-2 text-red-600">失效</td></tr>
-                <tr><td class="text-left px-2">GitHub 帳號或專案名稱改了</td><td class="px-2 text-red-600">網址前半段都會變</td></tr>
-            </tbody></table>
-            <p class="mt-2">建議：每年同一份調查可沿用同一張表，用「年度」欄區分；欄位每年不同就每年一個新檔名（如「114決算…」「115決算…」），舊年度設為隱藏。已寄出的連結盡量不要改名，要改就上傳新表單、把舊的隱藏。</p></div>
-        </details>
-        <div class="flex flex-wrap gap-2 mb-2">
-            <input type="search" id="fb-lib-q" aria-label="搜尋表單" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋表單名稱、發起單位、用途、說明、分類、年度（空白分隔多個字）">
-            <select id="fb-lib-cat" aria-label="分類" class="border rounded-lg p-2 text-sm"><option value="">全部分類</option></select>
-            <select id="fb-lib-status" aria-label="調查狀態" class="border rounded-lg p-2 text-sm"><option value="">全部狀態</option><option value="open">進行中</option><option value="upcoming">未開始</option><option value="closed">已截止</option></select>
-        </div>
-        <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
-    </div>
 
     <div id="fb-publish" class="excel-guide hidden">
         <p class="font-bold mb-2">📌 範本「<span id="fb-publish-file"></span>」已下載，接著發布：</p>
@@ -146,5 +157,6 @@
     </div>
 </div>
 
+<datalist id="fb-orgs"></datalist>
 </body>
 </html>

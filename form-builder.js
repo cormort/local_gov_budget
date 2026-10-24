@@ -342,22 +342,55 @@ function fb_libraryGroups(entries, index = {}, showHidden = false) {
         .sort((a, b) => (a.category === FB_NO_CATEGORY) - (b.category === FB_NO_CATEGORY) || a.category.localeCompare(b.category, 'zh-Hant'));
 }
 
-// 範本庫的調查狀態（依發起日期 start、截止日 deadline，YYYY-MM-DD）：未開始／進行中／已截止；兩個都沒填就是空字串
-const FB_STATUS = { upcoming: '未開始', open: '進行中', closed: '已截止' };
+// 調查專案的狀態（依發起日期 start、截止日 deadline，YYYY-MM-DD）：未開始／進行中／已結束；兩個都沒填就是空字串
+const FB_STATUS = { upcoming: '未開始', open: '進行中', closed: '已結束' };
+const FB_BADGE = { upcoming: 'bg-slate-200 text-slate-700', open: 'bg-green-100 text-green-800', closed: 'bg-red-100 text-red-700' };
 function fb_libraryStatus(m = {}, today = new Date().toISOString().slice(0, 10)) {
     if (m.start && m.start > today) return 'upcoming';
     if (m.deadline && m.deadline < today) return 'closed';
     return m.start || m.deadline ? 'open' : '';
 }
 
-// 範本庫查詢：關鍵字比對名稱、說明、用途、發起單位、分類、年度（空白分隔的多個字都要符合，不分大小寫）；
-// cat 指定分類，status 指定調查狀態
+// 範本庫／調查專案查詢：關鍵字比對名稱、專案名稱、範本、說明、用途、發起單位、分類、年度
+// （空白分隔的多個字都要符合，不分大小寫）；cat 指定分類，status 指定調查狀態
 function fb_libraryMatch(item, q = '', cat = '', status = '', today) {
     const m = item.meta || {};
     if (cat && ((m.category || '').trim() || FB_NO_CATEGORY) !== cat) return false;
     if (status && fb_libraryStatus(m, today) !== status) return false;
-    const hay = [item.name, m.description, m.purpose, m.unit, m.category, m.year].filter(Boolean).join(' ').toLowerCase();
+    const hay = [item.name, m.title, m.form, m.description, m.purpose, m.unit, m.category, m.year].filter(Boolean).join(' ').toLowerCase();
     return q.trim().toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+
+// ========== 調查專案：surveys/index.json = { surveys: { 代號: { title, form, unit, purpose, year, start, deadline, respondents, hidden } } } ==========
+// 代號用在網址 ?survey=代號，也當回傳檔的專案代號
+const FB_SURVEY_INDEX = 'surveys/index.json';
+
+// 範本名稱、專案代號能不能用（會出現在網址與檔名）：回傳錯誤訊息，可以用回傳 null
+function fb_badName(name) {
+    const n = String(name ?? '');
+    if (!n.trim()) return '名稱不能空白';
+    if (/[\/\\?#%&]|\.\.|^\.|\s/.test(n)) return '名稱不能有空白或 / \\ ? # % & 等符號';
+    if (n === 'index') return '「index」保留給系統使用';
+    return null;
+}
+
+// 專案清單 → [{ name: 代號, meta }]（與範本庫同形，可共用查詢）；依發起日期新的在前
+function fb_surveyEntries(index = {}, showHidden = false) {
+    return Object.entries(index.surveys || {}).filter(([, m]) => showHidden || !m.hidden)
+        .map(([name, meta]) => ({ name, meta }))
+        .sort((a, b) => (b.meta.start || '').localeCompare(a.meta.start || '') || a.name.localeCompare(b.name, 'zh-Hant'));
+}
+
+// 機關名稱比對：去空白、台→臺（名單與回傳檔常寫法不一）
+const fb_orgKey = s => String(s ?? '').replace(/\s/g, '').replace(/台/g, '臺');
+
+// 繳交對照：應繳名單 × 已收到的機關 → 每個機關 done（已繳）／missing（未繳）／extra（不在名單）
+function fb_submissions(expected = [], orgs = []) {
+    const got = new Map(orgs.map((o, i) => [fb_orgKey(o), i]));
+    const want = new Set(expected.map(fb_orgKey));
+    const rows = expected.map(o => ({ org: o, status: got.has(fb_orgKey(o)) ? 'done' : 'missing', index: got.get(fb_orgKey(o)) }));
+    orgs.forEach((o, i) => { if (!want.has(fb_orgKey(o))) rows.push({ org: o, status: 'extra', index: i }); });
+    return { rows, done: rows.filter(r => r.status === 'done').length, total: expected.length };
 }
 
 // 範本庫：GitHub API 列出的 forms/ 檔案 → [{ name, file }]；同名的 .json 與 .xlsx 只列一次（.json 為準，與 ?form= 相同）
@@ -373,7 +406,7 @@ function fb_libraryEntries(items) {
 // GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
 const fb_libraryFromIndex = index => Object.keys(index.templates || {}).map(name => ({ name, file: null })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_libraryStatus, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_submissions, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -650,6 +683,9 @@ function fb_calc() {
 
 // 草稿：固定表單（?form=）填寫中每次修改都存到這台電腦的瀏覽器，重新整理或關掉分頁後再開可還原
 const FB_DRAFT = 'fb-draft:';
+let fb_survey = null; // 從 ?survey= 開啟的調查專案 { id, title, form, unit, purpose, year, start, deadline, respondents }
+// 草稿依專案分開（同一份範本的 114、115 年調查不互相蓋掉）；沒有專案時依表單名稱
+const fb_draftKey = () => FB_DRAFT + (fb_survey ? 'survey:' + fb_survey.id : fb_form.title);
 let fb_draftOn = false, fb_draftTimer = null;
 function fb_saveDraft() {
     if (!fb_draftOn || !fb_form) return;
@@ -658,14 +694,14 @@ function fb_saveDraft() {
         document.getElementById('fb-draft').classList.add('hidden'); // 沒還原就開始填 → 舊草稿被新的取代
         fb_saveSheet();
         const val = id => document.getElementById(id).value;
-        try { localStorage.setItem(FB_DRAFT + fb_form.title, JSON.stringify({ time: Date.now(), metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, tables: fb_form.tables })); } catch (e) { /* 無痕模式等不能存就算了 */ }
+        try { localStorage.setItem(fb_draftKey(), JSON.stringify({ time: Date.now(), metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, tables: fb_form.tables })); } catch (e) { /* 無痕模式等不能存就算了 */ }
     }, 500);
 }
 
 // 有草稿就在表單上方顯示「還原／捨棄」（不用 confirm：被瀏覽器擋掉時會直接走「捨棄」）
 function fb_offerDraft() {
     let d = null;
-    try { d = JSON.parse(localStorage.getItem(FB_DRAFT + fb_form.title)); } catch (e) { /* 讀不到當沒有草稿 */ }
+    try { d = JSON.parse(localStorage.getItem(fb_draftKey())); } catch (e) { /* 讀不到當沒有草稿 */ }
     const box = document.getElementById('fb-draft');
     box.classList.toggle('hidden', !d?.tables);
     if (d?.tables) {
@@ -677,7 +713,7 @@ function fb_offerDraft() {
             fb_draftOn = true;
         };
         document.getElementById('fb-draft-discard').onclick = () => {
-            try { localStorage.removeItem(FB_DRAFT + fb_form.title); } catch (e) { /* 同上 */ }
+            try { localStorage.removeItem(fb_draftKey()); } catch (e) { /* 同上 */ }
             box.classList.add('hidden');
         };
     }
@@ -699,7 +735,7 @@ function fb_collectRows() {
 const fb_saveJSON = (data, fileName) =>
     saveAs(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), fileName);
 
-var FB_INFO_SHEET = '填報資訊', FB_INFO_KEYS = { 機關: 'org', 年度: 'year', 填表人: 'user' }; // var：彙整頁也要讀得到
+var FB_INFO_SHEET = '填報資訊', FB_INFO_KEYS = { 機關: 'org', 年度: 'year', 填表人: 'user', 調查代號: 'survey' }; // var：彙整頁也要讀得到
 
 // 已填的 Excel：欄位放回範本原本的欄（公式欄寫回 Excel 公式），可再匯入填表頁或直接拖進彙整頁
 // blank = 發起人產生給查填者的空白查填檔（填報資訊留白，由查填者在 Excel 裡填）
@@ -745,16 +781,18 @@ function fb_exportXlsx(blank = false) {
     const val = id => blank ? '' : document.getElementById(id).value;
     const wb = XLSX.utils.book_new();
     fb_form.sheets.forEach(s => XLSX.utils.book_append_sheet(wb, fb_sheetToWs(s, fb_form.tables[s.name] || []), s.name.slice(0, 31)));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(Object.keys(FB_INFO_KEYS).map(k => [k, val('fb-' + FB_INFO_KEYS[k])])), FB_INFO_SHEET);
-    XLSX.writeFile(wb, blank ? `${fb_form.title}_查填.xlsx` : `${fb_form.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
+    // 調查代號沒有輸入欄，取目前的專案（空白查填檔也帶，回傳時彙整頁才認得是哪次調查）
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(Object.keys(FB_INFO_KEYS).map(k => [k, FB_INFO_KEYS[k] === 'survey' ? fb_survey?.id || '' : val('fb-' + FB_INFO_KEYS[k])])), FB_INFO_SHEET);
+    const base = fb_survey?.id || fb_form.title;
+    XLSX.writeFile(wb, blank ? `${base}_查填.xlsx` : `${base}_${val('fb-org') || '機關'}_${val('fb-year')}年度.xlsx`);
 }
 
 function fb_exportJSON() {
     if (!fb_form) return alert('請先上傳 Excel 範本或匯入 JSON');
     fb_saveSheet();
     const val = id => document.getElementById(id).value;
-    const data = { template: { title: fb_form.title, sheets: fb_form.sheets }, metadata: { org: val('fb-org'), year: val('fb-year'), user: val('fb-user') }, tables: fb_form.tables };
-    fb_saveJSON(data, `${fb_form.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
+    const metadata = { org: val('fb-org'), year: val('fb-year'), user: val('fb-user'), ...(fb_survey ? { survey: fb_survey.id } : {}) };
+    fb_saveJSON({ template: { title: fb_form.title, sheets: fb_form.sheets }, metadata, tables: fb_form.tables }, `${fb_survey?.id || fb_form.title}_${val('fb-org') || '機關'}_${val('fb-year')}年度.json`);
 }
 
 // 固定表單範本：放到 repo 的 forms/ 資料夾，以 ?form=檔名 開啟
@@ -815,29 +853,79 @@ async function fb_loadLibrary() {
 
 function fb_renderLibrary() {
     const list = document.getElementById('fb-library-list');
-    const q = document.getElementById('fb-lib-q').value, cat = document.getElementById('fb-lib-cat').value, st = document.getElementById('fb-lib-status').value;
-    const today = new Date().toISOString().slice(0, 10);
-    const groups = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => ({ ...g, items: g.items.filter(it => fb_libraryMatch(it, q, cat, st, today)) })).filter(g => g.items.length);
-    const badge = { upcoming: 'bg-slate-200 text-slate-700', open: 'bg-green-100 text-green-800', closed: 'bg-red-100 text-red-700' };
+    const q = document.getElementById('fb-lib-q').value, cat = document.getElementById('fb-lib-cat').value;
+    const groups = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => ({ ...g, items: g.items.filter(it => fb_libraryMatch(it, q, cat)) })).filter(g => g.items.length);
     const err = fb_libErr ? `<li class="py-2 text-amber-700">⚠️ ${fb_esc(fb_libErr)}</li>` : ''; // 錯誤一直顯示，不被查詢結果蓋掉
-    list.innerHTML = err + (groups.length ? groups.map(g => `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${fb_esc(g.category)}</li>` + g.items.map(e => {
-        const link = FB_SITE_URL + '?form=' + encodeURIComponent(e.name), m = e.meta;
-        const status = fb_libraryStatus(m, today);
-        const period = m.start || m.deadline ? `${m.start ? '發起 ' + fb_esc(m.start) : ''}${m.start && m.deadline ? '～' : ''}${m.deadline ? '截止 ' + fb_esc(m.deadline) : ''}` : '';
-        const when = [m.unit ? fb_esc(m.unit) : '', m.year ? `${fb_esc(m.year)} 年度` : '', period].filter(Boolean).join('・');
-        return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
+    const used = name => fb_surveyEntries(fb_svIndex, true).filter(e => e.meta.form === name).length;
+    list.innerHTML = err + (groups.length ? groups.map(g => `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${fb_esc(g.category)}</li>` + g.items.map(e => `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
             <div class="mr-auto"><span class="font-bold text-slate-800">${fb_esc(e.name)}</span>
-                ${status ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${badge[status]}">${FB_STATUS[status]}</span>` : ''}
-                ${when ? `<span class="text-xs text-slate-500 ml-2">${when}</span>` : ''}
-                ${m.purpose ? `<div class="text-xs text-slate-600">用途：${fb_esc(m.purpose)}</div>` : ''}
-                ${m.description ? `<div class="text-xs text-slate-500">${fb_esc(m.description)}</div>` : ''}</div>
-            <a href="?form=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開啟填報</a>
-            <button class="fb-lib-copy bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" data-link="${fb_esc(link)}">複製連結</button>
-            <a href="form-aggregate.html?form=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold" title="開啟這份表單的彙整頁，拖入各機關回傳的檔案">彙整</a>
-            <a href="?form=${encodeURIComponent(e.name)}&blank=1" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載空白的查填用 Excel，寄給習慣用 Excel 的填報人">查填用 Excel</a>
-            ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
-        </li>`;
-    }).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的表單。</li>' : (fb_libErr ? '' : '<li class="py-2 text-slate-500">forms/ 裡還沒有表單。</li>')));
+                ${used(e.name) ? `<span class="text-xs text-slate-500 ml-2">已用於 ${used(e.name)} 個調查</span>` : ''}
+                ${e.meta.description ? `<div class="text-xs text-slate-500">${fb_esc(e.meta.description)}</div>` : ''}</div>
+            <a href="manage.html?form=${encodeURIComponent(e.name)}#surveys" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold" title="建立用這份範本的調查專案（需要 GitHub 權杖）">以此範本發起調查</a>
+            <a href="?form=${encodeURIComponent(e.name)}" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="開啟這份範本的表單（沒有專案資訊）">預覽</a>
+            ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新範本">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
+        </li>`).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的範本。</li>' : (fb_libErr ? '' : '<li class="py-2 text-slate-500">forms/ 裡還沒有範本。</li>')));
+}
+
+// ========== 調查專案（首頁「調查專案」「查填」「彙整」三個分頁） ==========
+let fb_svIndex = {};
+
+async function fb_loadSurveys() {
+    fb_svIndex = await fetch(FB_SURVEY_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    fb_renderSurveys();
+    if (fb_libAll.length) fb_renderLibrary(); // 範本的「已用於幾個調查」
+}
+
+// 一筆專案的說明文字：代號・範本・發起單位・年度・期間，下一行用途
+function fb_surveyInfo(e) {
+    const m = e.meta, st = fb_libraryStatus(m);
+    const period = [m.start ? '發起 ' + m.start : '', m.deadline ? '截止 ' + m.deadline : ''].filter(Boolean).join('～');
+    return `<span class="font-bold text-slate-800">${fb_esc(m.title || e.name)}</span>
+        ${st ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${FB_BADGE[st]}">${FB_STATUS[st]}</span>` : ''}
+        <div class="text-xs text-slate-500">${[`代號 ${e.name}`, m.form ? `範本 ${m.form}` : '', m.unit, m.year ? m.year + ' 年度' : '', period].filter(Boolean).map(fb_esc).join('・')}</div>
+        ${m.purpose ? `<div class="text-xs text-slate-600">用途：${fb_esc(m.purpose)}</div>` : ''}`;
+}
+
+function fb_renderSurveys() {
+    const all = fb_surveyEntries(fb_svIndex), today = new Date().toISOString().slice(0, 10);
+    const q = document.getElementById('fb-sv-q').value, stf = document.getElementById('fb-sv-status').value;
+    const empty = '<li class="py-2 text-slate-500">還沒有調查專案。到範本庫按「以此範本發起調查」，或 ⚙️ 管理 →「調查專案」新增。</li>';
+    // 調查專案：依狀態分組（進行中、未開始、已結束、未設期間）
+    const order = ['open', 'upcoming', 'closed', ''];
+    const shown = all.filter(e => fb_libraryMatch(e, q, '', stf, today));
+    document.getElementById('fb-survey-list').innerHTML = !all.length ? empty : !shown.length ? '<li class="py-2 text-slate-500">沒有符合的調查。</li>' :
+        order.map(st => {
+            const items = shown.filter(e => fb_libraryStatus(e.meta, today) === st);
+            if (!items.length) return '';
+            return `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${FB_STATUS[st] || '未設定期間'}</li>` + items.map(e => {
+                const link = FB_SITE_URL + '?survey=' + encodeURIComponent(e.name), n = (e.meta.respondents || []).length;
+                return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
+                    <div class="mr-auto">${fb_surveyInfo(e)}${n ? `<div class="text-xs text-slate-500">應繳 ${n} 個機關</div>` : ''}</div>
+                    <button class="fb-lib-copy bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold" data-link="${fb_esc(link)}">複製查填連結</button>
+                    <a href="?survey=${encodeURIComponent(e.name)}" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border">開啟</a>
+                    <a href="?survey=${encodeURIComponent(e.name)}&blank=1" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載空白查填用 Excel（含調查代號），寄給習慣用 Excel 的填報人">查填用 Excel</a>
+                    <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold">彙整</a>
+                </li>`;
+            }).join('');
+        }).join('');
+    // 查填：只列進行中的
+    const open = all.filter(e => fb_libraryStatus(e.meta, today) === 'open');
+    document.getElementById('fb-fill-list').innerHTML = open.length ? open.map(e => `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
+            <div class="mr-auto">${fb_surveyInfo(e)}</div>
+            <a href="?survey=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開始填寫</a>
+        </li>`).join('') : '<li class="py-2 text-slate-500">目前沒有進行中的調查。</li>';
+    // 彙整：全部（含已結束）
+    document.getElementById('fb-agg-list').innerHTML = all.length ? all.map(e => `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
+            <div class="mr-auto">${fb_surveyInfo(e)}</div>
+            <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold">彙整</a>
+        </li>`).join('') : empty;
+}
+
+// 首頁分頁：網址 #surveys／#templates／#fill／#agg 記住目前分頁
+function fb_showTab(key) {
+    if (!document.querySelector(`.fb-hub-panel[data-tab="${key}"]`)) key = 'surveys';
+    document.querySelectorAll('.fb-hub-panel').forEach(p => p.classList.toggle('hidden', p.dataset.tab !== key));
+    document.querySelectorAll('.fb-hub-tab').forEach(b => { b.classList.toggle('fb-tab-on', b.dataset.tab === key); b.setAttribute('aria-selected', b.dataset.tab === key); });
 }
 
 function fb_load(data, metaYear) {
@@ -859,7 +947,27 @@ function fb_importJSON(text) {
 }
 
 // ?form=名稱 → 讀 forms/名稱.json；沒有的話直接讀 forms/名稱.xlsx（可只上傳 Excel，不必先匯出範本）
-async function fb_loadFixedForm(name) {
+// ?survey=代號：讀專案 → 載入專案用的範本，上方顯示專案資訊；機關欄有應繳名單可選
+async function fb_loadSurvey(id) {
+    if (fb_badName(id)) throw new Error('調查代號不合法：' + id);
+    const idx = await fetch(FB_SURVEY_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    const s = idx.surveys?.[id];
+    if (!s) throw new Error(`找不到調查「${id}」（可能已刪除或代號打錯，請洽承辦）`);
+    fb_survey = { id, ...s };
+    await fb_loadFixedForm(s.form, s.year);
+    const st = fb_libraryStatus(s);
+    const period = [s.start ? '發起 ' + s.start : '', s.deadline ? '截止 ' + s.deadline : ''].filter(Boolean).join('～');
+    document.getElementById('fb-survey-bar').innerHTML = `<div class="font-bold text-slate-800 text-base">${fb_esc(s.title || id)}
+        ${st ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${FB_BADGE[st]}">${FB_STATUS[st]}</span>` : ''}</div>
+        <div class="text-slate-600">${[s.unit, s.year ? s.year + ' 年度' : '', period].filter(Boolean).map(fb_esc).join('・')}</div>
+        ${s.purpose ? `<div class="text-slate-600">用途：${fb_esc(s.purpose)}</div>` : ''}
+        ${st === 'closed' ? '<div class="text-red-600 font-bold mt-1">⚠️ 這次調查已截止，仍可填寫，但請先與承辦聯繫。</div>' : ''}`;
+    document.getElementById('fb-survey-bar').classList.remove('hidden');
+    document.getElementById('fb-orgs').innerHTML = (s.respondents || []).map(o => `<option value="${fb_esc(o)}">`).join('');
+    document.title = `${s.title || id}｜自訂表單查填`;
+}
+
+async function fb_loadFixedForm(name, yearOverride) {
     if (/[\\/]|\.\./.test(name)) throw new Error('表單名稱不合法：' + name);
     const base = `forms/${encodeURIComponent(name)}`;
     let warnings = [];
@@ -867,7 +975,7 @@ async function fb_loadFixedForm(name) {
         fetch(base + '.json', { cache: 'no-cache' }),
         fetch('forms/' + FB_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
     ]);
-    const metaYear = idx.templates?.[name]?.year; // 範本庫設定的年度
+    const metaYear = yearOverride || idx.templates?.[name]?.year; // 專案年度 → 範本庫設定的年度
     if (res.ok) fb_load(await res.json(), metaYear);
     else {
         const xres = await fetch(base + '.xlsx', { cache: 'no-cache' });
@@ -951,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!hit.length) return alert('欄位與表單不一致，未匯入：\n' + notes.join('\n'));
             fb_saveSheet();
             hit.forEach(n => { fb_form.tables[n] = found[n].rows; });
-            Object.entries(metadata).forEach(([k, v]) => { if (v) $('fb-' + k).value = v; });
+            Object.entries(metadata).forEach(([k, v]) => { if (v && $('fb-' + k)) $('fb-' + k).value = v; }); // 調查代號沒有輸入欄
             fb_form.cur = null; // 目前分頁也換成匯入的資料，不要再把畫面上的舊列存回去
             fb_showSheet(fb_form.sheets.findIndex(s => s.name === hit[0]));
             const n = hit.reduce((a, k) => a + found[k].rows.length, 0);
@@ -973,20 +1081,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.classList.contains('fb-del')) { e.target.closest('tr').remove(); fb_calc(); }
     });
 
-    const params = new URLSearchParams(location.search), form = params.get('form');
+    const params = new URLSearchParams(location.search), form = params.get('form'), survey = params.get('survey');
     // ?form=名稱&blank=1：範本庫的「查填用 Excel」，載入表單後直接下載空白查填檔
-    if (form) fb_loadFixedForm(form).then(() => { if (params.get('blank')) fb_exportXlsx(true); else fb_offerDraft(); }).catch(err => fb_msg('⚠️ ' + err.message));
-    else { $('fb-hub').classList.remove('hidden'); $('fb-library').classList.remove('hidden'); fb_loadLibrary(); }
+    const afterLoad = () => { if (params.get('blank')) fb_exportXlsx(true); else fb_offerDraft(); };
+    if (survey) fb_loadSurvey(survey).then(afterLoad).catch(err => fb_msg('⚠️ ' + err.message));
+    else if (form) fb_loadFixedForm(form).then(afterLoad).catch(err => fb_msg('⚠️ ' + err.message));
+    else { $('fb-hub').classList.remove('hidden'); fb_showTab(location.hash.slice(1)); fb_loadLibrary(); fb_loadSurveys(); }
     $('fb-hub-new').onclick = () => $('fb-xlsx-file').click();
     $('fb-lib-q').addEventListener('input', fb_renderLibrary);
     $('fb-lib-cat').addEventListener('change', fb_renderLibrary);
-    $('fb-lib-status').addEventListener('change', fb_renderLibrary);
-    $('fb-library-list').addEventListener('click', async e => {
+    $('fb-sv-q').addEventListener('input', fb_renderSurveys);
+    $('fb-sv-status').addEventListener('change', fb_renderSurveys);
+    $('fb-hub-import').onclick = () => $('fb-json-file').click();
+    document.querySelectorAll('.fb-hub-tab').forEach(b => b.addEventListener('click', () => { history.replaceState(null, '', '#' + b.dataset.tab); fb_showTab(b.dataset.tab); }));
+    $('fb-hub').addEventListener('click', async e => {
         const btn = e.target.closest('.fb-lib-copy');
         if (!btn) return;
+        const text = btn.textContent;
         await navigator.clipboard.writeText(btn.dataset.link).catch(() => {});
         btn.textContent = '已複製 ✓';
-        setTimeout(() => { btn.textContent = '複製連結'; }, 1500);
+        setTimeout(() => { btn.textContent = text; }, 1500);
     });
 });
 
