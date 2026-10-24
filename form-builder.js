@@ -77,15 +77,26 @@ function fb_parseTSV(text) {
     return rows;
 }
 
-// "1,234" → 1234、"(500)" → -500、"－" 或空白 → ''；不是數字就原樣回傳讓使用者看到
-// 全形數字、括號、負號、逗號、小數點（從 Word／網頁貼上的「（５００）」）先轉半形
+// "1,234" → 1234、"(500)" → -500、"－" 或空白 → ''；不是數字就原樣回傳讓使用者看到（不猜）
+// 規則借鏡 multi-xlsx_merge 的 toNumber：
+// - 全形數字、括號、負號、逗號、小數點、星號先轉半形（從 Word／網頁貼上的「（５００）」）；「、」當逗號；− – — ﹣ 當負號
+// - 去掉單位 元、千元、百萬元、NT$、US$、$，以及結尾的附註星號「1,234*」
+// - 千分位只移除「後面剛好三位數字」的逗號：「1,5」不會變成 15，而是當成不是數字讓使用者看到
+// - 百分比、日期、科學記號一律不是數字
 function fb_cleanNum(s) {
     let t = String(s ?? '').replace(/[（-．０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-        .replace(/[−–]/g, '-').replace(/[,\s　]/g, '');
+        .replace(/[−–—﹣]/g, '-').replace(/、/g, ',').replace(/[\s　 ]/g, '')
+        .replace(/NT\$|US\$|\$|百萬元|千元|元/gi, '');
+    let prev;
+    do { prev = t; t = t.replace(/(\d),(?=\d{3}(?:\D|$))/g, '$1'); } while (t !== prev);
+    t = t.replace(/\*+$/, '');
     if (t === '' || t === '-') return '';
-    const neg = /^\(.*\)$/.test(t);
-    if (neg) t = t.slice(1, -1);
-    return t === '' || isNaN(Number(t)) ? String(s ?? '').trim() : String(neg ? -Number(t) : Number(t));
+    let neg = false;
+    if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
+    if (t.startsWith('-')) { neg = !neg; t = t.slice(1); } else if (t.startsWith('+')) t = t.slice(1);
+    if (!/^\d*\.?\d+$/.test(t)) return String(s ?? '').trim();
+    const n = Number(t);
+    return String(neg && n ? -n : n);
 }
 
 // 數值欄的值 → 數字（文字格式的 "1,234" 不能交給 parseFloat，會變成 1）；清不掉的當 0
@@ -166,6 +177,18 @@ function fb_cleanRows(rows, columns) {
         delete row._r;
     });
     return bad.length ? `${bad.length} 格不是數字，已當空白：${bad.slice(0, 5).join('、')}${bad.length > 5 ? ' 等' : ''}` : null;
+}
+
+// 數值欄（不含公式欄）有小數的格數：金額多半是整數，某份檔案出現小數常是千元與元混用（借鏡 multi-xlsx_merge 的 findDecimalFiles）
+// sheets：[{ name, columns }]、tables：{ 工作表名: rows } → { count, sample }
+function fb_decimalCells(sheets, tables) {
+    let count = 0, sample = null;
+    sheets.forEach(s => (tables[s.name] || []).forEach(r => s.columns.forEach(c => {
+        if (c.type !== 'num' || c.formula || r[c.key] === '' || r[c.key] === undefined) return;
+        const v = fb_num(r[c.key]);
+        if (Math.abs(v - Math.round(v)) > 1e-9) { count++; sample ??= v; }
+    })));
+    return { count, sample };
 }
 
 // 年度預設：範本庫設定的年度 → 表單名稱開頭的年度（「114決算…」）→ 今年（民國）
@@ -383,15 +406,50 @@ function fb_surveyEntries(index = {}, showHidden = false) {
         .sort((a, b) => (b.meta.start || '').localeCompare(a.meta.start || '') || a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
-// 機關名稱比對：去空白、台→臺（名單與回傳檔常寫法不一）
-const fb_orgKey = s => String(s ?? '').replace(/\s/g, '').replace(/台/g, '臺');
+// 機關名稱比對：去空白、台→臺、去括號底線（名單與回傳檔常寫法不一）
+const fb_orgKey = s => String(s ?? '').replace(/[\s　_()（）]/g, '').replace(/台/g, '臺');
+
+// 標準機關名單：surveys/orgs.json = { sortOrder: [標準名稱…], aliasMap: { 簡稱: 標準名稱 } }（沿用 excel_merge 的 fund-config.json）
+const FB_ORGS = 'surveys/orgs.json';
+const FB_ORG_SUFFIX = /(作業基金|校務基金|基金)$/;
+
+// 回傳檔的機關名稱 → 應繳名單的第幾個（借鏡 excel_merge 的 cellMatchesFund）。依序：
+// 1 完全相同（或經別名表換成同一個標準名稱）、2 去掉「作業基金／校務基金／基金」後相同、
+// 3 前 4 字相同且字數相同、4 名單名稱（至少 4 字）包含在回傳名稱裡、取最長的。2～4 只在恰好一個候選時才算
+// 回傳 { i, level }，找不到 { i: -1 }
+function fb_orgMatcher(expected = [], aliasMap = {}) {
+    const alias = new Map(Object.entries(aliasMap).map(([k, v]) => [fb_orgKey(k), fb_orgKey(v)]));
+    const canon = s => { const k = fb_orgKey(s); return alias.get(k) || k; };
+    const exp = expected.map(canon), strip = k => k.replace(FB_ORG_SUFFIX, '');
+    const one = list => list.length === 1 ? list[0] : -1;
+    return org => {
+        const k = canon(org);
+        if (!k) return { i: -1 };
+        let i = exp.indexOf(k);
+        if (i >= 0) return { i, level: 1 };
+        const sk = strip(k);
+        if (sk.length >= 2 && (i = one(exp.flatMap((e, j) => strip(e) === sk ? [j] : []))) >= 0) return { i, level: 2 };
+        const head = [...k].slice(0, 4).join(''), len = [...k].length;
+        if (len >= 4 && (i = one(exp.flatMap((e, j) => [...e].length === len && [...e].slice(0, 4).join('') === head ? [j] : []))) >= 0) return { i, level: 3 };
+        const inside = exp.map((e, j) => ({ e, j })).filter(x => [...x.e].length >= 4 && k.includes(x.e));
+        const longest = Math.max(0, ...inside.map(x => x.e.length));
+        if ((i = one(inside.filter(x => x.e.length === longest).map(x => x.j))) >= 0) return { i, level: 4 };
+        return { i: -1 };
+    };
+}
 
 // 繳交對照：應繳名單 × 已收到的機關 → 每個機關 done（已繳）／missing（未繳）／extra（不在名單）
-function fb_submissions(expected = [], orgs = []) {
-    const got = new Map(orgs.map((o, i) => [fb_orgKey(o), i]));
-    const want = new Set(expected.map(fb_orgKey));
-    const rows = expected.map(o => ({ org: o, status: got.has(fb_orgKey(o)) ? 'done' : 'missing', index: got.get(fb_orgKey(o)) }));
-    orgs.forEach((o, i) => { if (!want.has(fb_orgKey(o))) rows.push({ org: o, status: 'extra', index: i }); });
+// 比對較寬鬆的（level > 1）在 rows 帶 fuzzy: true；先配完全相同的，模糊比對不會搶走別人的名額；同一機關兩份，後面那份算不在名單
+function fb_submissions(expected = [], orgs = [], aliasMap = {}) {
+    const match = fb_orgMatcher(expected, aliasMap);
+    const found = orgs.map((o, idx) => ({ idx, ...match(o) })).filter(m => m.i >= 0).sort((a, b) => a.level - b.level || a.idx - b.idx);
+    const taken = new Map(), used = new Set();
+    found.forEach(m => { if (!taken.has(m.i)) { taken.set(m.i, m); used.add(m.idx); } });
+    const rows = expected.map((o, i) => {
+        const m = taken.get(i);
+        return m ? { org: o, status: 'done', index: m.idx, ...(m.level > 1 ? { fuzzy: true } : {}) } : { org: o, status: 'missing' };
+    });
+    orgs.forEach((o, i) => { if (!used.has(i)) rows.push({ org: o, status: 'extra', index: i }); });
     return { rows, done: rows.filter(r => r.status === 'done').length, total: expected.length };
 }
 
@@ -408,7 +466,7 @@ function fb_libraryEntries(items) {
 // GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
 const fb_libraryFromIndex = index => Object.keys(index.templates || {}).map(name => ({ name, file: null })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_today, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_submissions, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_decimalCells, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_today, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_orgMatcher, fb_submissions, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -417,7 +475,8 @@ let fb_form = null;     // 整份表單 { title, sheets, tables, cur }；其他�
 
 // 工作表：預設讀第一個沒隱藏的；sheet 可指定名稱。buf 可以是檔案內容或已讀好的 workbook（換工作表時不必重讀）
 // 用 function 宣告（不用 const）：這段在 if 區塊裡，彙整頁要能當全域函數呼叫
-function fb_openWorkbook(buf) { return buf.SheetNames ? buf : XLSX.read(buf, { type: 'array', cellFormula: true, sheetStubs: true }); }
+// cellStyles：SheetJS 要開這個才讀得到隱藏的欄、列（!cols / !rows 的 hidden）
+function fb_openWorkbook(buf) { return buf.SheetNames ? buf : XLSX.read(buf, { type: 'array', cellFormula: true, sheetStubs: true, cellStyles: true }); }
 function fb_visibleSheets(wb) { return wb.SheetNames.filter((n, i) => !wb.Workbook?.Sheets?.[i]?.Hidden); }
 
 // formCols：匯入填好的檔案時傳入表單的欄，數值欄依表單判斷（檔案整欄存成文字時會被判成文字欄）
@@ -436,10 +495,15 @@ function fb_readWorkbook(buf, fileName, sheet, formCols) {
     if (!block) throw new Error('找不到表頭列');
     const { hr, he } = block;
 
-    const columns = [], warnings = [];
+    // 隱藏的欄、列（輔助計算、往年資料）不當成表單的欄與項目（借鏡 excel_merge）
+    // 欄：範本與回傳檔一致略過（回傳檔沿用原 Excel 時欄位才對得上）；
+    // 列：只有範本略過，讀填好的檔案（formCols）時照讀，填表人隱藏了有數字的列也不會默默少算
+    const hiddenCol = c => ws['!cols']?.[c]?.hidden, hiddenRow = r => !formCols && ws['!rows']?.[r]?.hidden;
+    const columns = [], warnings = [], hiddenCols = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
         const levels = fb_columnLevels(text, merges, hr, he, c);
         if (!levels.length) continue;
+        if (hiddenCol(c)) { hiddenCols.push(levels.join('－')); continue; }
         const label = levels.join('－');
         const key = XLSX.utils.encode_col(c);
         const col = { key, label, type: columns.length === 0 ? 'text' : 'num' };
@@ -475,10 +539,11 @@ function fb_readWorkbook(buf, fileName, sheet, formCols) {
 
     // 資料列 → 預設項目（第一欄有值才算）
     // 沒有編號又用跨列公式加總的列（合計、小計）略過：表單由表尾合計與層級小計自動算，留著會重複加總
-    const rows = [], skipped = [];
+    const rows = [], skipped = [], hiddenRows = [];
     for (let r = he + 1; r <= range.e.r; r++) {
         const name = text(r, XLSX.utils.decode_col(columns[0].key));
         if (!name) continue;
+        if (hiddenRow(r)) { hiddenRows.push(name); continue; }
         if (!fb_level(name) && columns.some(c => { const x = cell(r, XLSX.utils.decode_col(c.key)); return x?.f && fb_refsOtherRow(x.f, r + 1); })) { skipped.push(name); continue; }
         const row = {};
         columns.forEach(c => {
@@ -491,6 +556,8 @@ function fb_readWorkbook(buf, fileName, sheet, formCols) {
         rows.push(row);
     }
     if (skipped.length) warnings.push(`略過以公式加總的「${skipped.join('、')}」列（表單會自動計算合計）`);
+    if (hiddenCols.length) warnings.push(`略過隱藏的欄「${hiddenCols.join('、')}」`);
+    if (hiddenRows.length) warnings.push(`略過隱藏的列「${hiddenRows.join('、')}」`);
     const bad = fb_cleanRows(rows, formCols ? columns.map((c, i) => ({ ...c, type: formCols[i]?.type ?? c.type })) : columns);
     if (bad) warnings.push(bad);
 
@@ -618,13 +685,16 @@ function fb_onPaste(e) {
         // 單一儲存格：文字欄交給瀏覽器；數字欄先清理，不然「1,234」「（５００）」會被 type=number 丟掉
         if (input.type !== 'number') return;
         e.preventDefault();
-        input.value = fb_cleanNum(text);
+        const t = fb_cleanNum(text);
+        input.value = t;
+        if (t !== '' && isNaN(Number(t))) fb_msg(`⚠️ 貼上的「${t}」不是數字，已當空白`);
         return fb_calc();
     }
     e.preventDefault();
     const cols = fb_template.columns;
     const startCol = cols.findIndex(c => input.classList.contains('v-' + c.key));
     let tr = input.closest('tr');
+    const bad = [];
     fb_parseTSV(text).forEach((cells, r) => {
         if (r > 0) {
             if (!tr.nextElementSibling) fb_addRow();
@@ -633,9 +703,12 @@ function fb_onPaste(e) {
         cells.forEach((v, k) => {
             const c = cols[startCol + k];
             if (!c || c.formula) return;
-            tr.querySelector('.v-' + c.key).value = c.type === 'num' ? fb_cleanNum(v) : v.trim();
+            const t = c.type === 'num' ? fb_cleanNum(v) : v.trim();
+            if (c.type === 'num' && t !== '' && isNaN(Number(t))) bad.push(`「${t}」`);
+            tr.querySelector('.v-' + c.key).value = t; // 不是數字的值 type=number 會丟掉，所以上面先記下來
         });
     });
+    if (bad.length) fb_msg(`⚠️ 貼上的 ${bad.length} 格不是數字，已當空白：${bad.slice(0, 5).join('、')}${bad.length > 5 ? ' 等' : ''}`);
     fb_calc();
 }
 

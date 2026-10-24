@@ -344,6 +344,16 @@ document.addEventListener('DOMContentLoaded', () => {
     $('mg-upload').onchange = mg_run(async e => { const files = [...e.target.files]; e.target.value = ''; await mg_upload(files); });
     $('mg-sv-save').onclick = mg_run(async () => { mg_collectSv(); await mg_saveSurveys(); mg_renderSurveys(); mg_status('已儲存調查專案（約 1 分鐘後首頁更新）'); });
     $('mg-new-create').onclick = mg_run(mg_createSurvey);
+    // 標準機關名單（surveys/orgs.json，本站靜態檔，不需要權杖）
+    $('mg-new-std').onclick = mg_run(async () => {
+        const res = await fetch(FB_ORGS, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`讀不到 ${FB_ORGS}（${res.status}）`);
+        const list = (await res.json()).sortOrder || [];
+        const box = $('mg-new-resp');
+        if (box.value.trim() && !confirm(`應繳機關已有內容，要換成標準名單（${list.length} 個）嗎？`)) return;
+        box.value = list.join('\n');
+        mg_status(`已帶入標準名單 ${list.length} 個機關，請刪掉這次不需要的`);
+    });
     // 搜尋前先把卡片上改到一半的值收回，免得重畫時不見
     $('mg-q').addEventListener('input', () => { mg_collect(); mg_render(); });
     $('mg-only-hidden').addEventListener('change', () => { mg_collect(); mg_render(); });
