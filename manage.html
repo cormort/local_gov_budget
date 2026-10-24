@@ -66,6 +66,8 @@
                     <label class="text-xs text-slate-500">截止日<input type="date" id="mg-new-deadline" class="block w-full border rounded p-1 text-sm"></label>
                     <label class="text-xs text-slate-500 col-span-2 md:col-span-4">用途<input id="mg-new-purpose" class="block w-full border rounded p-1 text-sm"></label>
                     <label class="text-xs text-slate-500 col-span-2 md:col-span-4">應繳機關（每行一個，可從 Excel 整欄貼上；不填就不檢查未繳交）<textarea id="mg-new-resp" rows="3" class="block w-full border rounded p-1 text-sm"></textarea></label>
+                    <div class="col-span-2 md:col-span-4 text-xs text-slate-500"><button type="button" id="mg-new-std" class="bg-slate-100 text-slate-700 px-2 py-1 rounded border font-bold">📋 帶入標準基金名單</button>
+                        依 <code>surveys/orgs.json</code> 的標準順序帶入，再刪掉不需要的；回傳檔寫名單裡的簡稱（如「台電」「臺大醫」）、少了「基金」字尾或錯一兩個字，也會自動對上名單</div>
                 </div>
                 <button id="mg-new-create" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700">建立調查</button>
             </div>

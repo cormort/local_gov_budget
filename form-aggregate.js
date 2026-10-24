@@ -7,6 +7,7 @@ let ag_subs = [];       // [{ file, org, year, user, tables: { 工作表名: row
 let ag_oneOwner = {};   // 各工作表是否檢查重複填報：沒設定 = 依資料自動判斷（fb_itemOwners），true / false = 使用者指定
 let ag_cur = 0;         // 目前顯示的工作表
 let ag_fixed = false;   // 由 ?form= 載入的範本：清空回傳檔時保留表單
+let ag_aliases = {};   // surveys/orgs.json 的別名表（簡稱 → 標準名稱），比對應繳名單用
 let ag_survey = null;   // 由 ?survey= 開啟的調查專案 { id, title, form, respondents, … }
 
 // 回傳檔帶的調查代號不是這次的調查 → 不收（沒帶代號的自製 Excel、舊 JSON 照收）
@@ -42,6 +43,8 @@ function ag_formFromXlsx(buf, fileName) {
 }
 
 function ag_addSub(sub, notes) {
+    const dec = fb_decimalCells(ag_form.sheets, sub.tables);
+    if (dec.count) notes.push(`${sub.file}：${dec.count} 格數字有小數（例如 ${dec.sample.toLocaleString('zh-TW', { maximumFractionDigits: 4 })}），常見原因是千元與元混用，請確認單位`);
     const dup = ag_subs.findIndex(s => s.org === sub.org && s.year === sub.year);
     if (dup >= 0) { ag_subs[dup] = sub; notes.push(`${sub.org} ${sub.year} 年度重複，以 ${sub.file} 取代`); }
     else ag_subs.push(sub);
@@ -107,6 +110,7 @@ async function ag_loadSurvey(id) {
     const s = idx.surveys?.[id];
     if (!s) throw new Error(`找不到調查「${id}」`);
     ag_survey = { id, ...s };
+    ag_aliases = (await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))).aliasMap || {};
     await ag_loadForm(s.form);
     const n = (s.respondents || []).length;
     document.getElementById('ag-msg').textContent = `調查「${s.title || id}」（範本：${s.form}）：已載入${n ? `，應繳 ${n} 個機關` : ''}，請拖入各機關回傳的 JSON 或 Excel。`;
@@ -196,11 +200,11 @@ function ag_subsView() {
     const headers = ['機關', '年度', '填表人', multi ? `有數字的列（${ag_form.sheets.map(s => s.name).join('／')}）` : '有數字的列', '檔名'];
     const expected = ag_survey?.respondents || [];
     if (!expected.length) return { headers, rows: ag_subs.map(row), index: ag_subs.map((_, i) => i) };
-    const res = fb_submissions(expected, ag_subs.map(s => s.org));
-    const label = { done: '✅ 已繳交', missing: '❌ 未繳交', extra: '⚠️ 不在名單' };
+    const res = fb_submissions(expected, ag_subs.map(s => s.org), ag_aliases);
+    const label = r => r.status === 'done' ? (r.fuzzy ? `✅ 已繳交（對應名單「${r.org}」）` : '✅ 已繳交') : r.status === 'missing' ? '❌ 未繳交' : '⚠️ 不在名單';
     return {
         headers: [...headers, '狀態'],
-        rows: res.rows.map(r => [...(r.index === undefined ? [r.org, '', '', '', ''] : row(ag_subs[r.index])), label[r.status]]),
+        rows: res.rows.map(r => [...(r.index === undefined ? [r.org, '', '', '', ''] : row(ag_subs[r.index])), label(r)]),
         index: res.rows.map(r => r.index ?? null),
         done: res.done, total: res.total,
     };

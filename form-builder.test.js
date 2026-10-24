@@ -218,4 +218,57 @@ assert.strictEqual(today(new Date(2026, 9, 25, 3, 0)), '2026-10-25');
 assert.strictEqual(today(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
 assert.strictEqual(status({ start: '2026-10-25' }, today(new Date(2026, 9, 25, 3, 0))), 'open');
 assert.strictEqual(status({ deadline: '2026-10-24' }, today(new Date(2026, 9, 25, 3, 0))), 'closed');
+// 數字解析（借鏡 multi-xlsx_merge 的 toNumber）
+assert.strictEqual(num('1,5'), '1,5');              // 不是千分位，不能變成 15
+assert.strictEqual(num('1,234,567'), '1234567');
+assert.strictEqual(num('1,234元'), '1234');
+assert.strictEqual(num('NT$1,234'), '1234');
+assert.strictEqual(num('3千元'), '3');
+assert.strictEqual(num('1,234*'), '1234');          // 附註星號
+assert.strictEqual(num('１、２３４'), '1234');        // 「、」當千分位
+assert.strictEqual(num('−1,234'), '-1234');         // 數學減號
+assert.strictEqual(num('—5'), '-5');
+assert.strictEqual(num('-(5)'), '-(5)');            // 怪寫法不猜，原樣讓使用者看到
+assert.strictEqual(num('+12'), '12');
+assert.strictEqual(num('55%'), '55%');              // 百分比不當數字
+assert.strictEqual(num('2024/01/01'), '2024/01/01');
+assert.strictEqual(num('1e5'), '1e5');
+assert.strictEqual(num('.5'), '0.5');
+assert.strictEqual(num('(0)'), '0');                // 不要 -0
+// 小數檢查：公式欄、文字欄、空白不算
+const { fb_decimalCells: decimals } = require('./form-builder.js');
+{
+    const sheets = [{ name: 'S', columns: [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B/2' }, { key: 'D', type: 'num' }] }];
+    assert.deepStrictEqual(decimals(sheets, { S: [{ A: '1.5', B: 100, C: 50.5, D: '' }, { A: 'x', B: '1,234.5', D: 0.25 }] }), { count: 2, sample: 1234.5 });
+    assert.deepStrictEqual(decimals(sheets, { S: [{ A: 'x', B: 100, C: 0.5 }] }), { count: 0, sample: null });
+    assert.deepStrictEqual(decimals(sheets, {}), { count: 0, sample: null });
+}
+// 機關名稱比對（借鏡 excel_merge）：別名、去後綴、前 4 字＋字數、包含；模糊比對只在唯一時成立
+const { fb_orgMatcher: matcher } = require('./form-builder.js');
+{
+    const list = ['國立臺灣大學校務基金', '國立臺灣大學附設醫院作業基金', '台灣電力股份有限公司', '國立臺灣師範大學校務基金', '住宅基金'];
+    const aliases = { 台電: '台灣電力股份有限公司', 臺大: '國立臺灣大學校務基金' };
+    const m = matcher(list, aliases);
+    assert.deepStrictEqual(m('國立台灣大學校務基金'), { i: 0, level: 1 });       // 台→臺
+    assert.deepStrictEqual(m(' 國立臺灣大學（校務基金）'), { i: 0, level: 1 });   // 空白、括號
+    assert.deepStrictEqual(m('台電'), { i: 2, level: 1 });                      // 別名
+    assert.deepStrictEqual(m('臺大'), { i: 0, level: 1 });
+    assert.deepStrictEqual(m('國立臺灣大學'), { i: 0, level: 2 });              // 去「校務基金」
+    assert.deepStrictEqual(m('國立臺灣師範大學校務基今'), { i: 3, level: 3 });   // 前 4 字＋字數（錯字）
+    assert.deepStrictEqual(m('住宅基金（內政部國土管理署）'), { i: 4, level: 4 }); // 名單名稱包含在內
+    assert.deepStrictEqual(m('國立臺灣大學醫學院'), { i: -1 });                 // 不硬配
+    assert.deepStrictEqual(m(''), { i: -1 });
+    assert.deepStrictEqual(matcher(['國立甲大學校務基金', '國立甲大學附設醫院作業基金'])('國立甲大學'), { i: 0, level: 2 });
+    assert.deepStrictEqual(matcher(['國立甲大學校務基金', '國立甲大學乙務基金'])('國立甲大學丙務基金'), { i: -1 }); // 前 4 字＋字數有兩個候選 → 不猜
+}
+{
+    // 完全相同的先配，模糊的不能搶名額；同一機關兩份 → 後面那份不在名單
+    const r = subsOf(['國立臺灣大學校務基金', '住宅基金'], ['國立臺灣大學', '國立臺灣大學校務基金', '住宅基金', '住宅基金'], {});
+    assert.deepStrictEqual(r.rows.map(x => [x.org, x.status, x.index, !!x.fuzzy]), [
+        ['國立臺灣大學校務基金', 'done', 1, false], ['住宅基金', 'done', 2, false], ['國立臺灣大學', 'extra', 0, false], ['住宅基金', 'extra', 3, false]]);
+    const f = subsOf(['國立臺灣大學校務基金'], ['臺大'], { 臺大: '國立臺灣大學校務基金' });
+    assert.deepStrictEqual([f.done, f.rows[0].fuzzy], [1, undefined]);       // 別名算完全相同
+    const g = subsOf(['國立臺灣大學校務基金'], ['國立臺灣大學']);
+    assert.deepStrictEqual([g.done, g.rows[0].fuzzy], [1, true]);
+}
 console.log('form-builder: all checks passed');
