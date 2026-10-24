@@ -417,20 +417,37 @@ const FB_ORG_SUFFIX = /(作業基金|校務基金|基金)$/;
 // 1 完全相同（或經別名表換成同一個標準名稱）、2 去掉「作業基金／校務基金／基金」後相同、
 // 3 前 4 字相同且字數相同、4 名單名稱（至少 4 字）包含在回傳名稱裡、取最長的。2～4 只在恰好一個候選時才算
 // 回傳 { i, level }，找不到 { i: -1 }
-function fb_orgMatcher(expected = [], aliasMap = {}) {
+// 兩個名稱是否只差一個字（替換、多一字或少一字）；用來容許打錯字
+function fb_oneEditApart(a, b) {
+    const x = [...a], y = [...b];
+    if (Math.abs(x.length - y.length) > 1) return false;
+    let i = 0, j = 0, diff = 0;
+    while (i < x.length && j < y.length) {
+        if (x[i] === y[j]) { i++; j++; continue; }
+        if (++diff > 1) return false;
+        if (x.length > y.length) i++; else if (y.length > x.length) j++; else { i++; j++; }
+    }
+    return diff + (x.length - i) + (y.length - j) <= 1;
+}
+
+// known：標準機關名單（surveys/orgs.json 的 sortOrder）。交件機關本身就是另一個標準機關時，不再模糊配到名單上的別人
+// （名單只列部分基金時，「國立臺灣師範大學校務基金」不能算成「國立臺灣海洋大學校務基金」）
+function fb_orgMatcher(expected = [], aliasMap = {}, known = []) {
     const alias = new Map(Object.entries(aliasMap).map(([k, v]) => [fb_orgKey(k), fb_orgKey(v)]));
     const canon = s => { const k = fb_orgKey(s); return alias.get(k) || k; };
     const exp = expected.map(canon), strip = k => k.replace(FB_ORG_SUFFIX, '');
+    const knownSet = new Set(known.map(canon));
     const one = list => list.length === 1 ? list[0] : -1;
     return org => {
         const k = canon(org);
         if (!k) return { i: -1 };
         let i = exp.indexOf(k);
         if (i >= 0) return { i, level: 1 };
+        if (knownSet.has(k)) return { i: -1 }; // 是另一個標準機關，不在名單上
         const sk = strip(k);
         if (sk.length >= 2 && (i = one(exp.flatMap((e, j) => strip(e) === sk ? [j] : []))) >= 0) return { i, level: 2 };
-        const head = [...k].slice(0, 4).join(''), len = [...k].length;
-        if (len >= 4 && (i = one(exp.flatMap((e, j) => [...e].length === len && [...e].slice(0, 4).join('') === head ? [j] : []))) >= 0) return { i, level: 3 };
+        // 打錯一個字（6 字以上才容許，「臺北市／臺南市」這類短名稱不模糊比對）
+        if ([...k].length >= 6 && (i = one(exp.flatMap((e, j) => fb_oneEditApart(e, k) ? [j] : []))) >= 0) return { i, level: 3 };
         const inside = exp.map((e, j) => ({ e, j })).filter(x => [...x.e].length >= 4 && k.includes(x.e));
         const longest = Math.max(0, ...inside.map(x => x.e.length));
         if ((i = one(inside.filter(x => x.e.length === longest).map(x => x.j))) >= 0) return { i, level: 4 };
@@ -438,10 +455,28 @@ function fb_orgMatcher(expected = [], aliasMap = {}) {
     };
 }
 
+// 從檔名找機關（借鏡 excel_merge 的 detectFundsInText）：標準名稱、別名、去掉「作業基金／校務基金／基金」的短名，
+// 由長到短比對，命中的字段遮蔽，避免短名稱重複命中；回傳找到的標準名稱（依 names 順序）
+function fb_detectOrgs(text, names = [], aliasMap = {}) {
+    const keys = new Map();
+    const add = (key, name) => { if (key && [...key].length >= 2 && !keys.has(key)) keys.set(key, name); };
+    names.forEach(n => add(n, n));
+    Object.entries(aliasMap).forEach(([a, n]) => { if (names.includes(n)) add(a, n); });
+    names.forEach(n => { const s = n.replace(FB_ORG_SUFFIX, ''); if ([...s].length >= 3 && s !== n) add(s, n); });
+    let scan = String(text ?? '');
+    const found = new Set();
+    [...keys].sort((a, b) => b[0].length - a[0].length).forEach(([key, name]) => {
+        if (!scan.includes(key)) return;
+        found.add(name);
+        scan = scan.split(key).join('\u0000'.repeat(key.length));
+    });
+    return names.filter(n => found.has(n));
+}
+
 // 繳交對照：應繳名單 × 已收到的機關 → 每個機關 done（已繳）／missing（未繳）／extra（不在名單）
 // 比對較寬鬆的（level > 1）在 rows 帶 fuzzy: true；先配完全相同的，模糊比對不會搶走別人的名額；同一機關兩份，後面那份算不在名單
-function fb_submissions(expected = [], orgs = [], aliasMap = {}) {
-    const match = fb_orgMatcher(expected, aliasMap);
+function fb_submissions(expected = [], orgs = [], aliasMap = {}, known = []) {
+    const match = fb_orgMatcher(expected, aliasMap, known);
     const found = orgs.map((o, idx) => ({ idx, ...match(o) })).filter(m => m.i >= 0).sort((a, b) => a.level - b.level || a.idx - b.idx);
     const taken = new Map(), used = new Set();
     found.forEach(m => { if (!taken.has(m.i)) { taken.set(m.i, m); used.add(m.idx); } });
@@ -466,7 +501,7 @@ function fb_libraryEntries(items) {
 // GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
 const fb_libraryFromIndex = index => Object.keys(index.templates || {}).map(name => ({ name, file: null })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_decimalCells, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_today, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_orgMatcher, fb_submissions, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_decimalCells, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_today, fb_libraryStatus, fb_badName, fb_surveyEntries, fb_orgKey, fb_oneEditApart, fb_orgMatcher, fb_detectOrgs, fb_submissions, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -480,7 +515,7 @@ function fb_openWorkbook(buf) { return buf.SheetNames ? buf : XLSX.read(buf, { t
 function fb_visibleSheets(wb) { return wb.SheetNames.filter((n, i) => !wb.Workbook?.Sheets?.[i]?.Hidden); }
 
 // formCols：匯入填好的檔案時傳入表單的欄，數值欄依表單判斷（檔案整欄存成文字時會被判成文字欄）
-function fb_readWorkbook(buf, fileName, sheet, formCols) {
+function fb_readWorkbook(buf, fileName, sheet, formCols, keepHiddenCols = false) {
     const wb = fb_openWorkbook(buf);
     if (sheet && !wb.Sheets[sheet]) throw new Error(`找不到工作表「${sheet}」`);
     sheet = sheet || fb_visibleSheets(wb)[0] || wb.SheetNames[0];
@@ -498,7 +533,8 @@ function fb_readWorkbook(buf, fileName, sheet, formCols) {
     // 隱藏的欄、列（輔助計算、往年資料）不當成表單的欄與項目（借鏡 excel_merge）
     // 欄：範本與回傳檔一致略過（回傳檔沿用原 Excel 時欄位才對得上）；
     // 列：只有範本略過，讀填好的檔案（formCols）時照讀，填表人隱藏了有數字的列也不會默默少算
-    const hiddenCol = c => ws['!cols']?.[c]?.hidden, hiddenRow = r => !formCols && ws['!rows']?.[r]?.hidden;
+    // keepHiddenCols：回傳檔的隱藏欄可能是填表人自己藏的（範本沒藏），比對表單欄名時要能改成照讀
+    const hiddenCol = c => !keepHiddenCols && ws['!cols']?.[c]?.hidden, hiddenRow = r => !formCols && ws['!rows']?.[r]?.hidden;
     const columns = [], warnings = [], hiddenCols = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
         const levels = fb_columnLevels(text, merges, hr, he, c);
@@ -593,9 +629,14 @@ function fb_matchSheets(buf, fileName, sheets) {
         const pool = fb_visibleSheets(wb).filter(n => !formNames.has(n) && !used.has(n) && n !== FB_INFO_SHEET);
         const others = pool.length === 1 ? pool : pool.filter(n => fb_samePrefix(n, s.name, 4));
         for (const n of same.length ? same : others) {
-            let p;
-            try { p = fb_readWorkbook(wb, fileName, n, s.columns); } catch (e) { continue; }
-            const bad = fb_headerMismatch(labels, p.template.columns.map(c => c.label));
+            // 先照範本規則略過隱藏欄；欄名對不上再連隱藏欄一起讀（填表人自己藏了某欄時，整份才不會被擋掉）
+            let p, bad = '找不到表頭列';
+            for (const keep of [false, true]) {
+                try { p = fb_readWorkbook(wb, fileName, n, s.columns, keep); } catch (e) { p = null; continue; }
+                bad = fb_headerMismatch(labels, p.template.columns.map(c => c.label));
+                if (!bad) break;
+            }
+            if (!p) continue;
             if (!bad) { found[s.name] = p; used.add(n); metadata = p.metadata; return; }
             if (same.length) { notes.push(`工作表「${n}」${bad.split('\n')[0]}`); return; }
         }

@@ -271,4 +271,24 @@ const { fb_orgMatcher: matcher } = require('./form-builder.js');
     const g = subsOf(['國立臺灣大學校務基金'], ['國立臺灣大學']);
     assert.deepStrictEqual([g.done, g.rows[0].fuzzy], [1, true]);
 }
+// ② 機關名稱比對：只差一個字才算打錯；交件的若是另一個標準機關，不模糊配到名單上的別人
+const { fb_oneEditApart: one1, fb_orgMatcher: om, fb_detectOrgs: detect } = require('./form-builder.js');
+assert.ok(one1('國立臺灣大學校務基金', '國立台灣大學校務基金'));   // 替換一字
+assert.ok(one1('經濟作業基金', '經濟作業金'));                   // 少一字
+assert.ok(!one1('國立臺灣師範大學校務基金', '國立臺灣海洋大學校務基金')); // 差兩字
+const KNOWN = ['國立臺灣師範大學校務基金', '國立臺灣海洋大學校務基金', '農田水利事業作業基金', '宜蘭農田水利事業作業基金'];
+const m1 = om(['國立臺灣海洋大學校務基金'], {}, KNOWN);
+assert.strictEqual(m1('國立臺灣師範大學校務基金').i, -1);             // 另一所大學，不是名單上的海洋大學
+assert.strictEqual(m1('國立臺灣海洋大學校務基金').i, 0);
+assert.strictEqual(m1('國立台灣海洋大學校務基金').i, 0);              // 台／臺
+assert.strictEqual(m1('國立臺灣海洋大學校務基')?.i, 0);              // 少一字
+assert.strictEqual(om(['農田水利事業作業基金'], {}, KNOWN)('宜蘭農田水利事業作業基金').i, -1);
+assert.strictEqual(om(['臺北市'], {}, [])('臺南市').i, -1);            // 短名稱不模糊比對
+// ③ 從檔名認機關
+const NAMES = ['法務部矯正機關作業基金', '行政院國家發展基金', '離島建設基金', '國立文化機構作業基金', '文化發展基金', '學產基金'];
+const AL = { 矯正: '法務部矯正機關作業基金', 國發: '行政院國家發展基金', 離島: '離島建設基金', 文作: '國立文化機構作業基金', 文發: '文化發展基金' };
+assert.deepStrictEqual(detect('08)114決算購建固定資產執行情形(查填114決算)-矯正', NAMES, AL), ['法務部矯正機關作業基金']);
+assert.deepStrictEqual(detect('…(查填114決算)-學產基金', NAMES, AL), ['學產基金']);
+assert.deepStrictEqual(detect('…(文作、文發基金)', NAMES, AL), ['國立文化機構作業基金', '文化發展基金']); // 兩個 → 呼叫端保留檔名
+assert.deepStrictEqual(detect('沒有任何機關', NAMES, AL), []);
 console.log('form-builder: all checks passed');
