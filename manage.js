@@ -52,27 +52,45 @@ const mg_fillUrl = name => mg_siteUrl + '?form=' + encodeURIComponent(name);
 
 function mg_render() {
     const t = mg_index.templates;
-    const q = document.getElementById('mg-q').value, onlyHidden = document.getElementById('mg-only-hidden').checked;
+    const q = document.getElementById('mg-q').value, onlyHidden = document.getElementById('mg-only-hidden').checked, st = document.getElementById('mg-status-filter').value;
     const all = fb_libraryEntries(mg_files);
-    const entries = all.filter(e => fb_libraryMatch({ ...e, meta: t[e.name] }, q) && (!onlyHidden || t[e.name]?.hidden));
-    const cats = [...new Set(Object.values(t).map(m => m.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-    document.getElementById('mg-categories').innerHTML = cats.map(c => `<option value="${mg_esc(c)}">`).join('');
-    const input = (name, key, extra = '') => `<input type="text" class="mg-meta text-left border rounded" data-name="${mg_esc(name)}" data-key="${key}" value="${mg_esc(t[name]?.[key])}" ${extra}>`;
-    document.getElementById('mg-list').innerHTML = entries.length ? entries.map(e => `<tr>
-        <td class="text-left px-2"><div class="font-bold whitespace-nowrap">${mg_esc(e.name)}</div>
-            <div class="flex gap-1 items-center"><code class="text-xs text-slate-500 break-all">${mg_esc(decodeURIComponent(mg_fillUrl(e.name)))}</code>
-            <button class="mg-copy text-blue-600 text-xs font-bold whitespace-nowrap" data-url="${mg_esc(mg_fillUrl(e.name))}">複製</button></div></td>
-        <td class="text-left px-2 text-xs">${mg_esc(mg_files.filter(f => f.name.replace(/\.[^.]+$/, '') === e.name && f.name !== FB_INDEX).map(f => f.name).join('、'))}</td>
-        <td>${input(e.name, 'category', 'list="mg-categories" placeholder="未分類"')}</td>
-        <td>${input(e.name, 'description')}</td>
-        <td style="min-width:70px">${input(e.name, 'year')}</td>
-        <td><input type="date" class="mg-meta border rounded" data-name="${mg_esc(e.name)}" data-key="deadline" value="${mg_esc(t[e.name]?.deadline)}"></td>
-        <td class="text-center"><input type="checkbox" class="mg-meta" data-name="${mg_esc(e.name)}" data-key="hidden"${t[e.name]?.hidden ? ' checked' : ''}></td>
-        <td class="whitespace-nowrap px-2">
-            <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="text-blue-600 text-sm font-bold">開啟</a>
-            <button class="mg-rename text-slate-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">改名</button>
-            <button class="mg-delete text-red-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">刪除</button>
-        </td></tr>`).join('') : `<tr><td colspan="8" class="text-slate-500 p-3">${all.length ? '沒有符合的範本。' : 'forms/ 裡還沒有範本，請從上面上傳。'}</td></tr>`;
+    const entries = all.filter(e => fb_libraryMatch({ ...e, meta: t[e.name] }, q, '', st) && (!onlyHidden || t[e.name]?.hidden));
+    // 分類、發起單位用過的值做成下拉建議
+    const opts = key => [...new Set(Object.values(t).map(m => m[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant')).map(c => `<option value="${mg_esc(c)}">`).join('');
+    document.getElementById('mg-categories').innerHTML = opts('category');
+    document.getElementById('mg-units').innerHTML = opts('unit');
+    const field = (name, key, label, type = 'text', extra = '') => `<label class="text-xs text-slate-500">${label}
+        <input type="${type}" class="mg-meta block w-full border rounded p-1 text-sm text-slate-800" data-name="${mg_esc(name)}" data-key="${key}" value="${mg_esc(t[name]?.[key])}" ${extra}></label>`;
+    const badge = { upcoming: 'bg-slate-200 text-slate-700', open: 'bg-green-100 text-green-800', closed: 'bg-red-100 text-red-700' };
+    document.getElementById('mg-list').innerHTML = entries.length ? entries.map(e => {
+        const m = t[e.name] || {}, status = fb_libraryStatus(m);
+        return `<div class="border rounded-xl p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
+        <div class="flex flex-wrap items-start gap-2 mb-3">
+            <div class="mr-auto min-w-0">
+                <span class="font-bold text-slate-800">${mg_esc(e.name)}</span>
+                ${status ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${badge[status]}">${FB_STATUS[status]}</span>` : ''}
+                ${m.hidden ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 bg-slate-200 text-slate-600">隱藏</span>' : ''}
+                <span class="text-xs text-slate-400 ml-1">${mg_esc(mg_files.filter(f => f.name.replace(/\.[^.]+$/, '') === e.name && f.name !== FB_INDEX).map(f => f.name).join('、'))}</span>
+                <div class="flex gap-1 items-center"><code class="text-xs text-slate-500 break-all">${mg_esc(decodeURIComponent(mg_fillUrl(e.name)))}</code>
+                    <button class="mg-copy text-blue-600 text-xs font-bold whitespace-nowrap" data-url="${mg_esc(mg_fillUrl(e.name))}">複製</button></div>
+            </div>
+            <div class="whitespace-nowrap">
+                <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="text-blue-600 text-sm font-bold">開啟</a>
+                <button class="mg-rename text-slate-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">改名</button>
+                <button class="mg-delete text-red-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">刪除</button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            ${field(e.name, 'unit', '發起單位', 'text', 'list="mg-units"')}
+            ${field(e.name, 'category', '分類', 'text', 'list="mg-categories" placeholder="未分類"')}
+            ${field(e.name, 'start', '發起日期', 'date')}
+            ${field(e.name, 'deadline', '截止日', 'date')}
+            <div class="col-span-2">${field(e.name, 'purpose', '用途')}</div>
+            ${field(e.name, 'year', '年度')}
+            <label class="text-xs text-slate-500 flex items-end gap-1 pb-1"><input type="checkbox" class="mg-meta" data-name="${mg_esc(e.name)}" data-key="hidden"${m.hidden ? ' checked' : ''}> 隱藏（不列在首頁，連結照樣能用）</label>
+            <div class="col-span-2 md:col-span-4">${field(e.name, 'description', '說明（填表注意事項等）')}</div>
+        </div></div>`;
+    }).join('') : `<p class="text-slate-500 p-3">${all.length ? '沒有符合的範本。' : 'forms/ 裡還沒有範本，請從上面上傳。'}</p>`;
     document.getElementById('mg-count').textContent = `${entries.length}／${all.length} 份`;
 }
 
@@ -198,12 +216,13 @@ document.addEventListener('DOMContentLoaded', () => {
         mg_status('已清除權杖');
     };
     $('mg-reload').onclick = mg_run(mg_load);
-    $('mg-save').onclick = mg_run(async () => { mg_collect(); await mg_saveIndex(); mg_status('已儲存分類與說明（約 1 分鐘後首頁更新）'); });
+    $('mg-save').onclick = mg_run(async () => { mg_collect(); await mg_saveIndex(); mg_render(); mg_status('已儲存分類與說明（約 1 分鐘後首頁更新）'); });
     $('mg-upload').onchange = mg_run(async e => { const files = [...e.target.files]; e.target.value = ''; await mg_upload(files); });
     // 搜尋前先把表格上改到一半的值收回，免得重畫時不見
     const refilter = () => { mg_collect(); mg_render(); };
     $('mg-q').addEventListener('input', refilter);
     $('mg-only-hidden').addEventListener('change', refilter);
+    $('mg-status-filter').addEventListener('change', refilter);
     $('mg-list').addEventListener('click', async e => {
         const c = e.target.closest('.mg-copy');
         if (!c) return;
