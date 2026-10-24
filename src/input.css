@@ -122,6 +122,9 @@ body {
 /* ========== 列印：只印表單本身（導覽列、按鈕、說明、範本庫不印），表格不捲動 ========== */
 @media print {
     nav, button, #fb-hub, #fb-library, #fb-publish, #fb-sheet-box, #fb-msg, .excel-guide, #ag-drop, .fb-del, .ag-del { display: none !important; }
+    /* 刪除鈕那一欄整欄不印：填表頁最左欄、彙整頁繳交清單最右欄 */
+    #fb-thead tr:first-child > th:first-child, #fb-tbody td:first-child, #fb-tfoot td:first-child,
+    #ag-subs-head th:last-child, #ag-subs td:last-child { display: none; }
     body { background: white; }
     .section-card { box-shadow: none !important; border: 0 !important; padding: 0 !important; }
     .overflow-x-auto { overflow: visible !important; }

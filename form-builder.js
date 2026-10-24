@@ -160,7 +160,7 @@ function fb_cleanRows(rows, columns) {
         columns.forEach(c => {
             if (c.type !== 'num' || c.formula || typeof row[c.key] !== 'string') return;
             const t = fb_cleanNum(row[c.key]);
-            if (t !== '' && isNaN(Number(t))) { bad.push(`${c.key}${row._r ?? ''}「${t}」`); row[c.key] = ''; }
+            if (t !== '' && isNaN(Number(t))) { bad.push(`${row._r ? c.key + row._r : `「${row[columns[0].key] ?? ''}」${c.label}`}「${t}」`); row[c.key] = ''; } // JSON 沒有列號，改列項目與欄名
             else row[c.key] = t === '' ? '' : Number(t);
         });
         delete row._r;
@@ -359,7 +359,10 @@ function fb_libraryEntries(items) {
     return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryGroups, fb_libraryMatch, fb_headGrid };
+// GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
+const fb_libraryFromIndex = index => Object.keys(index.templates || {}).map(name => ({ name, file: null })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -764,24 +767,39 @@ function fb_exportTemplate() {
 const { upload: FB_UPLOAD_URL, site: FB_SITE_URL, api: FB_API_URL } = fb_repoUrls(location.hostname, location.pathname);
 
 // 首頁（沒有 ?form=）列出 forms/ 已發布的表單；新上傳到 forms/ 的檔案會自動出現，不必另外維護清單
-// ponytail: GitHub API 未登入每小時 60 次（以 IP 計），超過就顯示錯誤，量大再改成 forms/index.json
-// 範本庫讀一次（GitHub API 有次數限制），查詢只在畫面上篩選
-let fb_libAll = [], fb_libIndex = {};
+// GitHub API 未登入每小時 60 次（以 IP 計，機關共用對外 IP 很快就用完）：成功的清單在這台電腦快取 5 分鐘；
+// 被限流或讀不到時，改用舊的快取清單，再不行就用 forms/index.json 有登記的表單，並把原因顯示在清單上方
+// 範本庫讀一次，查詢只在畫面上篩選
+let fb_libAll = [], fb_libIndex = {}, fb_libErr = '';
+const FB_LIB_CACHE = 'fb-library', FB_LIB_TTL = 5 * 60 * 1000;
 
 async function fb_loadLibrary() {
-    const list = document.getElementById('fb-library-list');
-    try {
-        const [res, idx] = await Promise.all([
-            fetch(FB_API_URL, { cache: 'no-cache' }),
-            fetch('forms/' + FB_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
-        ]);
-        if (!res.ok) throw new Error(res.status === 403 ? 'GitHub 查詢次數已達上限，請稍後再試' : `讀取失敗（${res.status}）`);
-        fb_libAll = fb_libraryEntries(await res.json());
-        fb_libIndex = idx;
-        const cats = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => g.category);
-        document.getElementById('fb-lib-cat').innerHTML = '<option value="">全部分類</option>' + cats.map(c => `<option>${fb_esc(c)}</option>`).join('');
-        fb_renderLibrary();
-    } catch (err) { list.innerHTML = `<li class="py-2 text-slate-500">⚠️ ${fb_esc(err.message)}</li>`; }
+    const idxP = fetch('forms/' + FB_INDEX, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+    let cache = null;
+    try { cache = JSON.parse(localStorage.getItem(FB_LIB_CACHE)); } catch (e) { /* 沒有快取 */ }
+    let entries = cache && Date.now() - cache.time < FB_LIB_TTL ? cache.entries : null;
+    fb_libErr = '';
+    if (!entries) {
+        try {
+            const res = await fetch(FB_API_URL, { cache: 'no-cache' });
+            if (!res.ok) throw new Error(res.status === 403 ? 'GitHub 查詢次數已達上限' : `GitHub 讀取失敗（${res.status}）`);
+            entries = fb_libraryEntries(await res.json());
+            try { localStorage.setItem(FB_LIB_CACHE, JSON.stringify({ time: Date.now(), entries })); } catch (e) { /* 存不了就每次查 */ }
+        } catch (err) {
+            fb_libErr = err.message;
+            entries = cache?.entries || null;
+            if (entries) fb_libErr += `，以下是 ${new Date(cache.time).toLocaleString('zh-TW')} 的清單`;
+        }
+    }
+    fb_libIndex = await idxP;
+    if (!entries) {
+        entries = fb_libraryFromIndex(fb_libIndex);
+        if (fb_libErr) fb_libErr += entries.length ? '，以下只列出範本庫有登記的表單（可能不完整）' : '，請稍後再試';
+    }
+    fb_libAll = entries;
+    const cats = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => g.category);
+    document.getElementById('fb-lib-cat').innerHTML = '<option value="">全部分類</option>' + cats.map(c => `<option>${fb_esc(c)}</option>`).join('');
+    fb_renderLibrary();
 }
 
 function fb_renderLibrary() {
@@ -789,7 +807,8 @@ function fb_renderLibrary() {
     const q = document.getElementById('fb-lib-q').value, cat = document.getElementById('fb-lib-cat').value;
     const groups = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => ({ ...g, items: g.items.filter(it => fb_libraryMatch(it, q, cat)) })).filter(g => g.items.length);
     const today = new Date().toISOString().slice(0, 10);
-    list.innerHTML = groups.length ? groups.map(g => `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${fb_esc(g.category)}</li>` + g.items.map(e => {
+    const err = fb_libErr ? `<li class="py-2 text-amber-700">⚠️ ${fb_esc(fb_libErr)}</li>` : ''; // 錯誤一直顯示，不被查詢結果蓋掉
+    list.innerHTML = err + (groups.length ? groups.map(g => `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${fb_esc(g.category)}</li>` + g.items.map(e => {
         const link = FB_SITE_URL + '?form=' + encodeURIComponent(e.name), m = e.meta;
         const when = [m.year ? `${fb_esc(m.year)} 年度` : '', m.deadline ? `<span class="${m.deadline < today ? 'text-red-600' : ''}">截止 ${fb_esc(m.deadline)}</span>` : ''].filter(Boolean).join('・');
         return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
@@ -800,13 +819,15 @@ function fb_renderLibrary() {
             <button class="fb-lib-copy bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" data-link="${fb_esc(link)}">複製連結</button>
             <a href="form-aggregate.html?form=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold" title="開啟這份表單的彙整頁，拖入各機關回傳的檔案">彙整</a>
             <a href="?form=${encodeURIComponent(e.name)}&blank=1" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載空白的查填用 Excel，寄給習慣用 Excel 的填報人">查填用 Excel</a>
-            <a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">範本檔（${fb_esc(e.file.split('.').pop())}）</a>
+            ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新表單">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
         </li>`;
-    }).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的表單。</li>' : '<li class="py-2 text-slate-500">forms/ 裡還沒有表單。</li>');
+    }).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的表單。</li>' : (fb_libErr ? '' : '<li class="py-2 text-slate-500">forms/ 裡還沒有表單。</li>')));
 }
 
 function fb_load(data, metaYear) {
     const form = fb_normalize(data);
+    // 手改或其他程式產生的 JSON 可能把數字存成 "1,234"、"(300)"：與 Excel 匯入同樣清理
+    form.warnings = form.sheets.flatMap(s => { const w = fb_cleanRows(form.tables[s.name] || [], s.columns); return w ? [form.sheets.length > 1 ? `［${s.name}］${w}` : w] : []; });
     const m = data.metadata || {};
     document.getElementById('fb-org').value = m.org || '';
     document.getElementById('fb-year').value = m.year || '';
@@ -818,7 +839,7 @@ function fb_load(data, metaYear) {
 function fb_importJSON(text) {
     const form = fb_load(JSON.parse(text));
     const n = Object.values(form.tables).reduce((a, r) => a + r.length, 0);
-    fb_msg(`已匯入「${form.title}」，${form.sheets.length > 1 ? form.sheets.length + ' 個工作表、' : ''}${n} 列。`);
+    fb_msg(`已匯入「${form.title}」，${form.sheets.length > 1 ? form.sheets.length + ' 個工作表、' : ''}${n} 列。`, form.warnings);
 }
 
 // ?form=名稱 → 讀 forms/名稱.json；沒有的話直接讀 forms/名稱.xlsx（可只上傳 Excel，不必先匯出範本）
