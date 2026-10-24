@@ -8,6 +8,27 @@ let ag_oneOwner = {};   // 各工作表是否檢查重複填報：沒設定 = �
 let ag_cur = 0;         // 目前顯示的工作表
 let ag_fixed = false;   // 由 ?form= 載入的範本：清空回傳檔時保留表單
 let ag_aliases = {};   // surveys/orgs.json 的別名表（簡稱 → 標準名稱），比對應繳名單用
+let ag_known = [];     // surveys/orgs.json 的標準機關名單：不讓別的標準機關被模糊配到名單上；也用來從檔名認機關
+
+// 標準機關名單在頁面一開就讀（不只調查專案用：沒有「填報資訊」的 Excel 要從檔名認機關）
+const ag_orgsReady = fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    .then(o => { ag_aliases = o.aliasMap || {}; ag_known = o.sortOrder || []; });
+
+// 沒有「填報資訊」的 Excel：從檔名找機關（應繳名單＋標準名單）；只找到一個才採用，找到多個保留檔名並提示
+function ag_orgFromFileName(fileName, notes) {
+    const base = fileName.replace(/\.[^.]+$/, '');
+    const names = [...new Set([...(ag_survey?.respondents || []), ...ag_known])];
+    const hits = fb_detectOrgs(base, names, ag_aliases);
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) {
+        // 檔名含多個機關（「國發&離島」）：其中只有一個在應繳名單上，就算那一個
+        const want = new Set((ag_survey?.respondents || []).map(fb_orgKey));
+        const onList = hits.filter(h => want.has(fb_orgKey(h)));
+        if (onList.length === 1) { notes.push(`${fileName}：檔名含多個機關（${hits.join('、')}），採用名單上的「${onList[0]}」`); return onList[0]; }
+        notes.push(`${fileName}：檔名含多個機關（${hits.join('、')}），以檔名當機關`);
+    }
+    return base;
+}
 let ag_survey = null;   // 由 ?survey= 開啟的調查專案 { id, title, form, respondents, … }
 
 // 回傳檔帶的調查代號不是這次的調查 → 不收（沒帶代號的自製 Excel、舊 JSON 照收）
@@ -37,7 +58,8 @@ const ag_formMismatch = f => {
 function ag_formFromXlsx(buf, fileName) {
     const wb = fb_openWorkbook(buf);
     const names = wb.Sheets[FB_INFO_SHEET] ? fb_visibleSheets(wb).filter(n => n !== FB_INFO_SHEET) : [fb_visibleSheets(wb)[0] || wb.SheetNames[0]];
-    const list = names.flatMap(n => { try { return [fb_readWorkbook(wb, fileName, n)]; } catch (e) { return []; } });
+    // 這是回傳檔不是範本：隱藏欄照讀（後面的檔案比對時會再試略過隱藏欄）
+    const list = names.flatMap(n => { try { return [fb_readWorkbook(wb, fileName, n, undefined, true)]; } catch (e) { return []; } });
     if (!list.length) throw new Error('找不到表頭列');
     return { ...fb_formFromParsed('自訂表單', list), fromXlsx: true }; // 檔名是機關名，不能當表單名稱
 }
@@ -52,6 +74,7 @@ function ag_addSub(sub, notes) {
 
 async function ag_addFiles(files) {
     const notes = [];
+    await ag_orgsReady;
     for (const file of files) {
         try {
             if (/\.xlsx?$/i.test(file.name)) {
@@ -68,7 +91,7 @@ async function ag_addFiles(files) {
                 const renamed = hit.filter(n => found[n].sheet !== n).map(n => `${n}←${found[n].sheet}`);
                 ag_addSub({
                     file: file.name + (renamed.length ? `［${renamed.join('、')}］` : ''),
-                    org: m.org || file.name.replace(/\.[^.]+$/, ''), year: m.year || '', user: m.user || '', // 沒有「填報資訊」時以檔名當機關
+                    org: m.org || ag_orgFromFileName(file.name, notes), year: m.year || '', user: m.user || '', // 沒有「填報資訊」時從檔名認機關
                     tables: Object.fromEntries(hit.map(n => [n, found[n].rows])),
                 }, notes);
                 continue;
@@ -110,7 +133,7 @@ async function ag_loadSurvey(id) {
     const s = idx.surveys?.[id];
     if (!s) throw new Error(`找不到調查「${id}」`);
     ag_survey = { id, ...s };
-    ag_aliases = (await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}))).aliasMap || {};
+    await ag_orgsReady;
     await ag_loadForm(s.form);
     const n = (s.respondents || []).length;
     document.getElementById('ag-msg').textContent = `調查「${s.title || id}」（範本：${s.form}）：已載入${n ? `，應繳 ${n} 個機關` : ''}，請拖入各機關回傳的 JSON 或 Excel。`;
@@ -200,7 +223,7 @@ function ag_subsView() {
     const headers = ['機關', '年度', '填表人', multi ? `有數字的列（${ag_form.sheets.map(s => s.name).join('／')}）` : '有數字的列', '檔名'];
     const expected = ag_survey?.respondents || [];
     if (!expected.length) return { headers, rows: ag_subs.map(row), index: ag_subs.map((_, i) => i) };
-    const res = fb_submissions(expected, ag_subs.map(s => s.org), ag_aliases);
+    const res = fb_submissions(expected, ag_subs.map(s => s.org), ag_aliases, ag_known);
     const label = r => r.status === 'done' ? (r.fuzzy ? `✅ 已繳交（對應名單「${r.org}」）` : '✅ 已繳交') : r.status === 'missing' ? '❌ 未繳交' : '⚠️ 不在名單';
     return {
         headers: [...headers, '狀態'],
