@@ -147,4 +147,41 @@ assert.ok(!match(it, '預算'));
 assert.ok(match(it, '', '決算') && !match(it, '', '預算'));
 assert.ok(match({ name: 'x', meta: {} }, '', '未分類'));
 assert.ok(match({ name: 'ABC表' }, 'abc'));  // 不分大小寫，沒有 meta 也行
+// 全形、文字格式的數字
+assert.strictEqual(num('（５００）'), '-500');
+assert.strictEqual(num('１２３'), '123');
+assert.strictEqual(num('１，２３４．５'), '1234.5');
+assert.strictEqual(num('－５００'), '-500');
+assert.strictEqual(num('無'), '無');
+assert.strictEqual(num(1234), '1234');
+const { fb_num: toNum, fb_guessYear: guessYear } = require('./form-builder.js');
+assert.strictEqual(toNum('1,234'), 1234);   // parseFloat 會變成 1
+assert.strictEqual(toNum('(300)'), -300);
+assert.strictEqual(toNum('無'), 0);
+assert.strictEqual(toNum(''), 0);
+assert.strictEqual(toNum(12.5), 12.5);
+const { fb_cleanRows: cleanRows } = require('./form-builder.js');
+{
+    const rows = [{ A: '甲', B: '1,234', C: '(300)', D: 'x', _r: 2 }, { A: '乙', B: '無', C: 5, D: '', _r: 3 }];
+    const w = cleanRows(rows, [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num' }, { key: 'D', type: 'text' }]);
+    assert.deepStrictEqual(rows, [{ A: '甲', B: 1234, C: -300, D: 'x' }, { A: '乙', B: '', C: 5, D: '' }]);
+    assert.strictEqual(w, '1 格不是數字，已當空白：B3「無」');
+    assert.strictEqual(cleanRows([{ A: 'a', B: 1 }], [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }]), null);
+}
+// 年度預設
+const oct2026 = new Date(2026, 9, 1);
+assert.strictEqual(guessYear('114決算購建固定資產執行情形', '', oct2026), '114');
+assert.strictEqual(guessYear('114決算', '113', oct2026), '113');   // 範本庫設定優先
+assert.strictEqual(guessYear('業務計畫範例', undefined, oct2026), '115');
+assert.strictEqual(guessYear('2026表', undefined, oct2026), '115'); // 四位數不是民國年
+// 單一合併標題列（A 欄空、B1:C1「金額」）是上層表頭，不是表名
+{
+    const g = [['', '金額', ''], ['項目名稱', '原編', '增編'], ['甲', '1', '2']];
+    const at = (r, c) => g[r]?.[c] ?? '', mg = [M(0, 1, 0, 2)];
+    assert.deepStrictEqual(block(at, mg, 0, 2, 0, 2), { hr: 0, he: 1 });
+    assert.deepStrictEqual([0, 1, 2].map(c => levels(at, mg, 0, 1, c)), [['項目名稱'], ['金額', '原編'], ['金額', '增編']]);
+    // 從 A 欄開始合併的仍是表名
+    const t = [['○○表', '', ''], ['項目名稱', '原編', '增編']];
+    assert.deepStrictEqual(block((r, c) => t[r]?.[c] ?? '', [M(0, 0, 0, 2)], 0, 1, 0, 2), { hr: 1, he: 1 });
+}
 console.log('form-builder: all checks passed');

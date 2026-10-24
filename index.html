@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com https://api.github.com;">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <title>自訂表單查填（由 Excel 產生）</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
     <link rel="stylesheet" href="budget-style.css">
@@ -74,16 +75,20 @@
     </div>
 
     <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div><label class="text-xs font-bold text-slate-400 uppercase">表單名稱</label><input type="text" id="fb-title" class="border-b-2 w-full p-2 outline-none font-bold focus:border-blue-500" readonly></div>
-        <div><label class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="fb-org" class="border-b-2 w-full p-2 outline-none"></div>
-        <div><label class="text-xs font-bold text-slate-400 uppercase">年度</label><input type="number" id="fb-year" class="border-b-2 w-full p-2 outline-none" value="115"></div>
-        <div><label class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="fb-user" class="border-b-2 w-full p-2 outline-none"></div>
+        <div><label for="fb-title" class="text-xs font-bold text-slate-400 uppercase">表單名稱</label><input type="text" id="fb-title" class="border-b-2 w-full p-2 outline-none font-bold focus:border-blue-500" readonly></div>
+        <div><label for="fb-org" class="text-xs font-bold text-slate-400 uppercase">機關名稱</label><input type="text" id="fb-org" class="border-b-2 w-full p-2 outline-none"></div>
+        <div><label for="fb-year" class="text-xs font-bold text-slate-400 uppercase">年度</label><input type="number" id="fb-year" class="border-b-2 w-full p-2 outline-none"></div>
+        <div><label for="fb-user" class="text-xs font-bold text-slate-400 uppercase">填表人</label><input type="text" id="fb-user" class="border-b-2 w-full p-2 outline-none"></div>
     </div>
 
     </div>
 
     <div id="fb-sheet-box" class="hidden text-sm text-slate-600 mb-2 excel-guide">📑 這個 Excel 有多個工作表，勾選要填寫的（每個是一個分頁）：
         <div id="fb-sheet-list" class="mt-1"></div></div>
+    <div id="fb-draft" class="hidden excel-guide">📝 這台電腦有這份表單上次填到一半的草稿（<span id="fb-draft-time"></span>）。
+        <button id="fb-draft-restore" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold shadow ml-2">還原草稿</button>
+        <button id="fb-draft-discard" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border ml-1">捨棄</button>
+        <span class="text-xs text-slate-500 ml-2">（直接開始填寫會取代這份草稿）</span></div>
     <div id="fb-msg" class="text-sm text-slate-500 mb-4"></div>
 
     <div id="fb-library" class="section-card hidden">
@@ -104,8 +109,8 @@
             <p class="mt-2">建議：每年同一份調查可沿用同一張表，用「年度」欄區分；欄位每年不同就每年一個新檔名（如「114決算…」「115決算…」），舊年度設為隱藏。已寄出的連結盡量不要改名，要改就上傳新表單、把舊的隱藏。</p></div>
         </details>
         <div class="flex flex-wrap gap-2 mb-2">
-            <input type="search" id="fb-lib-q" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋表單名稱、說明、分類、年度（空白分隔多個字）">
-            <select id="fb-lib-cat" class="border rounded-lg p-2 text-sm"><option value="">全部分類</option></select>
+            <input type="search" id="fb-lib-q" aria-label="搜尋表單" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋表單名稱、說明、分類、年度（空白分隔多個字）">
+            <select id="fb-lib-cat" aria-label="分類" class="border rounded-lg p-2 text-sm"><option value="">全部分類</option></select>
         </div>
         <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
     </div>

@@ -9,8 +9,8 @@ let ag_cur = 0;         // 目前顯示的工作表
 let ag_fixed = false;   // 由 ?form= 載入的範本：清空回傳檔時保留表單
 
 const ag_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-const ag_num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
-const ag_fmt = v => typeof v === 'number' ? (+v.toFixed(4)).toLocaleString() : v;
+const ag_num = fb_num; // 文字格式的 "1,234" 用 parseFloat 會變成 1
+const ag_fmt = v => typeof v === 'number' ? fb_fmt(v) : v;
 const ag_sheet = k => ag_form.sheets[k];
 const ag_rowsOf = (s, k) => s.tables[ag_sheet(k).name] || [];
 const ag_view = k => ag_subs.map(s => ({ rows: ag_rowsOf(s, k) })); // fb_itemOwners 要的形狀
@@ -54,6 +54,8 @@ async function ag_addFiles(files) {
                 const hit = Object.keys(found);
                 if (!hit.length) { notes.push(`${file.name}：${miss.join('；')}，略過`); continue; }
                 if (miss.length) notes.push(`${file.name}：${miss.join('；')}`);
+                const bad = hit.flatMap(n => found[n].warnings.filter(w => w.includes('不是數字')));
+                if (bad.length) notes.push(`${file.name}：${bad.join('；')}`);
                 // 工作表名稱與範本不同時標出實際讀的是哪一張
                 const renamed = hit.filter(n => found[n].sheet !== n).map(n => `${n}←${found[n].sheet}`);
                 ag_addSub({
@@ -163,7 +165,7 @@ function ag_filled(s, k) {
 // ========== 3. 畫面 ==========
 function ag_table(headId, bodyId, headers, rows) {
     document.getElementById(headId).innerHTML = fb_headGrid(headers).rows.map(row =>
-        '<tr>' + row.map(h => `<th colspan="${h.colspan}" rowspan="${h.rowspan}">${ag_esc(h.text)}</th>`).join('') + '</tr>').join('');
+        '<tr>' + row.map(h => `<th scope="${h.colspan > 1 ? 'colgroup' : 'col'}" colspan="${h.colspan}" rowspan="${h.rowspan}">${ag_esc(h.text)}</th>`).join('') + '</tr>').join('');
     document.getElementById(bodyId).innerHTML = rows.map(r =>
         '<tr>' + r.map(v => `<td class="${typeof v === 'number' ? 'text-right' : 'text-left'} px-2${typeof v === 'number' && v < 0 ? ' negative-value' : ''}">${ag_fmt(v)}</td>`).join('') + '</tr>').join('');
 }
