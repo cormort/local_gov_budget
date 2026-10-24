@@ -137,4 +137,14 @@ const idx = { templates: { 甲: { category: '預算', description: 'd' }, 乙: {
 assert.deepStrictEqual(groups(libEntries, idx).map(g => [g.category, g.items.map(i => i.name)]), [['決算', ['乙']], ['預算', ['甲']], ['未分類', ['丁']]]);
 assert.deepStrictEqual(groups(libEntries, idx, true).find(g => g.category === '預算').items.map(i => i.name).sort(), ['丙', '甲']);
 assert.deepStrictEqual(groups(libEntries).map(g => g.category), ['未分類']);
+// 範本庫查詢
+const { fb_libraryMatch: match } = require('./form-builder.js');
+const it = { name: '114決算購建固定資產執行情形', meta: { category: '決算', description: '各基金填自己那一列', year: '114' } };
+assert.ok(match(it, ''));
+assert.ok(match(it, '購建 114'));            // 多個字都要符合
+assert.ok(match(it, '基金'));                // 比對說明
+assert.ok(!match(it, '預算'));
+assert.ok(match(it, '', '決算') && !match(it, '', '預算'));
+assert.ok(match({ name: 'x', meta: {} }, '', '未分類'));
+assert.ok(match({ name: 'ABC表' }, 'abc'));  // 不分大小寫，沒有 meta 也行
 console.log('form-builder: all checks passed');

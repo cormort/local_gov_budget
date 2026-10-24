@@ -61,10 +61,22 @@
                     <button id="mg-save" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700">💾 儲存分類與說明</button>
                 </div>
             </div>
-            <p class="text-sm text-slate-600 mb-3">分類、說明、年度、截止日、隱藏改完按「儲存分類與說明」。隱藏的範本不列在首頁範本庫，但原本的連結照樣能用。存檔後約 1 分鐘首頁才會更新。</p>
+            <p class="text-sm text-slate-600 mb-2">每份範本對應一個固定的查填網址（名稱欄下方，可複製）。分類、說明、年度、截止日、隱藏改完按「儲存分類與說明」。隱藏的範本不列在首頁範本庫，但原本的連結照樣能用。存檔後約 1 分鐘首頁才會更新。</p>
+            <details class="text-sm text-slate-600 mb-3"><summary class="cursor-pointer text-blue-600">分享連結會變嗎？</summary>
+                <ul class="list-disc ml-6 mt-2 space-y-1">
+                    <li><b>不變</b>：用同一個檔名重新上傳（修改欄位、項目、公式）；改分類、說明、年度、截止日；設為隱藏</li>
+                    <li><b class="text-red-600">會變</b>：改名（舊連結失效）、刪除（連結失效）、GitHub 帳號或專案名稱改了（網址前半段都會變）</li>
+                    <li>建議：每年同一份調查可沿用同一張表，用「年度」欄區分；欄位每年不同就每年一個新檔名，舊年度設為隱藏。已寄出的連結盡量不要改名，改上傳新表單、把舊的隱藏。</li>
+                </ul>
+            </details>
+            <div class="flex flex-wrap gap-3 items-center mb-2">
+                <input type="search" id="mg-q" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋名稱、說明、分類、年度">
+                <label class="text-sm text-slate-600"><input type="checkbox" id="mg-only-hidden"> 只看隱藏的</label>
+                <span id="mg-count" class="text-sm text-slate-500"></span>
+            </div>
             <div class="overflow-x-auto">
                 <table class="budget-table w-full">
-                    <thead><tr><th>名稱</th><th>檔案</th><th>分類</th><th>說明</th><th>年度</th><th>截止日</th><th>隱藏</th><th>動作</th></tr></thead>
+                    <thead><tr><th>名稱／查填網址</th><th>檔案</th><th>分類</th><th>說明</th><th>年度</th><th>截止日</th><th>隱藏</th><th>動作</th></tr></thead>
                     <tbody id="mg-list"></tbody>
                 </table>
             </div>
