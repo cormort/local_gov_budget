@@ -189,4 +189,15 @@ assert.strictEqual(guessYear('2026表', undefined, oct2026), '115'); // 四位�
 const { fb_libraryFromIndex: fromIndex } = require('./form-builder.js');
 assert.deepStrictEqual(fromIndex({ templates: { 乙: {}, 甲: { hidden: true } } }).map(e => [e.name, e.file]), [['乙', null], ['甲', null]]);
 assert.deepStrictEqual(fromIndex({}), []);
+// 調查狀態與新欄位查詢
+const { fb_libraryStatus: status } = require('./form-builder.js');
+const D = '2026-10-24';
+assert.strictEqual(status({}, D), '');
+assert.strictEqual(status({ start: '2026-11-01' }, D), 'upcoming');
+assert.strictEqual(status({ start: '2026-10-01', deadline: '2026-11-30' }, D), 'open');
+assert.strictEqual(status({ deadline: '2026-10-24' }, D), 'open');      // 截止日當天還在進行
+assert.strictEqual(status({ deadline: '2026-10-23' }, D), 'closed');
+const it2 = { name: '基金調查', meta: { unit: '主計總處基金預算處', purpose: '彙編決算書表', deadline: '2026-10-01' } };
+assert.ok(match(it2, '基金預算處 決算書'));
+assert.ok(match(it2, '', '', 'closed', D) && !match(it2, '', '', 'open', D));
 console.log('form-builder: all checks passed');

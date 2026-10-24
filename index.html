@@ -109,8 +109,9 @@
             <p class="mt-2">建議：每年同一份調查可沿用同一張表，用「年度」欄區分；欄位每年不同就每年一個新檔名（如「114決算…」「115決算…」），舊年度設為隱藏。已寄出的連結盡量不要改名，要改就上傳新表單、把舊的隱藏。</p></div>
         </details>
         <div class="flex flex-wrap gap-2 mb-2">
-            <input type="search" id="fb-lib-q" aria-label="搜尋表單" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋表單名稱、說明、分類、年度（空白分隔多個字）">
+            <input type="search" id="fb-lib-q" aria-label="搜尋表單" class="border rounded-lg p-2 text-sm flex-1 min-w-[12rem]" placeholder="🔍 搜尋表單名稱、發起單位、用途、說明、分類、年度（空白分隔多個字）">
             <select id="fb-lib-cat" aria-label="分類" class="border rounded-lg p-2 text-sm"><option value="">全部分類</option></select>
+            <select id="fb-lib-status" aria-label="調查狀態" class="border rounded-lg p-2 text-sm"><option value="">全部狀態</option><option value="open">進行中</option><option value="upcoming">未開始</option><option value="closed">已截止</option></select>
         </div>
         <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
     </div>

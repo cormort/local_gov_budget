@@ -322,7 +322,8 @@ function fb_repoUrls(hostname, pathname) {
     };
 }
 
-// 範本庫的說明資料：forms/index.json = { templates: { 表單名稱: { category, description, year, deadline, hidden } } }
+// 範本庫的說明資料：forms/index.json = { templates: { 表單名稱: { category, unit, purpose, description, year, start, deadline, hidden } } }
+// （分類、發起單位、用途、說明、年度、發起日期、截止日、隱藏）
 // 由管理頁（manage.html）維護；沒有寫到的表單照樣列出，歸在「未分類」
 const FB_INDEX = 'index.json';
 const FB_NO_CATEGORY = '未分類';
@@ -341,11 +342,21 @@ function fb_libraryGroups(entries, index = {}, showHidden = false) {
         .sort((a, b) => (a.category === FB_NO_CATEGORY) - (b.category === FB_NO_CATEGORY) || a.category.localeCompare(b.category, 'zh-Hant'));
 }
 
-// 範本庫查詢：關鍵字比對名稱、說明、分類、年度（空白分隔的多個字都要符合，不分大小寫）；cat 指定分類
-function fb_libraryMatch(item, q = '', cat = '') {
+// 範本庫的調查狀態（依發起日期 start、截止日 deadline，YYYY-MM-DD）：未開始／進行中／已截止；兩個都沒填就是空字串
+const FB_STATUS = { upcoming: '未開始', open: '進行中', closed: '已截止' };
+function fb_libraryStatus(m = {}, today = new Date().toISOString().slice(0, 10)) {
+    if (m.start && m.start > today) return 'upcoming';
+    if (m.deadline && m.deadline < today) return 'closed';
+    return m.start || m.deadline ? 'open' : '';
+}
+
+// 範本庫查詢：關鍵字比對名稱、說明、用途、發起單位、分類、年度（空白分隔的多個字都要符合，不分大小寫）；
+// cat 指定分類，status 指定調查狀態
+function fb_libraryMatch(item, q = '', cat = '', status = '', today) {
     const m = item.meta || {};
     if (cat && ((m.category || '').trim() || FB_NO_CATEGORY) !== cat) return false;
-    const hay = [item.name, m.description, m.category, m.year].filter(Boolean).join(' ').toLowerCase();
+    if (status && fb_libraryStatus(m, today) !== status) return false;
+    const hay = [item.name, m.description, m.purpose, m.unit, m.category, m.year].filter(Boolean).join(' ').toLowerCase();
     return q.trim().toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
 }
 
@@ -362,7 +373,7 @@ function fb_libraryEntries(items) {
 // GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
 const fb_libraryFromIndex = index => Object.keys(index.templates || {}).map(name => ({ name, file: null })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 
-if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_headGrid };
+if (typeof module !== 'undefined') module.exports = { fb_repoUrls, fb_translateFormula, fb_evalFormula, fb_parseTSV, fb_cleanNum, fb_num, fb_headerBlock, fb_columnLevels, fb_theadRows, fb_level, fb_depths, fb_parents, fb_refsOtherRow, fb_headerMismatch, fb_rollup, fb_cleanRows, fb_guessYear, fb_hasData, fb_sameNums, fb_itemOwners, fb_normalize, fb_libraryEntries, fb_libraryFromIndex, fb_libraryGroups, fb_libraryMatch, fb_libraryStatus, fb_headGrid };
 if (typeof document === 'undefined') { /* node 測試用 */ } else {
 
 // ========== 2. 讀 Excel 範本 ==========
@@ -804,16 +815,21 @@ async function fb_loadLibrary() {
 
 function fb_renderLibrary() {
     const list = document.getElementById('fb-library-list');
-    const q = document.getElementById('fb-lib-q').value, cat = document.getElementById('fb-lib-cat').value;
-    const groups = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => ({ ...g, items: g.items.filter(it => fb_libraryMatch(it, q, cat)) })).filter(g => g.items.length);
+    const q = document.getElementById('fb-lib-q').value, cat = document.getElementById('fb-lib-cat').value, st = document.getElementById('fb-lib-status').value;
     const today = new Date().toISOString().slice(0, 10);
+    const groups = fb_libraryGroups(fb_libAll, fb_libIndex).map(g => ({ ...g, items: g.items.filter(it => fb_libraryMatch(it, q, cat, st, today)) })).filter(g => g.items.length);
+    const badge = { upcoming: 'bg-slate-200 text-slate-700', open: 'bg-green-100 text-green-800', closed: 'bg-red-100 text-red-700' };
     const err = fb_libErr ? `<li class="py-2 text-amber-700">⚠️ ${fb_esc(fb_libErr)}</li>` : ''; // 錯誤一直顯示，不被查詢結果蓋掉
     list.innerHTML = err + (groups.length ? groups.map(g => `<li class="pt-3 pb-1 text-sm font-bold text-slate-500">${fb_esc(g.category)}</li>` + g.items.map(e => {
         const link = FB_SITE_URL + '?form=' + encodeURIComponent(e.name), m = e.meta;
-        const when = [m.year ? `${fb_esc(m.year)} 年度` : '', m.deadline ? `<span class="${m.deadline < today ? 'text-red-600' : ''}">截止 ${fb_esc(m.deadline)}</span>` : ''].filter(Boolean).join('・');
+        const status = fb_libraryStatus(m, today);
+        const period = m.start || m.deadline ? `${m.start ? '發起 ' + fb_esc(m.start) : ''}${m.start && m.deadline ? '～' : ''}${m.deadline ? '截止 ' + fb_esc(m.deadline) : ''}` : '';
+        const when = [m.unit ? fb_esc(m.unit) : '', m.year ? `${fb_esc(m.year)} 年度` : '', period].filter(Boolean).join('・');
         return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
             <div class="mr-auto"><span class="font-bold text-slate-800">${fb_esc(e.name)}</span>
+                ${status ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${badge[status]}">${FB_STATUS[status]}</span>` : ''}
                 ${when ? `<span class="text-xs text-slate-500 ml-2">${when}</span>` : ''}
+                ${m.purpose ? `<div class="text-xs text-slate-600">用途：${fb_esc(m.purpose)}</div>` : ''}
                 ${m.description ? `<div class="text-xs text-slate-500">${fb_esc(m.description)}</div>` : ''}</div>
             <a href="?form=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開啟填報</a>
             <button class="fb-lib-copy bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" data-link="${fb_esc(link)}">複製連結</button>
@@ -964,6 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('fb-hub-new').onclick = () => $('fb-xlsx-file').click();
     $('fb-lib-q').addEventListener('input', fb_renderLibrary);
     $('fb-lib-cat').addEventListener('change', fb_renderLibrary);
+    $('fb-lib-status').addEventListener('change', fb_renderLibrary);
     $('fb-library-list').addEventListener('click', async e => {
         const btn = e.target.closest('.fb-lib-copy');
         if (!btn) return;
