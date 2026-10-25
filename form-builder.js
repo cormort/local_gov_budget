@@ -367,7 +367,7 @@ function fb_libraryGroups(entries, index = {}, showHidden = false) {
 
 // 調查專案的狀態（依發起日期 start、截止日 deadline，YYYY-MM-DD）：未開始／進行中／已結束；兩個都沒填就是空字串
 const FB_STATUS = { upcoming: '未開始', open: '進行中', closed: '已結束' };
-const FB_BADGE = { upcoming: 'bg-slate-200 text-slate-700', open: 'bg-green-100 text-green-800', closed: 'bg-red-100 text-red-700' };
+const FB_BADGE = { upcoming: 'text-slate-600', open: 'text-green-700', closed: 'text-red-600' };
 // 今天的日期 YYYY-MM-DD，用電腦的本地時間（toISOString 是 UTC，台灣凌晨 0～8 點會算成前一天）
 const fb_today = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function fb_libraryStatus(m = {}, today = fb_today()) {
@@ -693,11 +693,11 @@ function fb_render(template, rows) {
     document.getElementById('fb-btn-fill-xlsx').classList.remove('hidden');
     const head = fb_theadRows(template.columns);
     document.getElementById('fb-thead').innerHTML = head.map((row, k) =>
-        '<tr>' + (k === 0 ? `<th class="w-8" rowspan="${head.length}"></th>` : '') +
-        row.map(h => `<th scope="${h.colspan > 1 ? 'colgroup' : 'col'}" colspan="${h.colspan}" rowspan="${h.rowspan}">${fb_esc(h.text)}${h.col?.formula ? ' 🔒' : ''}</th>`).join('') +
+        '<tr>' + (k === 0 ? `<th class="w-10" rowspan="${head.length}"></th>` : '') +
+        row.map(h => `<th scope="${h.colspan > 1 ? 'colgroup' : 'col'}" colspan="${h.colspan}" rowspan="${h.rowspan}">${fb_esc(h.text)}${h.col?.formula ? '<span class="font-normal text-slate-500">（計算）</span>' : ''}</th>`).join('') +
         '</tr>').join('');
     document.getElementById('fb-tfoot').innerHTML =
-        '<tr><td>∑</td>' + template.columns.map((c, i) =>
+        '<tr><td></td>' + template.columns.map((c, i) =>
             i === 0 ? '<td class="text-center">合計</td>' : `<td>${c.type === 'num' ? `<input type="text" class="t-${c.key}" aria-label="${fb_esc(c.label)} 合計" readonly>` : ''}</td>`).join('') + '</tr>';
     const tbody = document.getElementById('fb-tbody');
     tbody.innerHTML = '';
@@ -708,7 +708,7 @@ function fb_render(template, rows) {
 
 function fb_addRow(data = {}) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td class="text-center"><button class="fb-del text-red-500 font-bold" title="刪除此列">×</button></td>' +
+    tr.innerHTML = '<td class="text-center"><button class="fb-del" title="刪除此列">×</button></td>' +
         fb_template.columns.map((c, i) => {
             const type = c.type === 'num' ? 'number' : 'text';
             const cls = `v-${c.key}${i === 0 || c.type === 'text' ? ' text-left' : ''}`;
@@ -977,9 +977,9 @@ function fb_renderLibrary() {
             <div class="mr-auto"><span class="font-bold text-slate-800">${fb_esc(e.name)}</span>
                 ${used(e.name) ? `<span class="text-xs text-slate-500 ml-2">已用於 ${used(e.name)} 個調查</span>` : ''}
                 ${e.meta.description ? `<div class="text-xs text-slate-500">${fb_esc(e.meta.description)}</div>` : ''}</div>
-            <a href="manage.html?form=${encodeURIComponent(e.name)}#surveys" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold" title="建立用這份範本的調查專案（需要 GitHub 權杖）">以此範本發起調查</a>
-            <a href="?form=${encodeURIComponent(e.name)}" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="開啟這份範本的表單（沒有專案資訊）">預覽</a>
-            ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載後可修改再上傳成新範本">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
+            <a href="manage.html?form=${encodeURIComponent(e.name)}#surveys" class="btn btn-sm" title="建立用這份範本的調查專案（需要 GitHub 權杖）">以此範本發起調查</a>
+            <a href="?form=${encodeURIComponent(e.name)}" class="btn btn-sm" title="開啟這份範本的表單（沒有專案資訊）">預覽</a>
+            ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="btn btn-sm" title="下載後可修改再上傳成新範本">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
         </li>`).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的範本。</li>' : (fb_libErr ? '' : '<li class="py-2 text-slate-500">forms/ 裡還沒有範本。</li>')));
 }
 
@@ -997,7 +997,7 @@ function fb_surveyInfo(e) {
     const m = e.meta, st = fb_libraryStatus(m);
     const period = [m.start ? '發起 ' + m.start : '', m.deadline ? '截止 ' + m.deadline : ''].filter(Boolean).join('～');
     return `<span class="font-bold text-slate-800">${fb_esc(m.title || e.name)}</span>
-        ${st ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${FB_BADGE[st]}">${FB_STATUS[st]}</span>` : ''}
+        ${st ? `<span class="badge ${FB_BADGE[st]}">${FB_STATUS[st]}</span>` : ''}
         <div class="text-xs text-slate-500">${[`代號 ${e.name}`, m.form ? `範本 ${m.form}` : '', m.unit, m.year ? m.year + ' 年度' : '', period].filter(Boolean).map(fb_esc).join('・')}</div>
         ${m.purpose ? `<div class="text-xs text-slate-600">用途：${fb_esc(m.purpose)}</div>` : ''}`;
 }
@@ -1005,7 +1005,7 @@ function fb_surveyInfo(e) {
 function fb_renderSurveys() {
     const all = fb_surveyEntries(fb_svIndex), today = fb_today();
     const q = document.getElementById('fb-sv-q').value, stf = document.getElementById('fb-sv-status').value;
-    const empty = '<li class="py-2 text-slate-500">還沒有調查專案。到範本庫按「以此範本發起調查」，或 ⚙️ 管理 →「調查專案」新增。</li>';
+    const empty = '<li class="py-2 text-slate-500">還沒有調查專案。到範本庫按「以此範本發起調查」，或到「管理範本與調查」新增。</li>';
     // 調查專案：依狀態分組（進行中、未開始、已結束、未設期間）
     const order = ['open', 'upcoming', 'closed', ''];
     const shown = all.filter(e => fb_libraryMatch(e, q, '', stf, today));
@@ -1017,10 +1017,10 @@ function fb_renderSurveys() {
                 const link = FB_SITE_URL + '?survey=' + encodeURIComponent(e.name), n = (e.meta.respondents || []).length;
                 return `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
                     <div class="mr-auto">${fb_surveyInfo(e)}${n ? `<div class="text-xs text-slate-500">應繳 ${n} 個機關</div>` : ''}</div>
-                    <button class="fb-lib-copy bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold" data-link="${fb_esc(link)}">複製查填連結</button>
-                    <a href="?survey=${encodeURIComponent(e.name)}" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border">開啟</a>
-                    <a href="?survey=${encodeURIComponent(e.name)}&blank=1" class="bg-slate-100 text-slate-700 px-3 py-1 rounded-lg text-sm font-bold border" title="下載空白查填用 Excel（含調查代號），寄給習慣用 Excel 的填報人">查填用 Excel</a>
-                    <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold">彙整</a>
+                    <button class="fb-lib-copy btn btn-sm" data-link="${fb_esc(link)}">複製查填連結</button>
+                    <a href="?survey=${encodeURIComponent(e.name)}" class="btn btn-sm">開啟</a>
+                    <a href="?survey=${encodeURIComponent(e.name)}&blank=1" class="btn btn-sm" title="下載空白查填用 Excel（含調查代號），寄給習慣用 Excel 的填報人">查填用 Excel</a>
+                    <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" class="btn btn-sm">彙整</a>
                 </li>`;
             }).join('');
         }).join('');
@@ -1028,12 +1028,12 @@ function fb_renderSurveys() {
     const open = all.filter(e => fb_libraryStatus(e.meta, today) === 'open');
     document.getElementById('fb-fill-list').innerHTML = open.length ? open.map(e => `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
             <div class="mr-auto">${fb_surveyInfo(e)}</div>
-            <a href="?survey=${encodeURIComponent(e.name)}" class="bg-blue-600 text-white px-3 py-1 rounded-lg text-sm font-bold">開始填寫</a>
+            <a href="?survey=${encodeURIComponent(e.name)}" class="btn btn-sm">開始填寫</a>
         </li>`).join('') : '<li class="py-2 text-slate-500">目前沒有進行中的調查。</li>';
     // 彙整：全部（含已結束）
     document.getElementById('fb-agg-list').innerHTML = all.length ? all.map(e => `<li class="flex flex-wrap items-center gap-2 py-2 border-b last:border-0">
             <div class="mr-auto">${fb_surveyInfo(e)}</div>
-            <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" class="bg-green-600 text-white px-3 py-1 rounded-lg text-sm font-bold">彙整</a>
+            <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" class="btn btn-sm">彙整</a>
         </li>`).join('') : empty;
 }
 
@@ -1074,7 +1074,7 @@ async function fb_loadSurvey(id) {
     const st = fb_libraryStatus(s);
     const period = [s.start ? '發起 ' + s.start : '', s.deadline ? '截止 ' + s.deadline : ''].filter(Boolean).join('～');
     document.getElementById('fb-survey-bar').innerHTML = `<div class="font-bold text-slate-800 text-base">${fb_esc(s.title || id)}
-        ${st ? `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${FB_BADGE[st]}">${FB_STATUS[st]}</span>` : ''}</div>
+        ${st ? `<span class="badge ${FB_BADGE[st]}">${FB_STATUS[st]}</span>` : ''}</div>
         <div class="text-slate-600">${[s.unit, s.year ? s.year + ' 年度' : '', period].filter(Boolean).map(fb_esc).join('・')}</div>
         ${s.purpose ? `<div class="text-slate-600">用途：${fb_esc(s.purpose)}</div>` : ''}
         ${st === 'closed' ? '<div class="text-red-600 font-bold mt-1">⚠️ 這次調查已截止，仍可填寫，但請先與承辦聯繫。</div>' : ''}`;
@@ -1104,7 +1104,7 @@ async function fb_loadFixedForm(name, yearOverride) {
     document.getElementById('fb-btn-xlsx').classList.add('hidden');
     document.getElementById('fb-btn-template').classList.add('hidden');
     document.getElementById('fb-link-aggregate').classList.add('hidden');
-    fb_msg(`固定表單「${name}」：請填寫機關、填表人與各列數值後按「💾 匯出 JSON」回傳。`, warnings);
+    fb_msg(`固定表單「${name}」：請填寫機關、填表人與各列數值後按「匯出 JSON」回傳。`, warnings);
 }
 
 function fb_msg(text, warnings = []) {

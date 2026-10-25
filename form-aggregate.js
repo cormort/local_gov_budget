@@ -284,7 +284,7 @@ function ag_render() {
     const subs = ag_subsView();
     document.getElementById('ag-subs-title').textContent = subs.total ? `繳交清單（已繳 ${subs.done}／應繳 ${subs.total}，共收 ${ag_subs.length} 份）` : `繳交清單（${ag_subs.length} 份）`;
     ag_table('ag-subs-head', 'ag-subs', [...subs.headers, ''], esc(subs.rows).map((r, i) =>
-        [...r, subs.index[i] === null ? '' : `<button class="ag-del text-red-500 font-bold" data-i="${subs.index[i]}" title="移除">×</button>`]));
+        [...r, subs.index[i] === null ? '' : `<button class="ag-del" data-i="${subs.index[i]}" title="移除">×</button>`]));
     document.getElementById('ag-tabs').innerHTML = ag_form.sheets.length > 1
         ? ag_form.sheets.map((s, k) => `<button class="fb-tab${k === ag_cur ? ' fb-tab-on' : ''}" data-k="${k}">${ag_esc(s.name)}</button>`).join('') : '';
     const v = ag_sheetViews(ag_cur);

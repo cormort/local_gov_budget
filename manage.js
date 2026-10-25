@@ -59,9 +59,9 @@ async function mg_load() {
 
 const mg_templateNames = () => fb_libraryEntries(mg_files).map(e => e.name);
 const mg_usedBy = form => Object.entries(mg_sv.surveys).filter(([, s]) => s.form === form).map(([id]) => id);
-const mg_badge = (st, text) => `<span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1 ${FB_BADGE[st] || 'bg-slate-200 text-slate-600'}">${text}</span>`;
+const mg_badge = (st, text) => `<span class="badge ${FB_BADGE[st] || 'text-slate-600'}">${text}</span>`;
 const mg_copyBtn = url => `<div class="flex gap-1 items-center"><code class="text-xs text-slate-500 break-all">${mg_esc(decodeURIComponent(url))}</code>
-    <button class="mg-copy text-blue-600 text-xs font-bold whitespace-nowrap" data-url="${mg_esc(url)}">複製</button></div>`;
+    <button class="mg-copy btn-link whitespace-nowrap" data-url="${mg_esc(url)}">複製</button></div>`;
 // 有用過的值做成下拉建議
 const mg_options = (values, id) => {
     document.getElementById(id).innerHTML = [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant')).map(c => `<option value="${mg_esc(c)}">`).join('');
@@ -78,7 +78,7 @@ function mg_render() {
         <input type="text" class="mg-meta block w-full border rounded p-1 text-sm text-slate-800" data-name="${mg_esc(name)}" data-key="${key}" value="${mg_esc(t[name]?.[key])}" ${extra}></label>`;
     document.getElementById('mg-list').innerHTML = entries.length ? entries.map(e => {
         const m = t[e.name] || {}, used = mg_usedBy(e.name);
-        return `<div class="border rounded-xl p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
+        return `<div class="border rounded-md p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
         <div class="flex flex-wrap items-start gap-2 mb-3">
             <div class="mr-auto min-w-0">
                 <span class="font-bold text-slate-800">${mg_esc(e.name)}</span>
@@ -87,10 +87,10 @@ function mg_render() {
                 <div class="text-xs text-slate-500">${used.length ? `用於調查：${used.map(mg_esc).join('、')}` : '尚未用於任何調查'}</div>
             </div>
             <div class="whitespace-nowrap">
-                <button class="mg-new-from text-blue-600 text-sm font-bold" data-name="${mg_esc(e.name)}">以此發起調查</button>
-                <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="text-slate-600 text-sm font-bold ml-2">預覽</a>
-                <button class="mg-rename text-slate-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">改名</button>
-                <button class="mg-delete text-red-600 text-sm font-bold ml-2" data-name="${mg_esc(e.name)}">刪除</button>
+                <button class="mg-new-from btn-link" data-name="${mg_esc(e.name)}">以此發起調查</button>
+                <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="btn-link text-slate-600 ml-2">預覽</a>
+                <button class="mg-rename btn-link text-slate-600 ml-2" data-name="${mg_esc(e.name)}">改名</button>
+                <button class="mg-delete btn-link text-red-600 ml-2" data-name="${mg_esc(e.name)}">刪除</button>
             </div>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -198,7 +198,7 @@ function mg_renderSurveys() {
     document.getElementById('mg-sv-list').innerHTML = entries.length ? entries.map(e => {
         const m = e.meta, status = fb_libraryStatus(m, today), url = mg_siteUrl + '?survey=' + encodeURIComponent(e.name);
         const missing = m.form && !forms.includes(m.form);
-        return `<div class="border rounded-xl p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
+        return `<div class="border rounded-md p-4 mb-3 ${m.hidden ? 'bg-slate-50' : 'bg-white'}">
         <div class="flex flex-wrap items-start gap-2 mb-3">
             <div class="mr-auto min-w-0">
                 <span class="font-bold text-slate-800">${mg_esc(m.title || e.name)}</span>
@@ -208,10 +208,10 @@ function mg_renderSurveys() {
                 ${mg_copyBtn(url)}
             </div>
             <div class="whitespace-nowrap">
-                <a href="./?survey=${encodeURIComponent(e.name)}" target="_blank" class="text-blue-600 text-sm font-bold">開啟</a>
-                <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" target="_blank" class="text-green-700 text-sm font-bold ml-2">彙整</a>
-                <button class="mg-sv-end text-slate-600 text-sm font-bold ml-2" data-id="${mg_esc(e.name)}" title="截止日設為今天">提前結束</button>
-                <button class="mg-sv-del text-red-600 text-sm font-bold ml-2" data-id="${mg_esc(e.name)}">刪除</button>
+                <a href="./?survey=${encodeURIComponent(e.name)}" target="_blank" class="btn-link">開啟</a>
+                <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" target="_blank" class="btn-link ml-2">彙整</a>
+                <button class="mg-sv-end btn-link text-slate-600 ml-2" data-id="${mg_esc(e.name)}" title="截止日設為今天">提前結束</button>
+                <button class="mg-sv-del btn-link text-red-600 ml-2" data-id="${mg_esc(e.name)}">刪除</button>
             </div>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">

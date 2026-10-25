@@ -2,45 +2,229 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ========== Custom Styles ========== */
+/* ========== 色彩：灰階＋一個主色（blue-600），Tailwind 的顏色都讀這些變數 ========== */
+:root {
+    color-scheme: light;
+    --c-white: 255 255 255;
+    --c-slate-50: 246 247 249;
+    --c-slate-100: 239 241 244;
+    --c-slate-200: 222 226 231;
+    --c-slate-300: 200 206 214;
+    --c-slate-400: 104 112 124;
+    --c-slate-500: 87 95 107;
+    --c-slate-600: 70 77 88;
+    --c-slate-700: 52 58 67;
+    --c-slate-800: 30 34 40;
+    --c-slate-900: 17 20 24;
+    --c-blue-50: 238 243 250;
+    --c-blue-500: 45 95 180;
+    --c-blue-600: 29 78 160;
+    --c-blue-700: 21 61 128;
+    --c-green-100: 225 240 230;
+    --c-green-700: 25 100 55;
+    --c-green-800: 20 82 45;
+    --c-red-50: 252 242 242;
+    --c-red-100: 250 226 226;
+    --c-red-500: 180 35 35;
+    --c-red-600: 180 35 35;
+    --c-red-700: 150 28 28;
+    --c-amber-50: 253 247 235;
+    --c-amber-700: 140 70 10;
+    --on-accent: 255 255 255;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: dark;
+        --c-white: 27 30 35;
+        --c-slate-50: 18 20 24;
+        --c-slate-100: 36 40 46;
+        --c-slate-200: 52 57 65;
+        --c-slate-300: 70 76 86;
+        --c-slate-400: 150 157 168;
+        --c-slate-500: 164 171 182;
+        --c-slate-600: 188 194 203;
+        --c-slate-700: 208 213 220;
+        --c-slate-800: 232 234 238;
+        --c-slate-900: 245 246 248;
+        --c-blue-50: 26 36 54;
+        --c-blue-500: 120 160 228;
+        --c-blue-600: 140 178 240;
+        --c-blue-700: 165 196 245;
+        --c-green-100: 22 50 34;
+        --c-green-700: 120 200 145;
+        --c-green-800: 140 212 160;
+        --c-red-50: 52 24 26;
+        --c-red-100: 64 28 30;
+        --c-red-500: 245 120 120;
+        --c-red-600: 245 120 120;
+        --c-red-700: 250 150 150;
+        --c-amber-50: 48 38 20;
+        --c-amber-700: 236 182 100;
+        --on-accent: 18 20 24;
+    }
+}
+
+/* ========== 基本 ========== */
 body {
-    font-family: 'Noto Sans TC', sans-serif;
-    background-color: #f8fafc;
+    font-family: 'Noto Sans TC', 'Microsoft JhengHei', 'PingFang TC', system-ui, sans-serif;
+    background-color: rgb(var(--c-slate-50));
+    color: rgb(var(--c-slate-800));
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* 焦點：鍵盤操作時一律看得到 */
+:focus-visible {
+    outline: 2px solid rgb(var(--c-blue-600));
+    outline-offset: 2px;
+}
+
+a { text-underline-offset: 2px; }
+code { font-size: 0.9em; padding: 0 0.25em; border-radius: 3px; background: rgb(var(--c-slate-100)); }
+summary { width: fit-content; }
+
+/* @tailwindcss/forms 的輸入框：跟著主題色 */
+input:where([type='text'], [type='search'], [type='number'], [type='password'], [type='date'], :not([type])),
+select, textarea {
+    background-color: rgb(var(--c-white));
+    border-color: rgb(var(--c-slate-300));
+    color: rgb(var(--c-slate-800));
+    border-radius: 4px;
+}
+input::placeholder, textarea::placeholder { color: rgb(var(--c-slate-400)); }
+input:where([type='text'], [type='search'], [type='number'], [type='password'], [type='date'], :not([type])):focus,
+select:focus, textarea:focus {
+    border-color: rgb(var(--c-blue-600));
+    --tw-ring-color: rgb(var(--c-blue-600) / 0.25);
+}
+input[type='checkbox'] { border-color: rgb(var(--c-slate-400)); background-color: rgb(var(--c-white)); border-radius: 3px; color: rgb(var(--c-blue-600)); }
+
+/* 元件放在 components 層，Tailwind 的 hidden、ml-2、text-red-600 等工具類才蓋得過 */
+@layer components {
+/* ========== 頁首 ========== */
+.app-header {
+    background: rgb(var(--c-white));
+    border-bottom: 1px solid rgb(var(--c-slate-200));
+}
+.app-header-inner {
+    max-width: 98%;
+    margin: 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    align-items: center;
+    justify-content: space-between;
+}
+.app-title { font-size: 1.125rem; font-weight: 700; line-height: 1.3; color: rgb(var(--c-slate-900)); letter-spacing: 0.01em; }
+.app-sub { font-size: 0.8125rem; color: rgb(var(--c-slate-500)); }
+.app-back {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 36px; min-height: 36px; margin-left: -8px;
+    color: rgb(var(--c-slate-500)); border-radius: 4px; font-size: 1.1rem;
+}
+.app-back:hover { color: rgb(var(--c-slate-900)); background: rgb(var(--c-slate-100)); }
+.app-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+
+/* ========== 按鈕：預設是白底細框；整頁只有一個主要動作用 btn-primary ========== */
+.btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 36px; padding: 6px 14px;
+    font-size: 0.875rem; font-weight: 500; line-height: 1.3; white-space: nowrap;
+    color: rgb(var(--c-slate-800));
+    background: rgb(var(--c-white));
+    border: 1px solid rgb(var(--c-slate-300));
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 120ms, border-color 120ms;
+    text-decoration: none;
+}
+.btn:hover { background: rgb(var(--c-slate-100)); border-color: rgb(var(--c-slate-400) / 0.6); }
+.btn:active { background: rgb(var(--c-slate-200)); }
+.btn-primary {
+    color: rgb(var(--on-accent));
+    background: rgb(var(--c-blue-600));
+    border-color: rgb(var(--c-blue-600));
+}
+.btn-primary:hover { background: rgb(var(--c-blue-700)); border-color: rgb(var(--c-blue-700)); }
+.btn-primary:active { background: rgb(var(--c-blue-700)); }
+.btn-danger { color: rgb(var(--c-red-600)); }
+.btn-danger:hover { background: rgb(var(--c-red-50)); border-color: rgb(var(--c-red-600) / 0.4); }
+.btn-sm { min-height: 32px; padding: 4px 10px; font-size: 0.8125rem; }
+/* 文字按鈕（表格內的刪除、改名…） */
+.btn-link {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px;
+    font-size: 0.875rem; font-weight: 500; color: rgb(var(--c-blue-600));
+    background: none; border: 0; border-radius: 3px; cursor: pointer;
+}
+.btn-link:hover { text-decoration: underline; }
+
+/* 狀態標籤：方角、細框，不用膠囊色塊 */
+.badge {
+    display: inline-block; margin-left: 6px; padding: 0 6px;
+    font-size: 0.75rem; font-weight: 500; line-height: 1.5;
+    border: 1px solid currentColor; border-radius: 3px; vertical-align: 1px;
+    background: transparent !important;
+}
+
+.meta-label { display: block; font-size: 0.8125rem; font-weight: 500; color: rgb(var(--c-slate-600)); margin-bottom: 4px; }
+.meta-input { width: 100%; min-height: 40px; padding: 6px 10px; }
+.meta-input[readonly] { background: rgb(var(--c-slate-50)); font-weight: 600; }
+}
+
+/* ========== 表格 ========== */
+.budget-table {
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+    background: rgb(var(--c-white));
 }
 
 .budget-table th {
-    background-color: #e2e8f0;
-    padding: 10px 8px;
-    font-size: 0.8rem;
-    border: 1px solid #cbd5e1;
+    background-color: rgb(var(--c-slate-100));
+    padding: 8px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border: 1px solid rgb(var(--c-slate-200));
     white-space: nowrap;
-    color: #334155;
+    color: rgb(var(--c-slate-700));
+    text-align: center;
 }
 
 .budget-table td {
-    padding: 4px;
-    border: 1px solid #cbd5e1;
+    padding: 6px 8px;
+    border: 1px solid rgb(var(--c-slate-200));
     min-width: 100px;
     position: relative;
+    color: rgb(var(--c-slate-800));
 }
+
+.budget-table td:has(> input) { padding: 2px; }
+
+.budget-table tbody tr:hover > td { background-color: rgb(var(--c-slate-50)); }
 
 .budget-table input {
     width: 100%;
-    padding: 4px;
+    padding: 4px 6px;
     border: 1px solid transparent;
+    border-radius: 2px;
     text-align: right;
     background: transparent;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    color: inherit;
+    font-variant-numeric: tabular-nums;
 }
 
 .budget-table input[type="checkbox"] {
     width: 1.1rem;
     height: 1.1rem;
-    border-color: #64748b;
+    padding: 0;
+    border-color: rgb(var(--c-slate-400));
 }
 
 .budget-table input[type="checkbox"]:checked {
-    background-color: #2563eb;
+    background-color: rgb(var(--c-blue-600));
     border-color: transparent;
     background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
     background-size: 100% 100%;
@@ -52,72 +236,134 @@ body {
 
 .budget-table input:focus {
     outline: none;
-    border-color: #3b82f6;
-    background: white;
+    border-color: rgb(var(--c-blue-600));
+    box-shadow: 0 0 0 2px rgb(var(--c-blue-600) / 0.2);
+    background: rgb(var(--c-white));
 }
 
+/* 公式欄／合計：唯讀，用底色區分，不另外上色 */
 .budget-table input[readonly] {
-    font-weight: bold;
-    background-color: #f8fafc;
-    color: #2563eb;
+    font-weight: 600;
+    background-color: rgb(var(--c-slate-50));
+    color: rgb(var(--c-slate-800));
 }
+
+/* 項目名稱欄：機關、基金名稱常很長 */
+#fb-tbody td:nth-child(2) { min-width: 220px; }
+
+/* 刪除鈕那一欄：窄、不搶眼 */
+.budget-table td:has(> .fb-del), .budget-table td:has(> .ag-del) { min-width: 0; width: 40px; }
+.fb-del, .ag-del {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 4px;
+    color: rgb(var(--c-slate-400)); font-weight: 400; font-size: 1.1rem;
+}
+.fb-del:hover, .ag-del:hover { color: rgb(var(--c-red-600)); background: rgb(var(--c-red-50)); }
 
 .negative-value {
-    color: #dc2626 !important;
-    font-weight: bold;
+    color: rgb(var(--c-red-600)) !important;
+    font-weight: 600;
 }
 
-.total-row {
-    background-color: #f1f5f9;
-    font-weight: bold;
+.total-row, .total-row td {
+    background-color: rgb(var(--c-slate-100));
+    font-weight: 600;
 }
 
+/* ========== 分頁：底線式 ========== */
 .fb-tab {
-    padding: 8px 16px;
-    border-radius: 10px 10px 0 0;
-    background: #e2e8f0;
-    color: #475569;
-    font-weight: 700;
-    font-size: 0.85rem;
+    position: relative;
+    min-height: 40px;
+    padding: 8px 14px;
+    background: transparent;
+    color: rgb(var(--c-slate-500));
+    font-weight: 500;
+    font-size: 0.9375rem;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
 }
-
+.fb-tab:hover { color: rgb(var(--c-slate-900)); }
 .fb-tab-on {
-    background: #64748b;
-    color: white;
+    color: rgb(var(--c-slate-900));
+    font-weight: 700;
+    border-bottom-color: rgb(var(--c-blue-600));
+}
+.tab-bar {
+    border-bottom: 1px solid rgb(var(--c-slate-200));
+    margin-bottom: 16px;
+}
+#fb-tabs:not(:empty), #ag-tabs:not(:empty) {
+    border-bottom: 1px solid rgb(var(--c-slate-200));
+    margin-bottom: 12px;
 }
 
+/* ========== 區塊 ========== */
 .section-card {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    margin-bottom: 2rem;
-    border-top: 4px solid #64748b;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    background: rgb(var(--c-white));
+    padding: 20px 24px;
+    border: 1px solid rgb(var(--c-slate-200));
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+.section-card h2 { letter-spacing: 0.01em; }
+
+/* 說明、提示框：中性灰，不用虛線藍框 */
+.excel-guide {
+    background: rgb(var(--c-slate-100));
+    border: 1px solid rgb(var(--c-slate-200));
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    color: rgb(var(--c-slate-700));
+    margin-bottom: 12px;
+}
+#fb-survey-bar {
+    background: rgb(var(--c-white));
+    border-left: 3px solid rgb(var(--c-blue-600));
 }
 
-.excel-guide {
-    background: #eff6ff;
-    border: 1px dashed #3b82f6;
-    padding: 10px;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    color: #1e40af;
-    margin-bottom: 1rem;
-}
+
+/* 清單列（範本庫、調查專案） */
+#fb-survey-list > li.flex, #fb-library-list > li.flex, #fb-fill-list > li.flex, #fb-agg-list > li.flex { padding-top: 12px; padding-bottom: 12px; }
 
 /* Drop zone */
 .drop-zone {
-    border: 2px dashed #475569;
-    background: #1e293b;
-    transition: all 0.3s;
+    border: 1px dashed rgb(var(--c-slate-400));
+    background: rgb(var(--c-white));
+    transition: background-color 150ms, border-color 150ms;
 }
+.drop-zone:hover { background: rgb(var(--c-slate-50)); }
 
 .drop-zone.dragover {
-    border-color: #3b82f6;
-    background: #1e3a5f;
+    border-color: rgb(var(--c-blue-600));
+    border-style: solid;
+    background: rgb(var(--c-blue-50));
 }
 
 .text-right { text-align: right; }
+
+/* ========== 觸控裝置：點擊範圍至少 44px ========== */
+@media (pointer: coarse), (max-width: 640px) {
+    .btn, .btn-sm { min-height: 44px; }
+    .btn-link { min-height: 44px; padding: 0 8px; }
+    .fb-tab { min-height: 44px; }
+    .fb-del, .ag-del { width: 44px; height: 44px; }
+    .budget-table td:has(> .fb-del), .budget-table td:has(> .ag-del) { width: 48px; }
+    .budget-table input { min-height: 40px; font-size: 16px; }
+    input:where([type='text'], [type='search'], [type='number'], [type='password'], [type='date'], :not([type])), select, textarea { min-height: 44px; font-size: 16px; }
+    summary { min-height: 44px; display: flex; align-items: center; }
+    .app-back { min-width: 44px; min-height: 44px; }
+}
+@media (max-width: 640px) {
+    .section-card { padding: 16px; }
+    .app-actions { justify-content: flex-start; }
+    /* 表格太寬就左右捲動，項目名稱欄不被擠成一個字寬 */
+    .budget-table td { min-width: 96px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+}
 
 /* ========== 列印：只印表單本身（導覽列、按鈕、說明、範本庫不印），表格不捲動 ========== */
 @media print {
@@ -125,7 +371,7 @@ body {
     /* 刪除鈕那一欄整欄不印：填表頁最左欄、彙整頁繳交清單最右欄 */
     #fb-thead tr:first-child > th:first-child, #fb-tbody td:first-child, #fb-tfoot td:first-child,
     #ag-subs-head th:last-child, #ag-subs td:last-child { display: none; }
-    body { background: white; }
+    body { background: white; color: black; }
     .section-card { box-shadow: none !important; border: 0 !important; padding: 0 !important; }
     .overflow-x-auto { overflow: visible !important; }
     .budget-table { font-size: 9pt; }

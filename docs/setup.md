@@ -62,7 +62,7 @@ https://你的帳號.github.io/local_gov_budget/
 ## 步驟 5　發布你的第一份表單
 
 1. 準備 Excel 範本（規則見下方「範本規則」），檔名就是表單名稱，例如 `經費表.xlsx`
-2. 開啟 `https://你的帳號.github.io/local_gov_budget/`，按「📊 上傳 Excel 範本」，**先確認欄位、公式欄（🔒）都正確**
+2. 開啟 `https://你的帳號.github.io/local_gov_budget/`，按「上傳 Excel 範本」，**先確認欄位、公式欄（表頭標「計算」）都正確**
 3. 回到 GitHub 你的專案 → 點進 `forms` 資料夾 → **Add file** → **Upload files**
 4. 把 Excel 拖進去 → 按 **Commit changes**
 5. 等約 1 分鐘，開啟 `https://你的帳號.github.io/local_gov_budget/manage.html`，貼上 GitHub 權杖，在「調查專案」**發起調查**：選剛上傳的範本，填代號（例如 `115經費`）、發起單位、用途、年度、發起日、截止日與應繳機關
@@ -74,13 +74,13 @@ https://你的帳號.github.io/local_gov_budget/
 
 > **正式收件請寄 `?survey=` 連結。** `?form=經費表` 這種範本連結也能填，但沒有應繳名單、截止提醒，回傳檔也不帶調查代號，彙整時無法對帳「已繳／未繳」，也擋不住別次調查的檔案。
 >
-> 也可以在首頁按「📌 匯出範本」→「前往 GitHub 發布 ↗」，上傳匯出的 `.json` 當範本。
+> 也可以在首頁按「匯出範本」→「前往 GitHub 發布 ↗」，上傳匯出的 `.json` 當範本。
 
 ## 步驟 6　收件與彙整
 
-1. 填報人填好後按「💾 匯出 JSON」，用 email 等方式回傳給你
+1. 填報人填好後按「匯出 JSON」，用 email 等方式回傳給你
 2. 在首頁「調查專案」按該調查的「彙整」（網址是 `form-aggregate.html?survey=115經費`）
-3. 把所有 JSON 一次拖進去 → 檢查繳交清單（已繳／未繳／不在名單）→ 按「📥 匯出 Excel」
+3. 把所有 JSON 一次拖進去 → 檢查繳交清單（已繳／未繳／不在名單）→ 按「匯出 Excel」
 
 ## 日常操作
 
@@ -105,4 +105,4 @@ https://你的帳號.github.io/local_gov_budget/
 - **表單範本是公開的**：免費帳號的 GitHub Pages 只能用公開專案，`forms/` 裡的 Excel 或 JSON 任何人都看得到。**不要把個資或機敏資料放進範本**。填報人回傳的 JSON 不會經過網站，不受影響。
 - **網站本身不收資料**：填報結果只在填表人的電腦和回傳的 JSON 裡，請自行保存。
 - **網站更新後**，瀏覽器可能暫存舊版約 10 分鐘，按 `Cmd`／`Ctrl` + `Shift` + `R` 強制重新整理。
-- **沒有 GitHub 帳號的同事**也能發動調查：在 form-builder 上傳 Excel → 「📌 匯出範本」，把 `.json` 寄給填報人，對方用「📂 匯入 JSON」開啟同一份表單（只是沒有固定連結）。
+- **沒有 GitHub 帳號的同事**也能發動調查：在 form-builder 上傳 Excel → 「匯出範本」，把 `.json` 寄給填報人，對方用「匯入 JSON」開啟同一份表單（只是沒有固定連結）。
