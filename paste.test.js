@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,ps_effMode,ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_stored=b;await ps_rebase()}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_resort,ps_setOrder,ps_build,ps_effMode,ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_stored=b;await ps_rebase()}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
@@ -129,6 +129,19 @@ async function filled(rows) {
         asFile(F[0] + '.xlsx', await lead(sh, [['委保1', '甲', '甲案']])),
     ]);
     assert.deepStrictEqual(ps_t.files().map(f => f.org), [F[0], `${F[2]}、${F[4]}`, F[3]]);
+    const fs3 = ps_t.files(); [fs3[0], fs3[2]] = [fs3[2], fs3[0]];
+    ps_t.ps_resort();
+    assert.deepStrictEqual(ps_t.files().map(f => f.org), [F[0], `${F[2]}、${F[4]}`, F[3]], '依基金清單重排回到標準順序');
+    // 自訂順序清單：照清單排，清單外的排最後；查對列出清單上沒檔案的、檔案不在清單的
+    ps_t.ps_setOrder(`${F[3]}\n${F[0]}\n${F[5]}`);
+    assert.deepStrictEqual(ps_t.files().map(f => f.org), [F[3], F[0], `${F[2]}、${F[4]}`]);
+    const oc = ps_t.stackChecks();
+    assert.deepStrictEqual(oc.filter(c => c[0] === '清單上沒有對應的檔案').map(c => c[1]), [F[5]]);
+    assert.deepStrictEqual(oc.filter(c => c[0] === '不在自訂清單').map(c => c[1]), [`${F[2]}、${F[4]}`]);
+    // 認得出標準機關的行只比機關：F[2] 那行不會因為檔名含 F[2] 以外的字而誤對
+    assert.ok(!ps_t.files().some(f => f.org === F[3] && f.rank === 1));
+    ps_t.ps_setOrder('');
+    assert.deepStrictEqual(ps_t.files().map(f => f.org), [F[0], `${F[2]}、${F[4]}`, F[3]], '清空清單回到標準順序');
     assert.ok(ps_t.stackChecks().some(c => c[0] === '檔名含多個機關' && c[3].includes(F[2])));
     await ps_t.set(null, orgs);
     await ps_t.ps_addFiles([

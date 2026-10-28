@@ -38,6 +38,16 @@
         <input type="file" id="ps-file" class="hidden" accept=".xlsx,.xls,.ods" multiple>
     </div>
 
+    <details id="ps-order-box" class="section-card">
+        <summary class="cursor-pointer font-bold text-slate-800">自訂順序清單（選用）<span id="ps-order-state" class="ml-2 text-sm font-normal text-slate-500">目前：標準基金清單</span></summary>
+        <p class="text-sm text-slate-500 mt-2 mb-2">每行一個基金或機關名稱（可用簡稱），貼表依這個順序排；清單外的排最後。查對會列出清單上沒有檔案的（可能未繳）。清單只存在這個瀏覽器。</p>
+        <textarea id="ps-order" rows="6" class="w-full text-sm" aria-label="自訂順序清單" placeholder="行政院國家發展基金&#10;國土永續發展基金&#10;…"></textarea>
+        <div class="flex flex-wrap gap-2 mt-2">
+            <button id="ps-btn-order" class="btn btn-sm btn-primary">套用清單</button>
+            <button id="ps-btn-order-clear" class="btn btn-sm">改回標準基金清單</button>
+        </div>
+    </details>
+
     <progress id="ps-progress" class="hidden w-full h-2 mb-1" max="1" value="0" aria-label="讀檔進度"></progress>
     <div id="ps-msg" class="text-sm text-slate-500 mb-4" aria-live="polite">載入範本中…</div>
 
@@ -47,8 +57,11 @@
             <label class="mr-4"><input type="radio" name="ps-mode" value="stack"> 接續貼上：各檔的列一列接一列（例：協商提案表）</label>
             <label><input type="radio" name="ps-mode" value="fill"> 依項目填入：每份都有全部基金、各填自己那一列（例：決算執行情形）</label>
         </fieldset>
-        <h2 class="text-lg font-bold text-slate-800 mb-1">貼表順序</h2>
-        <p class="text-sm text-slate-500 mb-3">勾選的範本只提供版面（表頭、說明列、格式），不貼入。其餘預設依標準機關順序；可用 ↑ ↓ 調整，下載的彙總表照這個順序貼。工作表預設取與範本同名的那張（沒有就取第一張），可逐檔改選。</p>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <h2 class="text-lg font-bold text-slate-800">貼表順序</h2>
+            <button id="ps-btn-resort" class="btn btn-sm" title="手動調過的順序回到清單順序（有套用自訂清單就照自訂清單）">依清單重排</button>
+        </div>
+        <p class="text-sm text-slate-500 mb-3">勾選的範本只提供版面（表頭、說明列、格式），不貼入。其餘預設依標準基金清單（或自訂順序清單）；可用 ↑ ↓ 調整，下載的彙總表照這個順序貼。工作表預設取與範本同名的那張（沒有就取第一張），可逐檔改選。</p>
         <div class="overflow-x-auto"><table class="budget-table w-full">
             <thead><tr><th>順序</th><th>範本</th><th>機關</th><th>檔名</th><th>工作表</th><th id="ps-count-head">貼上列數</th><th>調整</th></tr></thead>
             <tbody id="ps-list"></tbody>
