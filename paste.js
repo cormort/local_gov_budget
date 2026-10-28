@@ -78,6 +78,15 @@ function ps_copyRow(src, sr, dst, dr, cols, map = null) {
     });
 }
 
+// 共享公式（sharedFormula）的母格若被 spliceRows 刪掉，ExcelJS 寫檔會整個失敗（Shared Formula master must exist…）。
+// 彙總表本來就只留公式的結果值，所以寫檔前把共享公式一律換成純值。
+function ps_flattenShared(ws) {
+    ws.eachRow({ includeEmpty: false }, row => row.eachCell({ includeEmpty: false }, cell => {
+        const v = cell.value;
+        if (v && typeof v === 'object' && 'sharedFormula' in v) cell.value = v.result ?? null;
+    }));
+}
+
 // 依目前的勾選決定版面
 async function ps_rebase() {
     // 沒有範本時取最多檔案共用的版面（列數、欄數相同），避開只交自己那幾列的短版、自己插欄的檔案
@@ -270,6 +279,7 @@ async function ps_buildFill() {
     }));
     ps_checkSheet(wb, plan.checks);
     wb.calcProperties.fullCalcOnLoad = true; // 合計、執行率等公式打開時重算
+    ps_flattenShared(ws);
     return wb.xlsx.writeBuffer();
 }
 
@@ -440,6 +450,7 @@ async function ps_buildStack() {
         fill(p.r, p.r + 1, next ? next.r - 1 : last);
     });
     ps_checkSheet(wb, ps_stackChecks());
+    ps_flattenShared(ws);
     return wb.xlsx.writeBuffer();
 }
 
@@ -567,11 +578,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         ps_files = []; await ps_rebase(); ps_render();
     };
     $('ps-btn-xlsx').onclick = async () => {
-        const buf = await ps_build();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-        a.download = `${ps_base.name}-貼表.xlsx`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+        const btn = $('ps-btn-xlsx'), label = btn.textContent, msg = $('ps-msg');
+        // 檔案多時產生要幾十秒；先讓畫面有反應，不然看起來像按了沒用
+        btn.disabled = true; btn.textContent = '產生中…';
+        msg.textContent = '產生彙總表中…（檔案多時要幾十秒，請不要關掉這個分頁）';
+        await new Promise(r => setTimeout(r)); // 讓瀏覽器先畫出上面的字
+        try {
+            const buf = await ps_build();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            a.download = `${ps_base.name}-貼表.xlsx`;
+            document.body.appendChild(a); // 沒接進文件時，Firefox 不會觸發下載
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 60000); // 立刻撤銷會讓 Safari 下載到 0 位元組
+            msg.textContent = `已產生「${a.download}」（${Math.round(buf.byteLength / 1024)} KB），沒看到下載請確認瀏覽器沒有封鎖。`;
+        } catch (e) {
+            // 原本這裡炸掉是完全無聲的：按了沒反應，使用者無從得知
+            msg.textContent = `產生失敗：${e.message || e}。請把這行訊息回報，或先用較少的檔案試試。`;
+        } finally {
+            btn.textContent = label;
+            btn.disabled = !ps_files.some(f => !f.tpl);
+        }
     };
 });
