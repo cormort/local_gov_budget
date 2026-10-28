@@ -124,6 +124,19 @@ function ps_colMap(ws) {
     ps_heads(ws).forEach((t, c) => { const tc = byHead.get(t); if (tc && !map[tc]) map[tc] = c; else extra.push(ps_label(t)); });
     return { map, extra, key: map[1] || null };
 }
+// 回傳檔自己藏起來（範本沒藏）、但有資料的欄與列：照樣讀入，列在查對提醒確認
+function ps_hiddenChecks(f, rows, only = null) {
+    const out = [], { map, key } = f.cmap, heads = ps_heads(f.ws);
+    const has = (r, c) => { const v = f.ws.getRow(r).getCell(c).value; return v != null && !ps_isFormula(v) && (v.richText ? v.richText.some(t => t.text.trim()) : String(v).trim() !== ''); };
+    const data = Object.entries(map).filter(([tc]) => +tc !== 1 && (!only || only.has(+tc)));
+    data.forEach(([tc, fc]) => {
+        if (f.ws.getColumn(fc).hidden && !ps_base.ws.getColumn(+tc).hidden && rows.some(r => has(r, fc)))
+            out.push(['隱藏欄有資料', ps_label(heads.get(fc) || '') || f.ws.getColumn(fc).letter + ' 欄', f.file, '已讀入，請確認要不要彙整']);
+    });
+    rows.filter(r => f.ws.getRow(r).hidden && data.some(([, fc]) => has(r, fc)))
+        .forEach(r => out.push(['隱藏列有資料', ps_cellText(f.ws.getRow(r).getCell(key)) || `第 ${r} 列`, f.file, '已讀入，請確認要不要彙整']));
+    return out;
+}
 const ps_label = t => t.replace(/^\/+|\/+$/g, '');
 const ps_keyLabel = () => ps_label(ps_heads(ps_base.ws).get(1) || '第一欄');
 
@@ -186,7 +199,7 @@ function ps_fillPlan() {
             if (!Object.keys(data).length) return;
             n++;
             if (!it) { checks.push(['範本沒有的列', i.a, f.file, '未填入']); return; }
-            it.cands.push({ f, owner: !!it.std && f.owners.includes(it.std), data, key: JSON.stringify(data) });
+            it.cands.push({ f, r: i.r, owner: !!it.std && f.owners.includes(it.std), data, key: JSON.stringify(data) });
         });
         filled.set(f, n);
         if (!n) checks.push(['沒有填任何資料', '', f.file, '請確認是否漏填或填在別的工作表']);
@@ -201,9 +214,15 @@ function ps_fillPlan() {
         if (!own.length) checks.push(['由別的機關的檔案填入', it.a, c.map(x => x.f.file).join('、'), '已填入並標成淺橘色，請確認']);
         c.filter(x => x !== pick && x.key !== pick.key).forEach(x => checks.push(['其他檔案也填了這列', it.a, x.f.file, `數字不同，採用「${pick.f.file}」`]));
         fills.push({ r: it.r, data: pick.data, flag: !own.length && c.map(x => x.f.file).join('、') });
+        pick.used = Object.keys(pick.data).map(Number);
+    });
+    // 隱藏欄、列：很多機關會把別人的列藏起來只看自己那列，那些不會被採用；只提醒真的填進彙總表的
+    ps_files.filter(f => !f.tpl && f.cmap.key).forEach(f => {
+        const used = items.flatMap(it => it.cands.filter(x => x.f === f && x.used));
+        if (used.length) checks.push(...ps_hiddenChecks(f, used.map(x => x.r), new Set(used.flatMap(x => x.used))));
     });
     // 依重要性排：沒人填的、別的機關填的、多份不同的先看
-    const order = ['找不到名稱欄', '沒有對應到的基金', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
+    const order = ['找不到名稱欄', '沒有對應到的基金', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '隱藏欄有資料', '隱藏列有資料', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
     checks.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
     return { items, fills, checks, filled };
 }
@@ -232,6 +251,7 @@ async function ps_buildFill() {
 const ps_stackChecks = () => ps_files.filter(f => !f.tpl).flatMap(f => [
     ...(f.cmap.key ? [] : [['找不到名稱欄', ps_keyLabel(), f.file, '這份沒有貼入，請確認表頭']]),
     ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
+    ...(f.cmap.key ? ps_hiddenChecks(f, f.rows) : []),
     ...(f.owners.length === 1 ? [] : [[f.owners.length ? '檔名含多個機關' : '檔名認不出機關', f.owners.join('、'), f.file, '排在最後，請確認順序']]),
     ...(f.rows.length || !f.cmap.key ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
 ]);

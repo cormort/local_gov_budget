@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,ps_effMode,ps_fillPlan,files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_stored=b;await ps_rebase()}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,ps_effMode,ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_stored=b;await ps_rebase()}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
@@ -130,5 +130,26 @@ async function filled(rows) {
     await o7.xlsx.load(await ps_t.ps_build());
     const r7 = r => [1, 2, 3].map(c => o7.worksheets[0].getRow(r).getCell(c).text);
     assert.deepStrictEqual([r7(3), r7(4)], [['委保1', '王', '甲案'], ['委保1', '李', '乙案']], '接續貼上也依表頭對位，不會整列右移');
+
+    // 隱藏欄、列：照樣讀入，回傳檔自己藏的（範本沒藏）列在查對
+    const hid = async (cols, rows, hideCols = [], hideRows = []) => {
+        const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('表');
+        ws.addRow(['測試表']); ws.addRow(cols); rows.forEach(r => ws.addRow(r));
+        hideCols.forEach(c => { ws.getColumn(c).hidden = true; }); hideRows.forEach(r => { ws.getRow(r).hidden = true; });
+        return wb.xlsx.writeBuffer();
+    };
+    const hh = ['基金名稱', '預算數', '決算數'];
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([
+        asFile('空白範本.xlsx', await hid(hh, all, [2])),                                                  // 範本自己藏 B 欄：不提醒
+        asFile(F[0] + '.xlsx', await hid(hh, all.map((r, i) => i === 0 ? [r[0], 100, 90] : r), [2, 3])),   // 回傳檔多藏 C 欄：提醒
+        asFile(F[1] + '.xlsx', await hid(hh, all.map((r, i) => i === 1 ? [r[0], 200, 150] : r), [], [4])), // 藏了自己那列：提醒
+    ]);
+    const p8 = ps_t.ps_fillPlan();
+    assert.deepStrictEqual(p8.fills.map(x => x.data), [{ 2: 100, 3: 90 }, { 2: 200, 3: 150 }], '隱藏的欄、列照樣讀入');
+    assert.deepStrictEqual(p8.checks.filter(c => c[0].startsWith('隱藏')).map(c => [c[0], c[1]]), [['隱藏欄有資料', '決算數'], ['隱藏列有資料', F[1]]]);
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([asFile(F[0] + '.xlsx', await lead(sh, [['委保1', '王', '甲案']])), asFile(F[1] + '.xlsx', await hid(sh, [['委保1', '李', '乙案']], [3]))]);
+    assert.ok(ps_t.stackChecks().some(c => c[0] === '隱藏欄有資料' && c[1] === '內容'), '接續貼上也提醒隱藏欄');
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });
