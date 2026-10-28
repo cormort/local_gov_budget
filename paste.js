@@ -1,9 +1,9 @@
 // 貼表：把各機關寄回的 Excel（照空白範本填寫）依標準機關順序一列接一列貼到範本下方，保留原格式，匯出一份彙總表
-// 範本：forms/名稱.xlsx 的第一個工作表；表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
+// 版面：?form=名稱 時用 forms/名稱.xlsx，沒有就用第一個拖入的檔案；取第一個沒隱藏的工作表，表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
 // 小計：範本「合計」列有 COUNTIF 的欄重算勾選數、有「共…案」的欄重算案數；主管列算到下一個主管，基金列算到下一個標題列
 // ponytail: 提案列＝第 2 欄（提案序號）有填、標題列＝第 1 欄有填且第 2 欄空白，是照協商彙總表的版面寫的；別的版面要另訂規則
 
-let ps_base = null;   // { name, buf }
+let ps_base = null;   // { name, buf, fromFile }：fromFile = 版面取自第一個拖入的回傳檔（沒有存好的範本）
 let ps_files = [];    // [{ file, org, rank, wb, ws, rows }]
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
@@ -12,6 +12,8 @@ const ps_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '
 const ps_text = c => String(c?.text ?? '').trim();
 const ps_slave = c => c.isMerged && c.master.address !== c.address; // 合併儲存格的非左上格：ExcelJS 會回傳左上格的值
 const ps_own = c => ps_slave(c) ? '' : ps_text(c);
+const ps_sheet = wb => wb.worksheets.find(w => w.state === 'visible') || wb.worksheets[0];
+const ps_filler = a => /ＯＯ|ＸＸ|○○|^【範例/.test(a); // 空白表留下的佔位列（ＯＯ主管、ＸＸ基金、範例）
 const ps_value = v => (v && typeof v === 'object' && 'formula' in v) || (v && typeof v === 'object' && 'sharedFormula' in v) ? v.result ?? null : v; // 公式只留值，參照位置貼過來就不對了
 
 // 一個工作表的版面：合計列、說明列起點、欄數
@@ -34,7 +36,8 @@ function ps_pickRows(ws, placeholders) {
         const cells = [];
         row.eachCell(c => cells.push(ps_text(c)));
         if (!cells.some(Boolean)) continue;
-        if (placeholders.has(ps_text(row.getCell(1)))) continue;
+        const a = ps_text(row.getCell(1));
+        if (placeholders.has(a) || ps_filler(a)) continue;
         rows.push(r);
     }
     return rows;
@@ -60,9 +63,13 @@ async function ps_loadBase(name) {
     if (/[\\/]|\.\./.test(name)) throw new Error('範本名稱不合法：' + name);
     const res = await fetch('forms/' + encodeURIComponent(name) + '.xlsx', { cache: 'no-cache' });
     if (!res.ok) throw new Error(`找不到空白 Excel「forms/${name}.xlsx」`);
-    ps_base = { name, buf: await res.arrayBuffer() };
+    ps_setBase(name, await res.arrayBuffer());
+}
+
+function ps_setBase(name, buf, fromFile = false) {
+    ps_base = { name, buf, fromFile };
     // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）
-    const wb = XLSX.read(ps_base.buf, { type: 'array' }), ws = wb.Sheets[wb.SheetNames[0]];
+    const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[wb.SheetNames.find((_, i) => !wb.Workbook?.Sheets?.[i]?.Hidden) || wb.SheetNames[0]];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     const text = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? String(x.w ?? x.v ?? '').trim() : ''; };
     ps_headEnd = (fb_headerBlock(text, ws['!merges'] || [], range.s.r, range.e.r, range.s.c, range.e.c)?.he ?? -1) + 1;
@@ -70,18 +77,22 @@ async function ps_loadBase(name) {
 
 async function ps_addFiles(files) {
     const notes = [];
+    const first = files.find(f => /\.xlsx$/i.test(f.name));
+    if (!ps_base && first) ps_setBase(first.name.replace(/\.[^.]+$/, ''), await first.arrayBuffer(), true);
+    if (!ps_base) { ps_render(['請拖入 .xlsx 檔']); return; }
     const base = new ExcelJS.Workbook();
     await base.xlsx.load(ps_base.buf);
-    const bws = base.worksheets[0], bl = ps_layout(bws);
+    const bws = ps_sheet(base), bl = ps_layout(bws);
+    // 存好的空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
     const placeholders = new Set();
-    for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
+    if (!ps_base.fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
     for (const file of files) {
         if (!/\.xlsx$/i.test(file.name)) { notes.push(`${file.name}：不是 .xlsx，略過`); continue; }
         try {
             const wb = new ExcelJS.Workbook();
             await wb.xlsx.load(await file.arrayBuffer());
             let ws = wb.getWorksheet(bws.name);
-            if (!ws) { ws = wb.worksheets.find(w => w.state === 'visible') || wb.worksheets[0]; notes.push(`${file.name}：沒有「${bws.name}」工作表，改讀「${ws.name}」`); }
+            if (!ws) { ws = ps_sheet(wb); notes.push(`${file.name}：沒有「${bws.name}」工作表，改讀「${ws.name}」`); }
             const stem = file.name.replace(/\.[^.]+$/, '');
             const hits = fb_detectOrgs(stem, ps_orgs.sortOrder, ps_orgs.aliasMap);
             if (hits.length !== 1) notes.push(`${file.name}：${hits.length ? '檔名含多個機關（' + hits.join('、') + '）' : '檔名認不出機關'}，排在最後`);
@@ -97,7 +108,7 @@ async function ps_addFiles(files) {
 async function ps_build() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(ps_base.buf);
-    const ws = wb.worksheets[0], { total, hasTotal, notes, cols } = ps_layout(ws);
+    const ws = ps_sheet(wb), { total, hasTotal, notes, cols } = ps_layout(ws);
     wb.worksheets.filter(w => w !== ws).forEach(w => wb.removeWorksheet(w.id)); // 往年供參的工作表不帶
     const ps_countCols = [];
     for (let c = 1; c <= cols; c++) for (let r = total; r < notes; r++) {
@@ -149,6 +160,7 @@ function ps_render(notes = []) {
     $('ps-list').innerHTML = ps_files.map((f, i) => `<tr><td>${i + 1}</td><td class="text-left">${ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td><td>${f.rows.length}</td></tr>`).join('');
     $('ps-result').classList.toggle('hidden', !ps_files.length);
     $('ps-btn-xlsx').disabled = !ps_files.length;
+    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依第一個檔案「${ps_base.name}」的版面` : ps_base.name) : '依第一個拖入的檔案';
     $('ps-msg').textContent = (ps_files.length ? `已讀入 ${ps_files.length} 份，共 ${ps_files.reduce((n, f) => n + f.rows.length, 0)} 列。` : '尚未匯入檔案。') + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
 }
 
@@ -156,11 +168,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const $ = id => document.getElementById(id);
     const name = new URLSearchParams(location.search).get('form');
     try {
-        if (!name) throw new Error('請從範本庫的「貼表」按鈕開啟（網址需帶 ?form=範本名稱）');
-        await ps_loadBase(name);
+        if (name) await ps_loadBase(name);
         ps_orgs = await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         ps_orgs.sortOrder ||= []; ps_orgs.aliasMap ||= {};
-        $('ps-form').textContent = name;
+        ps_render();
     } catch (e) { $('ps-msg').textContent = e.message; return; }
     const drop = $('ps-drop'), input = $('ps-file');
     drop.onclick = () => input.click();
@@ -168,12 +179,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
     drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); ps_addFiles([...e.dataTransfer.files]); });
-    $('ps-btn-clear').onclick = () => { ps_files = []; ps_render(); };
+    $('ps-btn-clear').onclick = () => { ps_files = []; if (ps_base?.fromFile) ps_base = null; ps_render(); };
     $('ps-btn-xlsx').onclick = async () => {
         const buf = await ps_build();
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-        a.download = `${name}-貼表.xlsx`;
+        a.download = `${ps_base.name}-貼表.xlsx`;
         a.click();
         URL.revokeObjectURL(a.href);
     };
