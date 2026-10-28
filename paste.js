@@ -4,7 +4,7 @@
 // ponytail: 提案列＝第 2 欄（提案序號）有填、標題列＝第 1 欄有填且第 2 欄空白，是照協商彙總表的版面寫的；別的版面要另訂規則
 
 let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile = 版面取自第一個拖入的回傳檔（沒有指定範本）
-let ps_files = [];    // [{ file, org, rank, wb, ws, rows }]；順序就是貼上順序，可手動調整
+let ps_files = [];    // [{ file, org, rank, wb, ws, rows, pinned }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
 
@@ -75,7 +75,7 @@ async function ps_setBase(name, buf, fromFile = false) {
     const placeholders = new Set();
     if (!fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
     ps_base = { name, buf, fromFile, sheet: bws.name, placeholders };
-    ps_files.forEach(f => { f.ws = f.wb.getWorksheet(bws.name) || ps_sheet(f.wb); f.rows = ps_pickRows(f.ws, placeholders); });
+    ps_files.forEach(f => { f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb); f.rows = ps_pickRows(f.ws, placeholders); });
     // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）
     const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[wb.SheetNames.find((_, i) => !wb.Workbook?.Sheets?.[i]?.Hidden) || wb.SheetNames[0]];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
@@ -163,7 +163,10 @@ async function ps_build() {
 function ps_render(notes = []) {
     const $ = id => document.getElementById(id);
     const n = ps_files.length;
-    $('ps-list').innerHTML = ps_files.map((f, i) => `<tr><td>${i + 1}</td><td class="text-left">${ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td><td>${f.rows.length}</td>
+    const sheets = f => f.wb.worksheets.filter(w => w.state === 'visible' || w === f.ws)
+        .map(w => `<option${w === f.ws ? ' selected' : ''}>${ps_esc(w.name)}</option>`).join('');
+    $('ps-list').innerHTML = ps_files.map((f, i) => `<tr><td>${i + 1}</td><td class="text-left">${ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td>
+        <td><select class="ps-sheet text-sm" data-i="${i}" aria-label="${ps_esc(f.org)} 的工作表">${sheets(f)}</select></td><td>${f.rows.length}</td>
         <td class="whitespace-nowrap"><button class="btn btn-sm" data-move="${i}" data-d="-1" aria-label="上移 ${ps_esc(f.org)}"${i ? '' : ' disabled'}>↑</button>
             <button class="btn btn-sm" data-move="${i}" data-d="1" aria-label="下移 ${ps_esc(f.org)}"${i < n - 1 ? '' : ' disabled'}>↓</button>
             <button class="btn btn-sm btn-danger" data-remove="${i}" aria-label="移除 ${ps_esc(f.org)}">移除</button></td></tr>`).join('');
@@ -195,6 +198,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!f) return;
         try { await ps_setBase(f.name.replace(/\.[^.]+$/, ''), await f.arrayBuffer()); ps_render(); } catch (e) { ps_render([`${f.name}：${e.message}`]); }
     };
+    $('ps-list').addEventListener('change', e => {
+        if (!e.target.classList.contains('ps-sheet')) return;
+        const f = ps_files[+e.target.dataset.i];
+        f.pinned = e.target.value;
+        f.ws = f.wb.getWorksheet(f.pinned);
+        f.rows = ps_pickRows(f.ws, ps_base.placeholders);
+        ps_render();
+    });
     $('ps-list').addEventListener('click', e => {
         const b = e.target.closest('button');
         if (!b) return;
