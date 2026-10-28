@@ -495,7 +495,9 @@ function fb_libraryEntries(items) {
         const name = x.name.replace(/\.[^.]+$/, '');
         if (!byName.has(name) || /\.json$/i.test(x.name)) byName.set(name, x.name);
     });
-    return [...byName].map(([name, file]) => ({ name, file })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    // .json 與 .xlsx 同名：表單以 .json 為準，.xlsx 是給填報人的空白 Excel，另外提供下載
+    const xlsx = new Set(items.filter(x => /\.xlsx$/i.test(x.name)).map(x => x.name));
+    return [...byName].map(([name, file]) => ({ name, file, ...(file !== name + '.xlsx' && xlsx.has(name + '.xlsx') ? { xlsx: name + '.xlsx' } : {}) })).sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
 }
 
 // GitHub API 讀不到時的備援：forms/index.json 有登記的表單（不知道副檔名，file 為 null，不提供範本檔下載）
@@ -980,6 +982,8 @@ function fb_renderLibrary() {
             <a href="manage.html?form=${encodeURIComponent(e.name)}#surveys" class="btn btn-sm" title="建立用這份範本的調查專案（需要 GitHub 權杖）">以此範本發起調查</a>
             <a href="?form=${encodeURIComponent(e.name)}" class="btn btn-sm" title="開啟這份範本的表單（沒有專案資訊）">預覽</a>
             ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="btn btn-sm" title="下載後可修改再上傳成新範本">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
+            ${e.xlsx ? `<a href="forms/${encodeURIComponent(e.xlsx)}" download class="btn btn-sm" title="寄給填報人的空白 Excel">空白 Excel</a>
+            <a href="paste.html?form=${encodeURIComponent(e.name)}" class="btn btn-sm" title="拖入各機關寄回的 Excel，依原格式一列接一列貼成彙總表">貼表</a>` : ''}
         </li>`).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的範本。</li>' : (fb_libErr ? '' : '<li class="py-2 text-slate-500">forms/ 裡還沒有範本。</li>')));
 }
 

@@ -88,7 +88,7 @@ function mg_render() {
             </div>
             <div class="whitespace-nowrap">
                 <button class="mg-new-from btn-link" data-name="${mg_esc(e.name)}">以此發起調查</button>
-                <a href="./?form=${encodeURIComponent(e.name)}" target="_blank" class="btn-link text-slate-600 ml-2">預覽</a>
+                <a href="advanced.html?form=${encodeURIComponent(e.name)}" target="_blank" class="btn-link text-slate-600 ml-2">預覽</a>
                 <button class="mg-rename btn-link text-slate-600 ml-2" data-name="${mg_esc(e.name)}">改名</button>
                 <button class="mg-delete btn-link text-red-600 ml-2" data-name="${mg_esc(e.name)}">刪除</button>
             </div>
@@ -141,9 +141,8 @@ async function mg_upload(files) {
             const old = mg_files.find(f => f.name === file.name);
             const twin = mg_files.find(f => f.name !== file.name && f.name.replace(/\.[^.]+$/, '') === name);
             if (old && !confirm(`「${file.name}」已存在，要覆蓋成新版嗎？（用它的調查專案會改用新版）`)) continue;
-            if (twin && /\.xlsx$/i.test(file.name)) bad.push(`${file.name}：已有同名的 ${twin.name}（.json 優先），這份 Excel 不會被使用`);
             await mg_put(file.name, mg_b64(new Uint8Array(await file.arrayBuffer())), `範本庫：${old ? '更新' : '新增'} ${file.name}`, old?.sha);
-            done.push(`${file.name}（${info}）`);
+            done.push(`${file.name}（${info}${twin && /\.xlsx$/i.test(file.name) ? `；網頁表單仍以同名 ${twin.name} 為準，這份 Excel 用於首頁的空白 Excel 與貼表` : ''}）`);
         } catch (err) { bad.push(`${file.name}：${err.message}`); }
     }
     await mg_load();
@@ -208,7 +207,7 @@ function mg_renderSurveys() {
                 ${mg_copyBtn(url)}
             </div>
             <div class="whitespace-nowrap">
-                <a href="./?survey=${encodeURIComponent(e.name)}" target="_blank" class="btn-link">開啟</a>
+                <a href="advanced.html?survey=${encodeURIComponent(e.name)}" target="_blank" class="btn-link">開啟</a>
                 <a href="form-aggregate.html?survey=${encodeURIComponent(e.name)}" target="_blank" class="btn-link ml-2">彙整</a>
                 <button class="mg-sv-end btn-link text-slate-600 ml-2" data-id="${mg_esc(e.name)}" title="截止日設為今天">提前結束</button>
                 <button class="mg-sv-del btn-link text-red-600 ml-2" data-id="${mg_esc(e.name)}">刪除</button>
