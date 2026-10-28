@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_resort,ps_setOrder,ps_build,ps_effMode,ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];await ps_rebase();if(b)await ps_addFiles([{name:b.name+".xlsx",arrayBuffer:async()=>b.buf}])}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_resort,ps_setOrder,ps_build,mode:m=>{ps_mode=m},ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_mode="stack";await ps_rebase();if(b)await ps_addFiles([{name:b.name+".xlsx",arrayBuffer:async()=>b.buf}])}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
@@ -87,12 +87,12 @@ async function filled(rows) {
         // 順手填了別的基金（F[4]）
         asFile(F[2] + '.xlsx', await book(head, [[], [], [300, 280], [], [50]])),
     ]);
-    assert.strictEqual(ps_t.ps_effMode(), 'fill');
     const plan = ps_t.ps_fillPlan(), cat = k => plan.checks.filter(c => c[0] === k).map(c => c[1]);
     assert.deepStrictEqual(cat('沒有對應到的基金'), [F[3], F[5]].map(n => n.replace(/\s/g, '')));
     assert.deepStrictEqual(cat('由別的機關的檔案填入'), [F[4]].map(n => n.replace(/\s/g, '')));
     assert.deepStrictEqual(cat('範本沒有的欄'), ['調整數']);
     assert.strictEqual(cat('重複數字（疑似往下拖曳）').length, 1);
+    ps_t.mode('fill'); // 每份都有全部基金的表：手動切到依項目填入
     const o5 = new ExcelJS.Workbook();
     await o5.xlsx.load(await ps_t.ps_build());
     const w5 = o5.worksheets[0], v = (r, c) => w5.getRow(r).getCell(c).value;
