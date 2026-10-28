@@ -7,11 +7,11 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <title>Excel 貼表</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
-    <link rel="stylesheet" href="budget-style.css?v=20261028b">
+    <link rel="stylesheet" href="budget-style.css?v=20261028c">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-    <script src="form-builder.js?v=20261028b"></script>
-    <script src="paste.js?v=20261028b"></script>
+    <script src="form-builder.js?v=20261028c"></script>
+    <script src="paste.js?v=20261028c"></script>
 </head>
 <body>
 
@@ -53,6 +53,7 @@
     <div id="ps-result" class="hidden section-card">
         <fieldset class="mb-4 text-sm text-slate-700"><legend class="font-bold text-slate-800 mb-1">貼法</legend>
             <label class="mr-4"><input type="radio" name="ps-mode" value="stack" checked> 接續貼上：依順序把各檔的列一列接一列（大多數調查表）</label>
+            <label class="mr-4">比對欄位 <select id="ps-match" class="text-sm" aria-label="比對欄位：哪一欄放基金名稱"></select></label>
             <label><input type="radio" name="ps-mode" value="fill"> 依項目填入：每份都有全部基金、各填自己那一列（例：決算執行情形）</label>
         </fieldset>
         <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
@@ -63,6 +64,21 @@
         <div class="overflow-x-auto"><table class="budget-table w-full">
             <thead><tr><th>順序</th><th>範本</th><th>機關</th><th>檔名</th><th>工作表</th><th id="ps-count-head">貼上列數</th><th>調整</th></tr></thead>
             <tbody id="ps-list"></tbody>
+        </table></div>
+    </div>
+
+    <div id="ps-review" class="hidden section-card">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <h2 id="ps-review-title" class="text-lg font-bold text-slate-800">逐列檢查</h2>
+            <div class="flex flex-wrap gap-2">
+                <button id="ps-btn-del-default" class="btn btn-sm" title="回到預設：不是自己基金那一段的列勾刪除">勾選預設可疑列</button>
+                <button id="ps-btn-del-none" class="btn btn-sm">全部保留</button>
+            </div>
+        </div>
+        <p class="text-sm text-slate-500 mb-3">每份檔案的每一列都在這裡；勾「刪除」的不貼。預設把不是自己基金那一段的列（別的基金、別人的資料）勾起來，請確認後再下載。</p>
+        <div class="overflow-x-auto max-h-[60vh]"><table class="budget-table w-full">
+            <thead><tr><th>刪除</th><th>機關</th><th>檔案</th><th id="ps-review-c1"></th><th id="ps-review-c2"></th><th id="ps-review-c3"></th></tr></thead>
+            <tbody id="ps-review-list"></tbody>
         </table></div>
     </div>
 

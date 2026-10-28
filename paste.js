@@ -13,6 +13,7 @@ let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile
 let ps_files = [];    // [{ file, org, rank, buf, wb, ws, rows, pinned, tpl }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表；tpl = 勾選為範本（不貼入）
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
+let ps_matchCol = 1;  // 比對欄位：範本第幾欄放基金名稱（像 excel_merge 可選第 1、2、3 欄）
 let ps_order = null;  // 自訂順序清單（每行一個基金或機關名稱，可用簡稱）；null = 標準基金清單
 let ps_mode = 'stack'; // 'stack' 接續貼上（預設，大多數調查表）| 'fill' 依項目填入（每份都有全部基金的表，手動切換）
 
@@ -108,37 +109,38 @@ async function ps_setBase(name, buf, fromFile = false, sheet = null) {
         f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb);
         f.cmap = ps_colMap(f.ws);
         // 自己的基金列可能在檔案自己的合計列上面（各機關自訂的短版），所以找的範圍從表頭下面開始
-        f.rows = f.cmap.key ? ps_ownSection(f, ps_pickRows(f.ws, placeholders, f.cmap.key, headRows.at(-1)), ps_pickRows(f.ws, placeholders, f.cmap.key)) : [];
+        const c = f.cmap.key ? ps_candidates(f, ps_pickRows(f.ws, placeholders, f.cmap.key, headRows.at(-1)), ps_pickRows(f.ws, placeholders, f.cmap.key)) : { cand: [], del: new Set() };
+        f.cand = c.cand; f.del = c.del; f.del0 = new Set(c.del); // del0：預設勾的，「回到預設」用
+        ps_applyDel(f);
     });
 }
 
-// 接續貼上只取自己那一段：從檔名認出的基金那列開始，到下一個別的基金、「主管」、「一、」這類標題或合計為止
-// （基金底下的明細、提案都算），上面緊接的「主管」列一併帶上；每個檔名認出的基金各取一段。
-// all：表頭以下所有的列；picked：合計列以下的列（沒有基金列的一般調查表照這個整份貼）
-// 檔案裡有別的基金列、卻沒有自己的 → 一列都不貼，f.missing 讓查對提醒（不重貼別人的）
-function ps_ownSection(f, all, picked) {
+// 接續貼上的候選列與預設刪除（像 excel_merge：每一列都列出來，可疑的預先勾刪除，彙整的人可以改）
+// 預設保留自己那一段：從檔名認出的基金那列（比對欄位）到下一個別的基金、「主管」、「一、」大標題或合計為止
+// （底下的明細、提案都算，上面緊接的「主管」列一併）；其他列預設刪除。
+// all：表頭以下所有的列（自己的基金列可能在檔案自己的合計列上面）；picked：合計列以下的列
+// 完全沒有基金列的一般調查表、檔名認不出機關：picked 整份保留；檔案裡只有別的基金：全部預設刪除（f.missing）
+function ps_candidates(f, all, picked) {
     f.missing = false; f.others = [];
-    if (!f.owners.length) return picked;
-    const rows = all;
-    const name = r => ps_cellText(f.ws.getRow(r).getCell(f.cmap.key)).trim();
+    const col = f.cmap.map[ps_matchCol] || f.cmap.key;
+    const name = r => ps_cellText(f.ws.getRow(r).getCell(col)).trim();
+    if (!f.owners.length || !all.some(r => ps_std(name(r)))) return { cand: picked, del: new Set() };
     // 「一、作業基金」這種大標題才停；「(一)」編號是基金自己的明細
     const stop = a => !a ? false : a.startsWith('合計') || a.endsWith('主管') || fb_level(a) === 1 || !!ps_std(a);
     const keep = new Set();
-    rows.forEach((r, i) => {
+    all.forEach((r, i) => {
         if (!f.owners.includes(ps_std(name(r)))) return;
-        if (i > 0 && name(rows[i - 1]).endsWith('主管')) keep.add(rows[i - 1]);
+        if (i > 0 && name(all[i - 1]).endsWith('主管')) keep.add(all[i - 1]);
         keep.add(r);
-        for (let j = i + 1; j < rows.length && !stop(name(rows[j])); j++) keep.add(rows[j]);
+        for (let j = i + 1; j < all.length && !stop(name(all[j])); j++) keep.add(all[j]);
     });
-    // 別的基金的列有填資料卻沒貼（例：檔名只寫「文作、文發」，卻也填了國立文化機構）→ 查對提醒
-    const has = r => Object.entries(f.cmap.map).some(([tc, fc]) => +tc !== 1 && fc !== f.cmap.key && (v => v != null && !ps_isFormula(v) && String(v.richText ? 'x' : v).trim() !== '')(f.ws.getRow(r).getCell(fc).value));
-    f.others = rows.filter(r => !keep.has(r) && ps_std(name(r)) && !f.owners.includes(ps_std(name(r))) && has(r)).map(r => ps_std(name(r)));
-    if (keep.size) return rows.filter(r => keep.has(r));
-    // 完全沒有基金列（一般調查表）：整份都算自己的
-    if (!rows.some(r => ps_std(name(r)))) return picked;
-    f.missing = true;
-    return [];
+    // 別的基金的列有填資料（例：檔名只寫「文作、文發」，卻也填了國立文化機構）→ 查對提醒
+    const has = r => Object.entries(f.cmap.map).some(([tc, fc]) => +tc !== 1 && fc !== col && (v => v != null && !ps_isFormula(v) && String(v.richText ? 'x' : v).trim() !== '')(f.ws.getRow(r).getCell(fc).value));
+    f.others = all.filter(r => !keep.has(r) && ps_std(name(r)) && !f.owners.includes(ps_std(name(r))) && has(r)).map(r => ps_std(name(r)));
+    f.missing = !keep.size;
+    return { cand: all, del: new Set(all.filter(r => !keep.has(r))) };
 }
+const ps_applyDel = f => { f.rows = f.cand.filter(r => !f.del.has(r)); };
 
 // 來源檔的欄怎麼對到範本：欄數相同照位置（.ods 轉檔後表頭文字會錯位，不能靠欄名）；
 // 欄數不同（有人插欄，連最左邊也算）每一欄都依表頭文字對位，名稱欄也是 → { map: {範本欄: 來源欄}, extra: [範本沒有的欄名], key: 名稱欄或 null }
@@ -277,8 +279,8 @@ const ps_stackChecks = () => [...ps_orderChecks(), ...ps_files.filter(f => !f.tp
     ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
     ...(f.cmap.key ? ps_hiddenChecks(f, f.rows) : []),
     ...(f.owners.length === 1 || ps_order ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
-    ...(f.missing ? [['找不到自己基金的列', f.owners.join('、'), f.file, '檔案裡只有別的基金，未貼入，請確認']] : []),
-    ...(f.others?.length ? [['也填了別的基金（未貼入）', f.others.join('、'), f.file, `${f.others.length} 個，請確認是否該由這份填`]] : []),
+    ...(f.missing ? [['找不到自己基金的列', f.owners.join('、'), f.file, '檔案裡只有別的基金，預設全部不貼，請在逐列檢查確認']] : []),
+    ...(f.others?.length ? [['也填了別的基金', f.others.join('、'), f.file, `${f.others.length} 個，預設不貼，請在逐列檢查確認`]] : []),
     ...(f.rows.length || !f.cmap.key || f.missing ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
 ])];
 
@@ -397,7 +399,16 @@ async function ps_buildStack() {
     let r = total + 1;
     const placed = []; // { r, kind: 'head'|'item', level }
     let lastTop = null; // 同一個主管的基金分在不同檔案時，各檔都帶了主管列：連續的同名主管列只留第一個
-    ps_files.filter(f => !f.tpl).forEach(f => f.rows.forEach(sr => {
+    // 自訂清單上沒有檔案的，依清單位置插「❌ 未回傳」列（像 excel_merge 的 checklist）
+    const missing = (ps_order || []).map((line, i) => ({ line, i })).filter(({ line }) => !ps_files.some(f => !f.tpl && ps_lineHits(line, f)));
+    const nameCol = ps_matchCol <= cols ? ps_matchCol : 1;
+    const putMissing = upto => { while (missing.length && missing[0].i < upto) {
+        const { line } = missing.shift();
+        ws.getRow(r).getCell(nameCol).value = line;
+        ws.getRow(r).getCell(nameCol === 1 ? 2 : 1).value = '❌ 未回傳／無資料';
+        placed.push({ r, kind: 'missing' }); r++;
+    } };
+    ps_files.filter(f => !f.tpl).forEach(f => { putMissing(f.rank); f.rows.forEach(sr => {
         const top = ps_cellText(f.ws.getRow(sr).getCell(f.cmap.key));
         if (top.endsWith('主管') && top === lastTop) return;
         ps_copyRow(f.ws, sr, ws, r, cols, f.cmap.map);
@@ -405,7 +416,8 @@ async function ps_buildStack() {
         placed.push({ r, kind: b ? 'item' : a ? 'head' : 'item', top: a.endsWith('主管') });
         if (a.endsWith('主管')) lastTop = a;
         r++;
-    }));
+    }); });
+    putMissing(Infinity);
     const last = r - 1;
     footer.forEach((_, i) => ps_copyRow(keep, i + 1, ws, r + i, cols));
 
@@ -431,6 +443,20 @@ async function ps_buildStack() {
     return wb.xlsx.writeBuffer();
 }
 
+// 逐列檢查：各檔每一列（候選列），勾「刪除」的不貼；顯示範本前三欄的內容
+function ps_renderReview(data) {
+    const $ = id => document.getElementById(id), heads = ps_base ? ps_heads(ps_base.ws) : new Map();
+    const total = data.reduce((n, f) => n + f.cand.length, 0), del = data.reduce((n, f) => n + f.del.size, 0);
+    $('ps-review').classList.toggle('hidden', !total);
+    $('ps-review-title').textContent = `逐列檢查（共 ${total} 列，勾選刪除 ${del} 列）`;
+    [1, 2, 3].forEach(c => { $('ps-review-c' + c).textContent = ps_label(heads.get(c) || '') || `第${c}欄`; });
+    $('ps-review-list').innerHTML = data.map((f, fi) => f.cand.map(r => {
+        const on = f.del.has(r), cell = c => f.cmap.map[c] ? ps_esc(ps_cellText(f.ws.getRow(r).getCell(f.cmap.map[c])).slice(0, 40)) : '';
+        return `<tr${on ? ' class="text-slate-400 line-through"' : ''}><td><input type="checkbox" class="ps-del" data-f="${fi}" data-r="${r}"${on ? ' checked' : ''} aria-label="刪除 ${ps_esc(f.file)} 第 ${r} 列"></td>
+            <td class="text-left whitespace-nowrap">${ps_esc(f.org)}</td><td class="text-left whitespace-nowrap max-w-[14rem] truncate" title="${ps_esc(f.file)}">${ps_esc(f.file)}</td><td class="text-left whitespace-nowrap">${cell(1)}</td><td class="text-left whitespace-nowrap">${cell(2)}</td><td class="text-left whitespace-nowrap">${cell(3)}</td></tr>`;
+    }).join('')).join('');
+}
+
 function ps_render(notes = []) {
     const $ = id => document.getElementById(id);
     const n = ps_files.length, mode = ps_mode;
@@ -446,6 +472,10 @@ function ps_render(notes = []) {
             <button class="btn btn-sm" data-move="${i}" data-d="1" aria-label="下移 ${ps_esc(f.org)}"${i < n - 1 ? '' : ' disabled'}>↓</button>
             <button class="btn btn-sm btn-danger" data-remove="${i}" aria-label="移除 ${ps_esc(f.org)}">移除</button></td></tr>`).join('');
     const data = ps_files.filter(f => !f.tpl);
+    ps_renderReview(mode === 'stack' ? data : []);
+    // 比對欄位：範本前三欄
+    const heads = ps_base ? ps_heads(ps_base.ws) : new Map();
+    $('ps-match').innerHTML = [1, 2, 3].map(c => `<option value="${c}"${c === ps_matchCol ? ' selected' : ''}>第${c}欄${heads.get(c) ? '（' + ps_esc(ps_label(heads.get(c)).slice(0, 12)) + '）' : ''}</option>`).join('');
     // 沒有同名工作表、改讀第一張的檔案提醒一下
     data.forEach(f => { if (!f.pinned && f.ws.name !== ps_base?.sheet) notes.push(`${f.file}：沒有「${ps_base.sheet}」工作表，改讀「${f.ws.name}」`); });
     $('ps-result').classList.toggle('hidden', !ps_files.length);
@@ -497,6 +527,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         ps_render();
     });
     document.querySelectorAll('input[name="ps-mode"]').forEach(r => r.addEventListener('change', () => { ps_mode = r.value; ps_render(); }));
+    // 逐列檢查：勾、取消刪除；回到預設；全部保留；換比對欄位重算預設
+    const data = () => ps_files.filter(f => !f.tpl);
+    $('ps-review-list').addEventListener('change', e => {
+        if (!e.target.classList.contains('ps-del')) return;
+        const f = data()[+e.target.dataset.f], r = +e.target.dataset.r;
+        e.target.checked ? f.del.add(r) : f.del.delete(r);
+        ps_applyDel(f);
+        ps_render();
+    });
+    $('ps-btn-del-default').onclick = () => { data().forEach(f => { f.del = new Set(f.del0); ps_applyDel(f); }); ps_render(); };
+    $('ps-btn-del-none').onclick = () => { data().forEach(f => { f.del = new Set(); ps_applyDel(f); }); ps_render(); };
+    $('ps-match').onchange = async e => { ps_matchCol = +e.target.value; await ps_rebase(); ps_render(); };
     $('ps-btn-resort').onclick = () => { ps_resort(); ps_render(); };
     // 自訂順序清單：存在這個瀏覽器（localStorage，讀不到就算了）
     const box = $('ps-order'), state = () => { $('ps-order-state').textContent = ps_order ? `目前：自訂清單 ${ps_order.length} 項` : '目前：標準基金清單'; };
