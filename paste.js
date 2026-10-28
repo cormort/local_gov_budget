@@ -6,6 +6,9 @@
 // 依項目填入：欄依表頭文字對位（有人插欄也對得上）；同一欄同一個非零數字出現在 3 列以上視為往下拖曳的錯誤不採用；
 // 一列有多份檔案填時，採檔名認得出是該基金的那份；只有別的機關填的照填但標淺橘色；對不上的、沒人填的都列在「查對」
 
+// 首頁就是貼表：舊的查填、預覽連結（?form= / ?survey=）在進階功能頁，原樣轉過去
+if (typeof location !== 'undefined' && /[?&](form|survey)=/.test(location.search)) location.replace('advanced.html' + location.search + location.hash);
+
 let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile = 版面取自第一個回傳檔（沒有範本）
 let ps_stored = null; // ?form= 的範本 { name, buf }
 let ps_files = [];    // [{ file, org, rank, buf, wb, ws, rows, pinned, tpl }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表；tpl = 勾選為範本（不貼入）
@@ -441,7 +444,7 @@ function ps_render(notes = []) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     const $ = id => document.getElementById(id);
-    const name = new URLSearchParams(location.search).get('form');
+    const name = new URLSearchParams(location.search).get('tpl'); // 從範本庫帶入的範本
     try {
         if (name) { await ps_loadBase(name); await ps_rebase(); }
         ps_orgs = await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));

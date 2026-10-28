@@ -1,6 +1,4 @@
-// 首頁：Excel 收件流程。列出有空白 Excel（forms/名稱.xlsx）的範本，各給「下載空白 Excel」「貼表」
-// 舊的查填、預覽連結（?form= / ?survey=）都在進階功能頁，原樣轉過去
-if (/[?&](form|survey)=/.test(location.search)) location.replace('advanced.html' + location.search + location.hash);
+// 範本庫：列出有空白 Excel（forms/名稱.xlsx）的範本，各給「下載空白 Excel」「貼表」（帶 ?tpl= 回首頁的貼表）
 
 const home_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
@@ -17,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="mr-auto min-w-0"><p class="font-bold text-slate-800 break-all">${home_esc(n)}</p>
                 ${m.description ? `<p class="text-sm text-slate-500">${home_esc(m.description)}</p>` : ''}</div>
             <a href="forms/${q}.xlsx" download class="btn">下載空白 Excel</a>
-            <a href="paste.html?form=${q}" class="btn btn-primary">貼表</a>
+            <a href="./?tpl=${q}" class="btn btn-primary">貼表</a>
         </li>`;
     }).join('') : '<li class="py-2 text-slate-500">還沒有空白 Excel 範本。到「管理範本」上傳。</li>';
 });
