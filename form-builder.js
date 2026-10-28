@@ -470,7 +470,7 @@ function fb_detectOrgs(text, names = [], aliasMap = {}) {
         found.add(name);
         scan = scan.split(key).join('\u0000'.repeat(key.length));
     });
-    return names.filter(n => found.has(n));
+    return [...new Set(names)].filter(n => found.has(n)); // 名單裡重複的名稱（orgs.json 有幾個基金列了兩次）只算一個
 }
 
 // 繳交對照：應繳名單 × 已收到的機關 → 每個機關 done（已繳）／missing（未繳）／extra（不在名單）

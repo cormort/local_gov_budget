@@ -183,5 +183,21 @@ async function filled(rows) {
     const p9 = ps_t.ps_fillPlan();
     assert.deepStrictEqual(p9.fills.map(x => [x.r, x.data[2], !!x.flag]), [[3, 10, false], [4, 5, false], [5, 100, false], [6, 60, false]]);
     assert.ok(!p9.checks.some(c => c[1] === '(一)業務計畫'));
+
+    // 接續貼上只取自己那一段：每份都帶全部基金清單時，只貼自己那列（含底下明細）；只有別人沒有自己的，不貼
+    const full = async (own, extra = {}) => { const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('表'); ws.addRow(['測試表']); ws.addRow(['名稱', '預算數', '決算數']);
+        F.forEach(n => { ws.addRow([n, ...(n === own ? [10, 9] : [])]); if (n === own) ws.addRow(['(一)明細', 5, 4]); });
+        Object.entries(extra).forEach(([n, v]) => { ws.getRow(3 + F.indexOf(n) + (F.indexOf(n) > F.indexOf(own) ? 1 : 0)).getCell(2).value = v; });
+        return wb.xlsx.writeBuffer(); };
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([asFile(F[2] + '.xlsx', await full(F[2], { [F[4]]: 77 })), asFile(F[0] + '.xlsx', await full(F[0])), asFile('國軍老舊眷村改建基金.xlsx', await full(null))]);
+    assert.deepStrictEqual(ps_t.files().map(f => f.rows.length), [2, 2, 0], '只取自己那列與底下明細；沒有自己的列就不貼');
+    const c10 = ps_t.stackChecks();
+    assert.ok(c10.some(c => c[0] === '找不到自己基金的列' && c[2] === '國軍老舊眷村改建基金.xlsx'));
+    assert.ok(c10.some(c => c[0] === '也填了別的基金（未貼入）' && c[1] === F[4]), '別的基金有填資料的列在查對');
+    const o10 = new ExcelJS.Workbook();
+    await o10.xlsx.load(await ps_t.ps_build());
+    const r10 = r => o10.worksheets[0].getRow(r).getCell(1).text;
+    assert.deepStrictEqual([3, 4, 5, 6].map(r10), [F[0], '(一)明細', F[2], '(一)明細']);
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });

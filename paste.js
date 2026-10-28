@@ -41,10 +41,11 @@ function ps_layout(ws, key = 1) {
 }
 
 // 回傳檔要貼的列：合計列以下、說明列以上；空白列與範本原有的佔位列（ＯＯ主管、範例…）略過
-function ps_pickRows(ws, placeholders, key = 1) {
+// start：從哪一列之後開始（預設檔案自己的合計列之後）
+function ps_pickRows(ws, placeholders, key = 1, start = null) {
     const { total, notes } = ps_layout(ws, key);
     const rows = [];
-    for (let r = (total || 0) + 1; r < notes; r++) {
+    for (let r = (start ?? total ?? 0) + 1; r < notes; r++) {
         const row = ws.getRow(r);
         const cells = [];
         row.eachCell(c => cells.push(ps_text(c)));
@@ -106,8 +107,37 @@ async function ps_setBase(name, buf, fromFile = false, sheet = null) {
     ps_files.forEach(f => {
         f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb);
         f.cmap = ps_colMap(f.ws);
-        f.rows = f.cmap.key ? ps_pickRows(f.ws, placeholders, f.cmap.key) : [];
+        // 自己的基金列可能在檔案自己的合計列上面（各機關自訂的短版），所以找的範圍從表頭下面開始
+        f.rows = f.cmap.key ? ps_ownSection(f, ps_pickRows(f.ws, placeholders, f.cmap.key, headRows.at(-1)), ps_pickRows(f.ws, placeholders, f.cmap.key)) : [];
     });
+}
+
+// 接續貼上只取自己那一段：從檔名認出的基金那列開始，到下一個別的基金、「主管」、「一、」這類標題或合計為止
+// （基金底下的明細、提案都算），上面緊接的「主管」列一併帶上；每個檔名認出的基金各取一段。
+// all：表頭以下所有的列；picked：合計列以下的列（沒有基金列的一般調查表照這個整份貼）
+// 檔案裡有別的基金列、卻沒有自己的 → 一列都不貼，f.missing 讓查對提醒（不重貼別人的）
+function ps_ownSection(f, all, picked) {
+    f.missing = false; f.others = [];
+    if (!f.owners.length) return picked;
+    const rows = all;
+    const name = r => ps_cellText(f.ws.getRow(r).getCell(f.cmap.key)).trim();
+    // 「一、作業基金」這種大標題才停；「(一)」編號是基金自己的明細
+    const stop = a => !a ? false : a.startsWith('合計') || a.endsWith('主管') || fb_level(a) === 1 || !!ps_std(a);
+    const keep = new Set();
+    rows.forEach((r, i) => {
+        if (!f.owners.includes(ps_std(name(r)))) return;
+        if (i > 0 && name(rows[i - 1]).endsWith('主管')) keep.add(rows[i - 1]);
+        keep.add(r);
+        for (let j = i + 1; j < rows.length && !stop(name(rows[j])); j++) keep.add(rows[j]);
+    });
+    // 別的基金的列有填資料卻沒貼（例：檔名只寫「文作、文發」，卻也填了國立文化機構）→ 查對提醒
+    const has = r => Object.entries(f.cmap.map).some(([tc, fc]) => +tc !== 1 && fc !== f.cmap.key && (v => v != null && !ps_isFormula(v) && String(v.richText ? 'x' : v).trim() !== '')(f.ws.getRow(r).getCell(fc).value));
+    f.others = rows.filter(r => !keep.has(r) && ps_std(name(r)) && !f.owners.includes(ps_std(name(r))) && has(r)).map(r => ps_std(name(r)));
+    if (keep.size) return rows.filter(r => keep.has(r));
+    // 完全沒有基金列（一般調查表）：整份都算自己的
+    if (!rows.some(r => ps_std(name(r)))) return picked;
+    f.missing = true;
+    return [];
 }
 
 // 來源檔的欄怎麼對到範本：欄數相同照位置（.ods 轉檔後表頭文字會錯位，不能靠欄名）；
@@ -247,7 +277,9 @@ const ps_stackChecks = () => [...ps_orderChecks(), ...ps_files.filter(f => !f.tp
     ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
     ...(f.cmap.key ? ps_hiddenChecks(f, f.rows) : []),
     ...(f.owners.length === 1 || ps_order ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
-    ...(f.rows.length || !f.cmap.key ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
+    ...(f.missing ? [['找不到自己基金的列', f.owners.join('、'), f.file, '檔案裡只有別的基金，未貼入，請確認']] : []),
+    ...(f.others?.length ? [['也填了別的基金（未貼入）', f.others.join('、'), f.file, `${f.others.length} 個，請確認是否該由這份填`]] : []),
+    ...(f.rows.length || !f.cmap.key || f.missing ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
 ])];
 
 function ps_checkSheet(wb, checks) {
@@ -364,10 +396,14 @@ async function ps_buildStack() {
 
     let r = total + 1;
     const placed = []; // { r, kind: 'head'|'item', level }
+    let lastTop = null; // 同一個主管的基金分在不同檔案時，各檔都帶了主管列：連續的同名主管列只留第一個
     ps_files.filter(f => !f.tpl).forEach(f => f.rows.forEach(sr => {
+        const top = ps_cellText(f.ws.getRow(sr).getCell(f.cmap.key));
+        if (top.endsWith('主管') && top === lastTop) return;
         ps_copyRow(f.ws, sr, ws, r, cols, f.cmap.map);
         const a = ps_own(ws.getRow(r).getCell(1)), b = ps_own(ws.getRow(r).getCell(2));
         placed.push({ r, kind: b ? 'item' : a ? 'head' : 'item', top: a.endsWith('主管') });
+        if (a.endsWith('主管')) lastTop = a;
         r++;
     }));
     const last = r - 1;

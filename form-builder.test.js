@@ -273,6 +273,7 @@ const { fb_orgMatcher: matcher } = require('./form-builder.js');
 }
 // ② 機關名稱比對：只差一個字才算打錯；交件的若是另一個標準機關，不模糊配到名單上的別人
 const { fb_oneEditApart: one1, fb_orgMatcher: om, fb_detectOrgs: detect } = require('./form-builder.js');
+assert.deepStrictEqual(detect('運動發展基金', ['運動發展基金', '甲', '運動發展基金']), ['運動發展基金'], '名單重複的名稱只算一個');
 assert.ok(one1('國立臺灣大學校務基金', '國立台灣大學校務基金'));   // 替換一字
 assert.ok(one1('經濟作業基金', '經濟作業金'));                   // 少一字
 assert.ok(!one1('國立臺灣師範大學校務基金', '國立臺灣海洋大學校務基金')); // 差兩字
