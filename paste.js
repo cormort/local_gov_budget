@@ -78,15 +78,6 @@ function ps_copyRow(src, sr, dst, dr, cols, map = null) {
     });
 }
 
-// 共享公式（sharedFormula）的母格若被 spliceRows 刪掉，ExcelJS 寫檔會整個失敗（Shared Formula master must exist…）。
-// 彙總表本來就只留公式的結果值，所以寫檔前把共享公式一律換成純值。
-function ps_flattenShared(ws) {
-    ws.eachRow({ includeEmpty: false }, row => row.eachCell({ includeEmpty: false }, cell => {
-        const v = cell.value;
-        if (v && typeof v === 'object' && 'sharedFormula' in v) cell.value = v.result ?? null;
-    }));
-}
-
 // 依目前的勾選決定版面
 async function ps_rebase() {
     // 沒有範本時取最多檔案共用的版面（列數、欄數相同），避開只交自己那幾列的短版、自己插欄的檔案
@@ -279,7 +270,6 @@ async function ps_buildFill() {
     }));
     ps_checkSheet(wb, plan.checks);
     wb.calcProperties.fullCalcOnLoad = true; // 合計、執行率等公式打開時重算
-    ps_flattenShared(ws);
     return wb.xlsx.writeBuffer();
 }
 
@@ -404,7 +394,10 @@ async function ps_buildStack() {
     const footer = [];
     for (let r = notes; r <= ws.rowCount; r++) { ps_copyRow(ws, r, keep, footer.length + 1, cols); footer.push(r); }
     (ws.model.merges || []).forEach(m => { if (+m.split(':')[0].replace(/\D/g, '') > total) ws.unMergeCells(m); });
-    ws.spliceRows(total + 1, ws.rowCount - total);
+    // 刪掉合計列以下的列。ExcelJS 的 spliceRows 在「要刪的範圍剛好到最後一列」時是空操作
+    // （start + count 超過最後一列就整個 if 不進去），所以從最下面一列一列刪，
+    // 原本一次 spliceRows(total+1, rowCount-total) 會留下範本原有的基金列，貼完變成底部重複。
+    for (let r = ws.rowCount; r > total; r--) ws.spliceRows(r, 1);
 
     let r = total + 1;
     const placed = []; // { r, kind: 'head'|'item', level }
@@ -450,7 +443,6 @@ async function ps_buildStack() {
         fill(p.r, p.r + 1, next ? next.r - 1 : last);
     });
     ps_checkSheet(wb, ps_stackChecks());
-    ps_flattenShared(ws);
     return wb.xlsx.writeBuffer();
 }
 
