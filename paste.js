@@ -3,8 +3,8 @@
 // 小計：範本「合計」列有 COUNTIF 的欄重算勾選數、有「共…案」的欄重算案數；主管列算到下一個主管，基金列算到下一個標題列
 // ponytail: 提案列＝第 2 欄（提案序號）有填、標題列＝第 1 欄有填且第 2 欄空白，是照協商彙總表的版面寫的；別的版面要另訂規則
 
-let ps_base = null;   // { name, buf, fromFile }：fromFile = 版面取自第一個拖入的回傳檔（沒有存好的範本）
-let ps_files = [];    // [{ file, org, rank, wb, ws, rows }]
+let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile = 版面取自第一個拖入的回傳檔（沒有指定範本）
+let ps_files = [];    // [{ file, org, rank, wb, ws, rows }]；順序就是貼上順序，可手動調整
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
 
@@ -63,11 +63,19 @@ async function ps_loadBase(name) {
     if (/[\\/]|\.\./.test(name)) throw new Error('範本名稱不合法：' + name);
     const res = await fetch('forms/' + encodeURIComponent(name) + '.xlsx', { cache: 'no-cache' });
     if (!res.ok) throw new Error(`找不到空白 Excel「forms/${name}.xlsx」`);
-    ps_setBase(name, await res.arrayBuffer());
+    await ps_setBase(name, await res.arrayBuffer());
 }
 
-function ps_setBase(name, buf, fromFile = false) {
-    ps_base = { name, buf, fromFile };
+// 換版面後，已讀入的檔案依新版面重新挑工作表與要貼的列
+async function ps_setBase(name, buf, fromFile = false) {
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(buf);
+    const bws = ps_sheet(book), bl = ps_layout(bws);
+    // 空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
+    const placeholders = new Set();
+    if (!fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
+    ps_base = { name, buf, fromFile, sheet: bws.name, placeholders };
+    ps_files.forEach(f => { f.ws = f.wb.getWorksheet(bws.name) || ps_sheet(f.wb); f.rows = ps_pickRows(f.ws, placeholders); });
     // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）
     const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[wb.SheetNames.find((_, i) => !wb.Workbook?.Sheets?.[i]?.Hidden) || wb.SheetNames[0]];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
@@ -78,30 +86,27 @@ function ps_setBase(name, buf, fromFile = false) {
 async function ps_addFiles(files) {
     const notes = [];
     const first = files.find(f => /\.xlsx$/i.test(f.name));
-    if (!ps_base && first) ps_setBase(first.name.replace(/\.[^.]+$/, ''), await first.arrayBuffer(), true);
+    if (!ps_base && first) await ps_setBase(first.name.replace(/\.[^.]+$/, ''), await first.arrayBuffer(), true);
     if (!ps_base) { ps_render(['請拖入 .xlsx 檔']); return; }
-    const base = new ExcelJS.Workbook();
-    await base.xlsx.load(ps_base.buf);
-    const bws = ps_sheet(base), bl = ps_layout(bws);
-    // 存好的空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
-    const placeholders = new Set();
-    if (!ps_base.fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
+    const { sheet, placeholders } = ps_base;
     for (const file of files) {
         if (!/\.xlsx$/i.test(file.name)) { notes.push(`${file.name}：不是 .xlsx，略過`); continue; }
         try {
             const wb = new ExcelJS.Workbook();
             await wb.xlsx.load(await file.arrayBuffer());
-            let ws = wb.getWorksheet(bws.name);
-            if (!ws) { ws = ps_sheet(wb); notes.push(`${file.name}：沒有「${bws.name}」工作表，改讀「${ws.name}」`); }
+            let ws = wb.getWorksheet(sheet);
+            if (!ws) { ws = ps_sheet(wb); notes.push(`${file.name}：沒有「${sheet}」工作表，改讀「${ws.name}」`); }
             const stem = file.name.replace(/\.[^.]+$/, '');
             const hits = fb_detectOrgs(stem, ps_orgs.sortOrder, ps_orgs.aliasMap);
             if (hits.length !== 1) notes.push(`${file.name}：${hits.length ? '檔名含多個機關（' + hits.join('、') + '）' : '檔名認不出機關'}，排在最後`);
             const org = hits.length === 1 ? hits[0] : stem;
-            ps_files = ps_files.filter(f => f.org !== org || hits.length !== 1);
-            ps_files.push({ file: file.name, org, rank: hits.length === 1 ? ps_orgs.sortOrder.indexOf(org) : Infinity, ws, rows: ps_pickRows(ws, placeholders) });
+            const entry = { file: file.name, org, rank: hits.length === 1 ? ps_orgs.sortOrder.indexOf(org) : Infinity, wb, ws, rows: ps_pickRows(ws, placeholders) };
+            // 同機關重複：原位置換掉；新的依標準順序插入，不打亂已手動調整的順序
+            const dup = hits.length === 1 ? ps_files.findIndex(f => f.org === org) : -1;
+            if (dup >= 0) ps_files[dup] = entry;
+            else { const at = ps_files.findIndex(f => f.rank > entry.rank); ps_files.splice(at < 0 ? ps_files.length : at, 0, entry); }
         } catch (e) { notes.push(`${file.name}：${e.message}`); }
     }
-    ps_files.sort((a, b) => a.rank - b.rank); // 穩定排序：認不出的依拖入順序排在最後
     ps_render(notes);
 }
 
@@ -157,10 +162,14 @@ async function ps_build() {
 
 function ps_render(notes = []) {
     const $ = id => document.getElementById(id);
-    $('ps-list').innerHTML = ps_files.map((f, i) => `<tr><td>${i + 1}</td><td class="text-left">${ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td><td>${f.rows.length}</td></tr>`).join('');
+    const n = ps_files.length;
+    $('ps-list').innerHTML = ps_files.map((f, i) => `<tr><td>${i + 1}</td><td class="text-left">${ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td><td>${f.rows.length}</td>
+        <td class="whitespace-nowrap"><button class="btn btn-sm" data-move="${i}" data-d="-1" aria-label="上移 ${ps_esc(f.org)}"${i ? '' : ' disabled'}>↑</button>
+            <button class="btn btn-sm" data-move="${i}" data-d="1" aria-label="下移 ${ps_esc(f.org)}"${i < n - 1 ? '' : ' disabled'}>↓</button>
+            <button class="btn btn-sm btn-danger" data-remove="${i}" aria-label="移除 ${ps_esc(f.org)}">移除</button></td></tr>`).join('');
     $('ps-result').classList.toggle('hidden', !ps_files.length);
     $('ps-btn-xlsx').disabled = !ps_files.length;
-    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依第一個檔案「${ps_base.name}」的版面` : ps_base.name) : '依第一個拖入的檔案';
+    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依第一個檔案「${ps_base.name}」` : `範本「${ps_base.name}」`) : '依第一個拖入的檔案（或按「指定範本檔」）';
     $('ps-msg').textContent = (ps_files.length ? `已讀入 ${ps_files.length} 份，共 ${ps_files.reduce((n, f) => n + f.rows.length, 0)} 列。` : '尚未匯入檔案。') + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
 }
 
@@ -179,6 +188,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
     drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); ps_addFiles([...e.dataTransfer.files]); });
+    const tpl = $('ps-tpl-file');
+    $('ps-btn-tpl').onclick = () => tpl.click();
+    tpl.onchange = async () => {
+        const f = tpl.files[0]; tpl.value = '';
+        if (!f) return;
+        try { await ps_setBase(f.name.replace(/\.[^.]+$/, ''), await f.arrayBuffer()); ps_render(); } catch (e) { ps_render([`${f.name}：${e.message}`]); }
+    };
+    $('ps-list').addEventListener('click', e => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.remove) ps_files.splice(+b.dataset.remove, 1);
+        else { const i = +b.dataset.move, j = i + +b.dataset.d; [ps_files[i], ps_files[j]] = [ps_files[j], ps_files[i]]; }
+        ps_render();
+    });
     $('ps-btn-clear').onclick = () => { ps_files = []; if (ps_base?.fromFile) ps_base = null; ps_render(); };
     $('ps-btn-xlsx').onclick = async () => {
         const buf = await ps_build();
