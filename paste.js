@@ -14,7 +14,7 @@ let ps_files = [];    // [{ file, org, rank, buf, wb, ws, rows, pinned, tpl }]�
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
 let ps_order = null;  // 自訂順序清單（每行一個基金或機關名稱，可用簡稱）；null = 標準基金清單
-let ps_mode = 'auto'; // 'auto' | 'stack' 接續貼上 | 'fill' 依項目填入
+let ps_mode = 'stack'; // 'stack' 接續貼上（預設，大多數調查表）| 'fill' 依項目填入（每份都有全部基金的表，手動切換）
 
 const ps_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const ps_text = c => String(c?.text ?? '').trim();
@@ -161,16 +161,7 @@ function ps_items(ws, key = 1) {
     return out;
 }
 
-// 範本有 5 個以上項目、且一半以上的檔案有範本一半以上的項目 → 依項目填入
-function ps_autoMode() {
-    const data = ps_files.filter(f => !f.tpl);
-    if (!ps_base || !data.length) return 'stack';
-    const names = new Set(ps_items(ps_base.ws).map(i => i.a));
-    if (names.size < 5) return 'stack';
-    const share = data.filter(f => f.cmap.key && ps_items(f.ws, f.cmap.key).filter(i => names.has(i.a)).length >= names.size / 2).length;
-    return share >= data.length / 2 ? 'fill' : 'stack';
-}
-const ps_effMode = () => ps_mode === 'auto' ? ps_autoMode() : ps_mode;
+
 
 // 各檔要填進範本的值與查對清單：{ items, fills: [{ r, data: {欄: 值}, flag }], checks: [[類別, 項目, 檔案, 說明]], filled: Map(檔案 → 列數) }
 function ps_fillPlan() {
@@ -351,7 +342,7 @@ const ps_orderChecks = () => !ps_order ? [] : [
 // 依清單重排：手動調過的順序回到清單順序（範本留在最上面，同名次維持原順序）
 const ps_resort = () => { ps_files.sort((a, b) => a.rank - b.rank); };
 
-const ps_build = () => ps_effMode() === 'fill' ? ps_buildFill() : ps_buildStack();
+const ps_build = () => ps_mode === 'fill' ? ps_buildFill() : ps_buildStack();
 
 async function ps_buildStack() {
     const wb = new ExcelJS.Workbook();
@@ -406,7 +397,7 @@ async function ps_buildStack() {
 
 function ps_render(notes = []) {
     const $ = id => document.getElementById(id);
-    const n = ps_files.length, mode = ps_effMode();
+    const n = ps_files.length, mode = ps_mode;
     const plan = ps_base && mode === 'fill' ? ps_fillPlan() : null;
     const count = f => plan ? plan.filled.get(f) : f.rows.length;
     const sheets = f => f.wb.worksheets.filter(w => w.state === 'visible' || w === f.ws)
@@ -425,7 +416,6 @@ function ps_render(notes = []) {
     $('ps-btn-xlsx').disabled = !data.length;
     $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依多數檔案共用的版面（「${ps_base.name}」），可在順序表勾選範本` : `範本「${ps_base.name}」・工作表「${ps_base.sheet}」`) : '拖入檔案後在順序表勾選一份當範本；沒勾選就用多數檔案共用的版面';
     const checks = plan ? plan.checks : ps_stackChecks();
-    $('ps-mode-auto').textContent = ps_autoMode() === 'fill' ? '依項目填入' : '接續貼上';
     $('ps-count-head').textContent = mode === 'fill' ? '填了幾列' : '貼上列數';
     $('ps-check').classList.toggle('hidden', !checks.length);
     $('ps-check-title').textContent = `查對（${checks.length}）`;
