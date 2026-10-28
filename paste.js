@@ -423,19 +423,26 @@ function ps_render(notes = []) {
     $('ps-msg').textContent = (data.length ? `已讀入 ${data.length} 份，${mode === 'fill' ? `依項目填入 ${plan.fills.length} 個項目` : `共 ${data.reduce((n, f) => n + f.rows.length, 0)} 列`}${checks.length ? `，查對 ${checks.length} 項` : ''}。` : '尚未匯入檔案。') + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
 }
 
+// 檔案拖到頁面任何地方都收下：不讓瀏覽器把檔案打開或下載（放在最外層，初始化出錯也照樣擋住）
+if (typeof window !== 'undefined') {
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.files.length) ps_addFiles([...e.dataTransfer.files]); });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const $ = id => document.getElementById(id);
+    // 先綁拖放與選檔，後面讀標準名單出錯也能用
+    const drop = $('ps-drop'), input = $('ps-file');
+    drop.onclick = () => input.click();
+    input.onchange = () => { ps_addFiles([...input.files]); input.value = ''; };
+    drop.addEventListener('dragover', () => drop.classList.add('dragover'));
+    drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+    drop.addEventListener('drop', () => drop.classList.remove('dragover'));
     try {
         ps_orgs = await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         ps_orgs.sortOrder ||= []; ps_orgs.aliasMap ||= {};
         ps_render();
-    } catch (e) { $('ps-msg').textContent = e.message; return; }
-    const drop = $('ps-drop'), input = $('ps-file');
-    drop.onclick = () => input.click();
-    input.onchange = () => { ps_addFiles([...input.files]); input.value = ''; };
-    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
-    drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
-    drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); ps_addFiles([...e.dataTransfer.files]); });
+    } catch (e) { $('ps-msg').textContent = e.message; }
     // 勾範本（只能一個）、改工作表、移動、移除都可能換版面，一律重算
     $('ps-list').addEventListener('change', async e => {
         const f = ps_files[+e.target.dataset.i];

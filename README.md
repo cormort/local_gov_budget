@@ -50,6 +50,7 @@
 npm install
 npm test            # 公式轉換與求值、貼表的自我檢查
 npm run build:css   # 由 src/input.css 重建 budget-style.css（掃描根目錄所有 *.html、*.js）
+# 改了 *.js 或 budget-style.css 之後，把各 *.html 引用的 ?v= 換成新的日期（GitHub Pages 快取 10 分鐘，不換會新頁面配到舊程式）
 python3 -m http.server 8000   # http://localhost:8000/
 ```
 
