@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,set:(b,o)=>{ps_base=b;ps_orgs=o}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_base=null;if(b)await ps_setBase(b.name,b.buf)}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
@@ -21,7 +21,8 @@ async function filled(rows) {
     return wb.xlsx.writeBuffer();
 }
 (async () => {
-    ps_t.set({ name, buf }, JSON.parse(fs.readFileSync('surveys/orgs.json')));
+    const orgs = JSON.parse(fs.readFileSync('surveys/orgs.json'));
+    await ps_t.set({ name, buf }, orgs);
     const file = async (n, rows) => { const b = await filled(rows); return { name: n, arrayBuffer: async () => b }; };
     // 故意先拖通傳會，輸出應依標準名單把法務部排前面
     await ps_t.ps_addFiles([await file('通訊傳播監督管理基金.xlsx', [11, 12, 13, 14, 15]), await file('法務部矯正機關作業基金.xlsx', [8, 9, 10])]);
@@ -39,12 +40,21 @@ async function filled(rows) {
     assert.ok(ws.model.merges.includes('A8:D8'), '標題列的合併儲存格照搬');
 
     // 沒有存好的範本：版面取自第一個拖入的檔案（通傳會），結果一樣依標準順序、合計重算
-    ps_t.set(null, JSON.parse(fs.readFileSync('surveys/orgs.json')));
+    await ps_t.set(null, orgs);
     await ps_t.ps_addFiles([await file('通訊傳播監督管理基金.xlsx', [11, 12, 13, 14, 15]), await file('法務部矯正機關作業基金.xlsx', [8, 9, 10])]);
     const out2 = new ExcelJS.Workbook();
     await out2.xlsx.load(await ps_t.ps_build());
     const w2 = out2.worksheets[0], a2 = r => String(w2.getRow(r).getCell(1).text).trim();
     assert.deepStrictEqual([7, 8, 11, 12].map(a2), ['合計', '法務部主管', '通傳會主管', '通訊傳播監督管理基金'], '回傳檔自己的主管、基金列不能被當成佔位列略過');
     assert.strictEqual(w2.getCell('F7').value, '共4案');
+
+    // 手動調整順序：通傳會移到前面，之後再拖入的檔案不會把順序排回去
+    const fl = ps_t.files();
+    [fl[0], fl[1]] = [fl[1], fl[0]];
+    await ps_t.ps_addFiles([await file('通訊傳播監督管理基金.xlsx', [11, 12, 13])]); // 同機關重拖：原位置換掉
+    assert.deepStrictEqual(ps_t.files().map(f => f.org), ['通訊傳播監督管理基金', '法務部矯正機關作業基金']);
+    const out3 = new ExcelJS.Workbook();
+    await out3.xlsx.load(await ps_t.ps_build());
+    assert.strictEqual(String(out3.worksheets[0].getCell('A8').text).trim(), '通傳會主管');
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });

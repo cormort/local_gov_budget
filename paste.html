@@ -25,6 +25,8 @@
             </div>
         </div>
         <div class="app-actions">
+            <button id="ps-btn-tpl" class="btn" title="選一份空白 Excel 當版面（只用來取表頭、說明列與格式，不會貼進去）">指定範本檔</button>
+            <input type="file" id="ps-tpl-file" class="hidden" accept=".xlsx">
             <button id="ps-btn-xlsx" class="btn btn-primary" disabled>下載彙總表</button>
             <button id="ps-btn-clear" class="btn btn-danger">清空</button>
         </div>
@@ -34,16 +36,17 @@
 <div class="max-w-[98%] mx-auto p-4">
     <div id="ps-drop" class="drop-zone rounded-md px-6 py-8 cursor-pointer mb-4">
         <p class="font-bold text-slate-800 mb-1">把各機關寄回的 Excel 一次拖到這裡，或點此選擇（可多選）</p>
-        <p class="text-slate-500 text-sm">不需要先上傳範本：版面依第一個拖入的檔案（從範本庫開啟則依該範本）。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式，並重算合計、主管、基金列的案數與勾選數；同一機關重複拖入以後者為準</p>
+        <p class="text-slate-500 text-sm">不需要先上傳範本：版面依第一個拖入的檔案，或按「指定範本檔」選空白 Excel。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式，並重算合計、主管、基金列的案數與勾選數；同一機關重複拖入以後者為準</p>
         <input type="file" id="ps-file" class="hidden" accept=".xlsx" multiple>
     </div>
 
     <div id="ps-msg" class="text-sm text-slate-500 mb-4">載入範本中…</div>
 
     <div id="ps-result" class="hidden section-card">
-        <h2 class="text-lg font-bold text-slate-800 mb-3">貼表順序</h2>
+        <h2 class="text-lg font-bold text-slate-800 mb-1">貼表順序</h2>
+        <p class="text-sm text-slate-500 mb-3">預設依標準機關順序；可用 ↑ ↓ 調整，下載的彙總表照這個順序貼。</p>
         <div class="overflow-x-auto"><table class="budget-table w-full">
-            <thead><tr><th>順序</th><th>機關</th><th>檔名</th><th>貼上列數</th></tr></thead>
+            <thead><tr><th>順序</th><th>機關</th><th>檔名</th><th>貼上列數</th><th>調整</th></tr></thead>
             <tbody id="ps-list"></tbody>
         </table></div>
     </div>
