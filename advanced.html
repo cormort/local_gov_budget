@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com https://api.github.com;">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <title>進階功能</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="budget-style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="form-builder.js"></script>
+</head>
+<body>
+
+<nav class="app-header md:sticky top-0 z-50">
+    <div class="app-header-inner">
+        <div class="flex items-center gap-2">
+            <a href="./" class="app-back" title="回首頁" aria-label="回首頁">←</a>
+            <div>
+                <h1 class="app-title">進階功能：網頁查填與調查專案</h1>
+                <p class="app-sub">上傳 Excel 範本，自動產生表頭與網頁表單；發起調查、JSON 彙整</p>
+            </div>
+        </div>
+        <div class="app-actions">
+            <button id="fb-btn-xlsx" class="btn">上傳 Excel 範本</button>
+            <input type="file" id="fb-xlsx-file" class="hidden" accept=".xlsx,.xls">
+            <button id="fb-btn-template" class="hidden fb-needs-form btn" title="匯出為固定表單範本，放到 forms/ 資料夾供他人以網址開啟">匯出範本</button>
+            <button id="fb-btn-fill-xlsx" class="hidden btn" title="把已在 Excel 填好的檔案帶入表單（欄名須與表單一致）">匯入已填 Excel</button>
+            <input type="file" id="fb-fill-xlsx-file" class="hidden" accept=".xlsx,.xls">
+            <button id="fb-btn-import" class="btn">匯入 JSON</button>
+            <input type="file" id="fb-json-file" class="hidden" accept=".json">
+            <button id="fb-btn-export" class="hidden fb-needs-form btn btn-primary">匯出 JSON</button>
+            <button id="fb-btn-export-xlsx" class="hidden fb-needs-form btn" title="匯出已填的 Excel（含機關、年度、填表人），也可直接寄給彙整承辦人">匯出 Excel</button>
+            <a id="fb-link-aggregate" href="form-aggregate.html" class="btn" title="匯入各機關回傳的 JSON 彙整">彙整</a>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-[98%] mx-auto p-4">
+    <!-- 承辦入口：沒有 ?form= / ?survey= 也還沒載入範本時顯示（填報人通常從專案連結進來，看不到這區）。四大部分各一個分頁 -->
+    <div id="fb-hub" class="hidden">
+        <div class="tab-bar flex flex-wrap items-end gap-x-1" role="tablist">
+            <button class="fb-tab fb-hub-tab" data-tab="surveys">調查專案</button><button class="fb-tab fb-hub-tab" data-tab="templates">範本庫</button><button class="fb-tab fb-hub-tab" data-tab="fill">查填</button><button class="fb-tab fb-hub-tab" data-tab="agg">彙整</button>
+            <a href="manage.html" class="btn-link ml-auto self-center text-slate-600" title="範本與調查專案的新增、修改、刪除（需要 GitHub 權杖）">管理範本與調查</a>
+        </div>
+
+        <div class="section-card fb-hub-panel" data-tab="surveys">
+            <div class="flex flex-wrap justify-between items-center gap-2 mb-1">
+                <h2 class="text-lg font-bold text-slate-800">調查專案</h2>
+                <a href="manage.html#surveys" class="btn btn-primary">發起新調查</a>
+            </div>
+            <p class="text-sm text-slate-500 mb-2">每次實際收件是一個調查專案：用哪份範本、發起單位、用途、期間、應繳機關。每個專案有自己的查填網址，寄給填報人；收件後按「彙整」。</p>
+            <details class="text-sm text-slate-600 mb-3"><summary class="cursor-pointer text-blue-600">分享連結會變嗎？</summary>
+                <div class="mt-2">查填網址是 <code>…/local_gov_budget/?survey=調查代號</code>。
+                <span class="text-amber-700">如果這個網站是 Fork 到自己帳號的，網址要換成<b>自己的帳號與專案名稱</b>（<code>https://你的帳號.github.io/你的專案名稱/?survey=調查代號</code>），不要沿用原作者的網址；用「複製查填連結」按鈕複製的會自動是目前這個網站的網址。</span>
+                <table class="budget-table mt-2 text-xs"><thead><tr><th>做了什麼</th><th>連結</th></tr></thead><tbody>
+                    <tr><td class="text-left px-2">修改專案的名稱、發起單位、用途、期間、應繳機關，或設為隱藏</td><td class="px-2">不變</td></tr>
+                    <tr><td class="text-left px-2">修改專案用的範本內容，用<b>同一個檔名</b>重新上傳</td><td class="px-2">不變（填報人開到的是新版）</td></tr>
+                    <tr><td class="text-left px-2"><b>刪除</b>專案，或刪除它用的範本</td><td class="px-2 text-red-600">失效</td></tr>
+                    <tr><td class="text-left px-2">GitHub 帳號或專案名稱改了</td><td class="px-2 text-red-600">網址前半段都會變</td></tr>
+                </tbody></table>
+                <p class="mt-2">同一份範本每年再調查一次，就再發起一個新專案（例如代號「114決算購建」「115決算購建」），各有各的網址與繳交清單，彙整時也不會混在一起。</p></div>
+            </details>
+            <div class="flex flex-wrap gap-2 mb-2">
+                <input type="search" id="fb-sv-q" aria-label="搜尋調查" class="border rounded p-2 text-sm flex-1 min-w-[12rem]" placeholder="搜尋調查名稱、代號、範本、發起單位、用途、年度">
+                <select id="fb-sv-status" aria-label="調查狀態" class="border rounded p-2 text-sm"><option value="">全部狀態</option><option value="open">進行中</option><option value="upcoming">未開始</option><option value="closed">已結束</option></select>
+            </div>
+            <ul id="fb-survey-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+        </div>
+
+        <div class="fb-hub-panel" data-tab="templates">
+            <div class="section-card">
+                <h2 class="text-lg font-bold text-slate-800 mb-1">建立新範本</h2>
+                <p class="text-sm text-slate-600 mb-3">上傳 Excel 範本，自動產生表頭與表單，再按「匯出範本」發布到範本庫（或到管理頁直接上傳）。</p>
+                <button id="fb-hub-new" class="btn btn-primary">上傳 Excel 範本</button>
+                <details class="text-xs text-slate-500 mt-3"><summary class="cursor-pointer text-blue-600">範本規則</summary><p class="mt-1"><b>範本規則：</b>第一個非空白列為表頭（可用合併儲存格做兩層表頭，欄名會成為「預算數－原編」；只有一格字的表名、單位列會自動略過），第一欄為項目名稱。第二列起的資料會帶入為預設項目；
+        儲存格若是公式（如 <code>=B2-C2</code>、<code>=SUM(B2:D2)</code>，限同一列的加減乘除），該欄即成為自動計算欄。項目名稱以「一、」「（一）」「1.」「（1）」編號時，上層項目的數值自動等於下層加總；沒有編號的合計、小計公式列會略過，由表尾合計自動計算。空白欄預設為數值欄；要文字欄請在任一資料列填入文字。</p></details>
+            </div>
+            <div id="fb-library" class="section-card">
+                <h2 class="text-lg font-bold text-slate-800 mb-1">範本庫</h2>
+                <p class="text-sm text-slate-500 mb-2">可重複使用的表單（欄位、項目、公式）。要收件時，按「以此範本發起調查」建立調查專案。</p>
+                <div class="flex flex-wrap gap-2 mb-2">
+                    <input type="search" id="fb-lib-q" aria-label="搜尋範本" class="border rounded p-2 text-sm flex-1 min-w-[12rem]" placeholder="搜尋範本名稱、說明、分類（空白分隔多個字）">
+                    <select id="fb-lib-cat" aria-label="分類" class="border rounded p-2 text-sm"><option value="">全部分類</option></select>
+                </div>
+                <ul id="fb-library-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+            </div>
+        </div>
+
+        <div class="section-card fb-hub-panel" data-tab="fill">
+            <h2 class="text-lg font-bold text-slate-800 mb-1">查填</h2>
+            <p class="text-sm text-slate-500 mb-3">填報人請用承辦寄來的連結；也可以在這裡選進行中的調查開始填寫。填到一半的資料會自動存在這台電腦，重新開啟同一份調查時可還原。</p>
+            <ul id="fb-fill-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+            <p class="text-sm text-slate-500 mt-3">已有匯出的 JSON 要繼續填？<button id="fb-hub-import" class="btn-link">匯入 JSON</button></p>
+        </div>
+
+        <div class="section-card fb-hub-panel" data-tab="agg">
+            <h2 class="text-lg font-bold text-slate-800 mb-1">彙整</h2>
+            <p class="text-sm text-slate-500 mb-3">選調查專案進入彙整頁（已載入範本與應繳名單），把各機關回傳的 JSON／Excel 一次拖入；別的調查的檔案會被擋下。</p>
+            <ul id="fb-agg-list"><li class="py-2 text-slate-500">讀取中…</li></ul>
+            <a href="form-aggregate.html" class="btn-link text-slate-600 underline">或開啟空白彙整頁（沒有建立專案的表單）</a>
+        </div>
+    </div>
+
+    <!-- 表單：上傳範本、匯入 JSON 或從 ?form= 開啟後才顯示 -->
+    <div id="fb-work" class="hidden">
+    <div id="fb-survey-bar" class="hidden excel-guide !text-sm"></div>
+    <div class="excel-guide">
+        <b>填寫：</b>可從 Excel 選取多格複製，點表格任一格按 Ctrl+V（Mac：⌘V）貼上，會從該格往右、往下填入，列不夠自動新增，公式欄自動跳過。
+    </div>
+
+    <div class="section-card grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div><label for="fb-title" class="meta-label">表單名稱</label><input type="text" id="fb-title" class="meta-input" readonly></div>
+        <div><label for="fb-org" class="meta-label">機關名稱</label><input type="text" id="fb-org" list="fb-orgs" class="meta-input"></div>
+        <div><label for="fb-year" class="meta-label">年度</label><input type="number" id="fb-year" class="meta-input"></div>
+        <div><label for="fb-user" class="meta-label">填表人</label><input type="text" id="fb-user" class="meta-input"></div>
+    </div>
+
+    </div>
+
+    <div id="fb-sheet-box" class="hidden text-sm text-slate-600 mb-2 excel-guide">這個 Excel 有多個工作表，勾選要填寫的（每個是一個分頁）：
+        <div id="fb-sheet-list" class="mt-1"></div></div>
+    <div id="fb-draft" class="hidden excel-guide">這台電腦有這份表單上次填到一半的草稿（<span id="fb-draft-time"></span>）。
+        <button id="fb-draft-restore" class="btn btn-primary btn-sm ml-2">還原草稿</button>
+        <button id="fb-draft-discard" class="btn btn-sm ml-1">捨棄</button>
+        <span class="text-xs text-slate-500 ml-2">（直接開始填寫會取代這份草稿）</span></div>
+    <div id="fb-msg" class="text-sm text-slate-500 mb-4"></div>
+
+    <div id="fb-publish" class="excel-guide hidden">
+        <p class="font-bold mb-2">範本「<span id="fb-publish-file"></span>」已下載，接著發布：</p>
+        <p class="mb-2">1. 點右邊按鈕開啟 GitHub 上傳頁，把剛下載的檔案拖進去，按「Commit changes」（同名檔案會直接覆蓋成新版）。檔名須正好是「<span id="fb-publish-file2"></span>」，若下載資料夾已有同名檔被自動改成「…(1).json」，請先改回。（也可以直接上傳原本的 Excel 檔，網址名稱就是 Excel 檔名；同名的 .json 與 .xlsx 都在時以 .json 為準。）
+            <a id="fb-publish-github" target="_blank" rel="noopener" class="btn btn-primary btn-sm">前往 GitHub 發布 ↗</a></p>
+        <p class="mb-2">2. 約 1 分鐘後範本出現在範本庫，按「以此範本發起調查」建立調查專案（填發起單位、期間、應繳機關），再把<b>調查的查填連結</b>寄給填報人。不建專案、只想先看看，可用下面的範本預覽連結：</p>
+        <div class="flex gap-2 items-center">
+            <input type="text" id="fb-share-url" class="border w-full p-2 rounded text-sm" readonly>
+            <button id="fb-btn-copy" class="btn">複製連結</button>
+        </div>
+        <p class="mt-3">3. 習慣用 Excel 的填報人：到調查專案下載「查填用 Excel」（含調查代號），在 Excel 填好後直接寄回彙整，或從查填連結「匯入已填 Excel」再匯出。這裡的按鈕是沒有調查代號的版本：
+            <button id="fb-btn-blank-xlsx" class="btn btn-sm">下載查填用 Excel</button></p>
+    </div>
+
+    <div id="fb-tabs" class="flex flex-wrap gap-1"></div>
+    <div id="fb-card" class="section-card hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h2 id="fb-heading" class="text-lg font-bold text-slate-800"></h2>
+            <button id="fb-btn-add" class="btn btn-sm">＋ 新增一列</button>
+        </div>
+        <p id="fb-caption" class="text-sm text-slate-500 mb-2 whitespace-pre-line"></p>
+        <div class="overflow-x-auto">
+            <table class="budget-table w-full">
+                <thead id="fb-thead"></thead>
+                <tbody id="fb-tbody"></tbody>
+                <tfoot id="fb-tfoot" class="total-row"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<datalist id="fb-orgs"></datalist>
+</body>
+</html>

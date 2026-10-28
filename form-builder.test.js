@@ -87,7 +87,7 @@ const rcols = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C'
 assert.deepStrictEqual(rollup([{ A: '一、甲', B: '' }, { A: '（一）a', B: 1 }, { A: '1.x', B: 2 }, { A: '2.y', B: '3' }, { A: '二、乙', B: 9 }], rcols).map(r => r.B), [5, 5, 2, '3', 9]);
 const { fb_libraryEntries: lib } = require('./form-builder.js');
 assert.deepStrictEqual(lib([{ name: 'README.md', type: 'file' }, { name: '乙表.xlsx', type: 'file' }, { name: '甲表.xlsx', type: 'file' }, { name: '甲表.json', type: 'file' }, { name: 'old', type: 'dir' }]),
-    [{ name: '乙表', file: '乙表.xlsx' }, { name: '甲表', file: '甲表.json' }].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')));
+    [{ name: '乙表', file: '乙表.xlsx' }, { name: '甲表', file: '甲表.json', xlsx: '甲表.xlsx' }].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')));
 // 彙整檢查：清單型（各填各的）才抓重複；經費表型（大家填同一批項目）不算
 const { fb_itemOwners: owners, fb_sameNums: same } = require('./form-builder.js');
 const oc = [{ key: 'A', type: 'text' }, { key: 'B', type: 'num' }, { key: 'C', type: 'num', formula: 'B*2' }];
