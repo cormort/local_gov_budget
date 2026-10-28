@@ -1,12 +1,17 @@
 // 貼表：把各機關寄回的 Excel（照空白範本填寫）依標準機關順序一列接一列貼到範本下方，保留原格式，匯出一份彙總表
-// 版面：?form=名稱 時用 forms/名稱.xlsx，沒有就用第一個拖入的檔案；取第一個沒隱藏的工作表，表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
+// 版面：順序表勾選的範本檔（不貼入）＞ ?form=名稱 的 forms/名稱.xlsx ＞ 第一個檔案；取第一個沒隱藏的工作表（範本檔可改選），表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
 // 小計：範本「合計」列有 COUNTIF 的欄重算勾選數、有「共…案」的欄重算案數；主管列算到下一個主管，基金列算到下一個標題列
 // ponytail: 提案列＝第 2 欄（提案序號）有填、標題列＝第 1 欄有填且第 2 欄空白，是照協商彙總表的版面寫的；別的版面要另訂規則
+// 兩種貼法：接續貼上（協商表：各檔的列接在一起）、依項目填入（決算表：每份都有全部基金，各填自己那一列 → 依第一欄名稱對位填進範本）
+// 依項目填入：欄依表頭文字對位（有人插欄也對得上）；同一欄同一個非零數字出現在 3 列以上視為往下拖曳的錯誤不採用；
+// 一列有多份檔案填時，採檔名認得出是該基金的那份；只有別的機關填的照填但標淺橘色；對不上的、沒人填的都列在「查對」
 
-let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile = 版面取自第一個拖入的回傳檔（沒有指定範本）
-let ps_files = [];    // [{ file, org, rank, wb, ws, rows, pinned }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表
+let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile = 版面取自第一個回傳檔（沒有範本）
+let ps_stored = null; // ?form= 的範本 { name, buf }
+let ps_files = [];    // [{ file, org, rank, buf, wb, ws, rows, pinned, tpl }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表；tpl = 勾選為範本（不貼入）
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
+let ps_mode = 'auto'; // 'auto' | 'stack' 接續貼上 | 'fill' 依項目填入
 
 const ps_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const ps_text = c => String(c?.text ?? '').trim();
@@ -14,6 +19,11 @@ const ps_slave = c => c.isMerged && c.master.address !== c.address; // 合併儲
 const ps_own = c => ps_slave(c) ? '' : ps_text(c);
 const ps_sheet = wb => wb.worksheets.find(w => w.state === 'visible') || wb.worksheets[0];
 const ps_filler = a => /ＯＯ|ＸＸ|○○|^【範例/.test(a); // 空白表留下的佔位列（ＯＯ主管、ＸＸ基金、範例）
+const ps_stem = n => n.replace(/\.[^.]+$/, '');
+const ps_cellText = c => { const v = c?.value; return String(v?.richText ? v.richText.map(t => t.text).join('') : c?.text ?? '').trim(); };
+const ps_isFormula = v => !!v && typeof v === 'object' && ('formula' in v || 'sharedFormula' in v);
+const ps_key = s => String(s ?? '').replace(/\s/g, '');
+const ps_std = name => { const h = fb_detectOrgs(name, ps_orgs.sortOrder, ps_orgs.aliasMap); return h.length === 1 ? h[0] : null; };
 const ps_value = v => (v && typeof v === 'object' && 'formula' in v) || (v && typeof v === 'object' && 'sharedFormula' in v) ? v.result ?? null : v; // 公式只留值，參照位置貼過來就不對了
 
 // 一個工作表的版面：合計列、說明列起點、欄數
@@ -63,57 +73,200 @@ async function ps_loadBase(name) {
     if (/[\\/]|\.\./.test(name)) throw new Error('範本名稱不合法：' + name);
     const res = await fetch('forms/' + encodeURIComponent(name) + '.xlsx', { cache: 'no-cache' });
     if (!res.ok) throw new Error(`找不到空白 Excel「forms/${name}.xlsx」`);
-    await ps_setBase(name, await res.arrayBuffer());
+    ps_stored = { name, buf: await res.arrayBuffer() };
+}
+
+// 依目前的勾選決定版面
+async function ps_rebase() {
+    // 沒有範本時取最多檔案共用的版面（列數、欄數相同），避開只交自己那幾列的短版、自己插欄的檔案
+    const data = ps_files.filter(f => !f.tpl), shape = f => f.ws.rowCount + 'x' + f.ws.columnCount;
+    const n = {}; data.forEach(f => { n[shape(f)] = (n[shape(f)] || 0) + 1; });
+    const t = ps_files.find(f => f.tpl), first = data.reduce((a, f) => (!a || n[shape(f)] > n[shape(a)] ? f : a), null);
+    if (t) await ps_setBase(ps_stem(t.file), t.buf, false, t.pinned);
+    else if (ps_stored) await ps_setBase(ps_stored.name, ps_stored.buf);
+    else if (first) await ps_setBase(ps_stem(first.file), first.buf, true);
+    else ps_base = null;
 }
 
 // 換版面後，已讀入的檔案依新版面重新挑工作表與要貼的列
-async function ps_setBase(name, buf, fromFile = false) {
+async function ps_setBase(name, buf, fromFile = false, sheet = null) {
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(buf);
-    const bws = ps_sheet(book), bl = ps_layout(bws);
+    const bws = (sheet && book.getWorksheet(sheet)) || ps_sheet(book), bl = ps_layout(bws);
     // 空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
     const placeholders = new Set();
     if (!fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
-    ps_base = { name, buf, fromFile, sheet: bws.name, placeholders };
+    ps_base = { name, buf, fromFile, sheet: bws.name, placeholders, ws: bws };
     ps_files.forEach(f => { f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb); f.rows = ps_pickRows(f.ws, placeholders); });
     // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）
-    const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[wb.SheetNames.find((_, i) => !wb.Workbook?.Sheets?.[i]?.Hidden) || wb.SheetNames[0]];
+    const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[bws.name];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     const text = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? String(x.w ?? x.v ?? '').trim() : ''; };
-    ps_headEnd = (fb_headerBlock(text, ws['!merges'] || [], range.s.r, range.e.r, range.s.c, range.e.c)?.he ?? -1) + 1;
+    const block = fb_headerBlock(text, ws['!merges'] || [], range.s.r, range.e.r, range.s.c, range.e.c);
+    ps_headEnd = (block?.he ?? -1) + 1;
+    ps_base.headRows = block ? Array.from({ length: block.he - block.hr + 1 }, (_, i) => block.hr + 1 + i) : [1];
+}
+
+// ========== 依項目填入 ==========
+// 表頭文字（多層以 / 串起來）當欄名
+function ps_heads(ws) {
+    const m = new Map();
+    for (let c = 2; c <= ws.columnCount; c++) {
+        const t = ps_base.headRows.map(r => ps_key(ps_cellText(ws.getRow(r).getCell(c)))).join('/');
+        if (t.replace(/\//g, '')) m.set(c, t);
+    }
+    return m;
+}
+
+// 項目列：表頭以下、說明列以上，第一欄有名稱、不是佔位列
+function ps_items(ws) {
+    const out = [], { notes } = ps_layout(ws);
+    for (let r = ps_base.headRows.at(-1) + 1; r < notes; r++) {
+        const a = ps_key(ps_cellText(ws.getRow(r).getCell(1)));
+        if (a && !ps_filler(a)) out.push({ r, a });
+    }
+    return out;
+}
+
+// 範本有 5 個以上項目、且一半以上的檔案有範本一半以上的項目 → 依項目填入
+function ps_autoMode() {
+    const data = ps_files.filter(f => !f.tpl);
+    if (!ps_base || !data.length) return 'stack';
+    const names = new Set(ps_items(ps_base.ws).map(i => i.a));
+    if (names.size < 5) return 'stack';
+    const share = data.filter(f => ps_items(f.ws).filter(i => names.has(i.a)).length >= names.size / 2).length;
+    return share >= data.length / 2 ? 'fill' : 'stack';
+}
+const ps_effMode = () => ps_mode === 'auto' ? ps_autoMode() : ps_mode;
+
+// 各檔要填進範本的值與查對清單：{ items, fills: [{ r, data: {欄: 值}, flag }], checks: [[類別, 項目, 檔案, 說明]], filled: Map(檔案 → 列數) }
+function ps_fillPlan() {
+    const bws = ps_base.ws, heads = ps_heads(bws), byHead = new Map([...heads].map(([c, t]) => [t, c]));
+    const items = ps_items(bws).map(i => ({ ...i, std: ps_std(i.a), inputs: [...heads.keys()].filter(c => !ps_isFormula(bws.getRow(i.r).getCell(c).value)), cands: [] }));
+    const find = a => items.find(x => x.a === a) || (ps_std(a) && items.find(x => x.std === ps_std(a)));
+    const checks = [], filled = new Map();
+    const plain = v => { if (v == null || ps_isFormula(v)) return null; if (v.richText) v = v.richText.map(t => t.text).join(''); return typeof v === 'string' && !v.trim() ? null : v; };
+    for (const f of ps_files.filter(f => !f.tpl)) {
+        const fh = ps_heads(f.ws), colMap = {}, rows = ps_items(f.ws);
+        // 欄數跟範本一樣就照位置對（.ods 轉檔後表頭文字會錯位，不能靠欄名）；欄數不同（有人插欄）才依表頭文字對位
+        if (f.ws.columnCount === bws.columnCount) heads.forEach((_, c) => { colMap[c] = c; });
+        else fh.forEach((t, c) => { if (byHead.has(t)) colMap[byHead.get(t)] = c; else checks.push(['範本沒有的欄', t.replace(/^\/+|\/+$/g, ''), f.file, '未採用']); });
+        // 往下拖曳是從最上面那格複製下去：最上面那格保留，下面重複的不採用
+        const count = {}, top = {};
+        rows.forEach(i => fh.forEach((_, c) => { const v = f.ws.getRow(i.r).getCell(c).value; if (typeof v === 'number' && v) { const k = c + ':' + v; count[k] = (count[k] || 0) + 1; top[k] ??= i.r; } }));
+        const noise = (c, v, r) => typeof v === 'number' && count[c + ':' + v] >= 3 && top[c + ':' + v] !== r;
+        Object.entries(count).filter(([, n]) => n >= 3).forEach(([k, n]) => checks.push(['重複數字（疑似往下拖曳）', fh.get(+k.split(':')[0]).replace(/^\/+|\/+$/g, ''), f.file, `${Number(k.split(':')[1]).toLocaleString()} 出現在 ${n} 列，只採用最上面一列`]));
+        let n = 0;
+        rows.forEach(i => {
+            const it = find(i.a), data = {};
+            (it ? it.inputs.filter(c => colMap[c]).map(c => [c, colMap[c]]) : [...fh.keys()].map(c => [c, c])).forEach(([tc, fc]) => {
+                const v = plain(f.ws.getRow(i.r).getCell(fc).value);
+                if (v != null && !noise(fc, v, i.r)) data[tc] = v;
+            });
+            if (!Object.keys(data).length) return;
+            n++;
+            if (!it) { checks.push(['範本沒有的列', i.a, f.file, '未填入']); return; }
+            it.cands.push({ f, owner: !!it.std && f.owners.includes(it.std), data, key: JSON.stringify(data) });
+        });
+        filled.set(f, n);
+        if (!n) checks.push(['沒有填任何資料', '', f.file, '請確認是否漏填或填在別的工作表']);
+    }
+    const fills = [];
+    items.forEach(it => {
+        const c = it.cands;
+        if (!c.length) { if (it.std) checks.push(['沒有對應到的基金', it.a, '', '沒有檔案填這一列']); return; }
+        const own = c.filter(x => x.owner);
+        const pick = own[0] || (new Set(c.map(x => x.key)).size === 1 ? c[0] : null);
+        if (!pick) { checks.push(['多份檔案填的不同', it.a, c.map(x => x.f.file).join('、'), '未填入，請擇一']); return; }
+        if (!own.length) checks.push(['由別的機關的檔案填入', it.a, c.map(x => x.f.file).join('、'), '已填入並標成淺橘色，請確認']);
+        c.filter(x => x !== pick && x.key !== pick.key).forEach(x => checks.push(['其他檔案也填了這列', it.a, x.f.file, `數字不同，採用「${pick.f.file}」`]));
+        fills.push({ r: it.r, data: pick.data, flag: !own.length && c.map(x => x.f.file).join('、') });
+    });
+    // 依重要性排：沒人填的、別的機關填的、多份不同的先看
+    const order = ['沒有對應到的基金', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
+    checks.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+    return { items, fills, checks, filled };
+}
+
+async function ps_buildFill() {
+    const plan = ps_fillPlan();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(ps_base.buf);
+    const ws = wb.getWorksheet(ps_base.sheet);
+    wb.worksheets.filter(w => w !== ws).forEach(w => wb.removeWorksheet(w.id));
+    // 範本若是回傳檔，先清掉它自己填的，全部由各檔重新填
+    plan.items.forEach(it => it.inputs.forEach(c => { const cell = ws.getRow(it.r).getCell(c); if (!ps_slave(cell)) cell.value = null; }));
+    plan.fills.forEach(({ r, data, flag }) => Object.entries(data).forEach(([c, v]) => {
+        const cell = ws.getRow(r).getCell(+c);
+        cell.value = v;
+        // 淺橘色＋註解：範本本身常用淺黃、淺綠標輸入格，避開
+        // 同格式的格子共用同一個樣式物件，要先複製一份再改，不然整片都變色
+        if (flag) { cell.style = { ...JSON.parse(JSON.stringify(cell.style || {})), fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8CBAD' } } }; cell.note = `由「${flag}」填入，請確認`; }
+    }));
+    ps_checkSheet(wb, plan.checks);
+    wb.calcProperties.fullCalcOnLoad = true; // 合計、執行率等公式打開時重算
+    return wb.xlsx.writeBuffer();
+}
+
+// 接續貼上的查對：檔名認不出機關、沒有列可貼
+const ps_stackChecks = () => ps_files.filter(f => !f.tpl).flatMap(f => [
+    ...(f.owners.length === 1 ? [] : [[f.owners.length ? '檔名含多個機關' : '檔名認不出機關', f.owners.join('、'), f.file, '排在最後，請確認順序']]),
+    ...(f.rows.length ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
+]);
+
+function ps_checkSheet(wb, checks) {
+    if (!checks.length) return;
+    const ck = wb.addWorksheet('查對');
+    ck.addRow(['類別', '項目', '檔案', '說明']).font = { bold: true };
+    checks.forEach(x => ck.addRow(x));
+    [24, 30, 50, 36].forEach((w, i) => { ck.getColumn(i + 1).width = w; });
 }
 
 async function ps_addFiles(files) {
     const notes = [];
-    const first = files.find(f => /\.xlsx$/i.test(f.name));
-    if (!ps_base && first) await ps_setBase(first.name.replace(/\.[^.]+$/, ''), await first.arrayBuffer(), true);
-    if (!ps_base) { ps_render(['請拖入 .xlsx 檔']); return; }
-    const { sheet, placeholders } = ps_base;
     for (const file of files) {
-        if (!/\.xlsx$/i.test(file.name)) { notes.push(`${file.name}：不是 .xlsx，略過`); continue; }
+        if (!/\.(xlsx|xls|ods)$/i.test(file.name)) { notes.push(`${file.name}：不是 Excel／ODS 檔，略過`); continue; }
         try {
+            let buf = await file.arrayBuffer();
+            // .xls、.ods 先轉成 .xlsx 再讀（格式會簡化，數字與文字不變）
+            if (!/\.xlsx$/i.test(file.name)) {
+                const x = XLSX.read(buf, { type: 'array' });
+                // ODS 的工作表名稱可以超過 Excel 上限 31 字，截短才寫得出去
+                // ponytail: 截短後撞名不處理，真的遇到再加編號
+                x.SheetNames = x.SheetNames.map(n => { const t = n.slice(0, 31); if (t !== n) { x.Sheets[t] = x.Sheets[n]; delete x.Sheets[n]; } return t; });
+                (x.Workbook?.Sheets || []).forEach((w, i) => { w.name = x.SheetNames[i]; });
+                // ODS 允許重疊的合併儲存格，Excel 不行：重疊的只留第一個
+                Object.values(x.Sheets).forEach(sh => {
+                    const kept = [], hit = (a, b) => a.s.r <= b.e.r && b.s.r <= a.e.r && a.s.c <= b.e.c && b.s.c <= a.e.c;
+                    (sh['!merges'] || []).forEach(m => { if (!kept.some(k => hit(k, m))) kept.push(m); });
+                    if (sh['!merges']) sh['!merges'] = kept;
+                });
+                buf = XLSX.write(x, { type: 'array', bookType: 'xlsx' });
+            }
             const wb = new ExcelJS.Workbook();
-            await wb.xlsx.load(await file.arrayBuffer());
-            let ws = wb.getWorksheet(sheet);
-            if (!ws) { ws = ps_sheet(wb); notes.push(`${file.name}：沒有「${sheet}」工作表，改讀「${ws.name}」`); }
-            const stem = file.name.replace(/\.[^.]+$/, '');
-            const hits = fb_detectOrgs(stem, ps_orgs.sortOrder, ps_orgs.aliasMap);
-            if (hits.length !== 1) notes.push(`${file.name}：${hits.length ? '檔名含多個機關（' + hits.join('、') + '）' : '檔名認不出機關'}，排在最後`);
+            await wb.xlsx.load(buf);
+            const stem = ps_stem(file.name);
+            // 檔名有「空白」「範本」的預設勾成範本（還沒有範本時），排在最上面
+            const tpl = !ps_files.some(f => f.tpl) && /空白|範本/.test(stem);
+            const hits = tpl ? [] : fb_detectOrgs(stem, ps_orgs.sortOrder, ps_orgs.aliasMap);
             const org = hits.length === 1 ? hits[0] : stem;
-            const entry = { file: file.name, org, rank: hits.length === 1 ? ps_orgs.sortOrder.indexOf(org) : Infinity, wb, ws, rows: ps_pickRows(ws, placeholders) };
+            const entry = { file: file.name, org, owners: hits, rank: tpl ? -1 : hits.length === 1 ? ps_orgs.sortOrder.indexOf(org) : Infinity, buf, wb, ws: ps_sheet(wb), rows: [], tpl };
             // 同機關重複：原位置換掉；新的依標準順序插入，不打亂已手動調整的順序
             const dup = hits.length === 1 ? ps_files.findIndex(f => f.org === org) : -1;
             if (dup >= 0) ps_files[dup] = entry;
             else { const at = ps_files.findIndex(f => f.rank > entry.rank); ps_files.splice(at < 0 ? ps_files.length : at, 0, entry); }
         } catch (e) { notes.push(`${file.name}：${e.message}`); }
     }
+    await ps_rebase();
     ps_render(notes);
 }
 
-async function ps_build() {
+const ps_build = () => ps_effMode() === 'fill' ? ps_buildFill() : ps_buildStack();
+
+async function ps_buildStack() {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(ps_base.buf);
-    const ws = ps_sheet(wb), { total, hasTotal, notes, cols } = ps_layout(ws);
+    const ws = wb.getWorksheet(ps_base.sheet), { total, hasTotal, notes, cols } = ps_layout(ws);
     wb.worksheets.filter(w => w !== ws).forEach(w => wb.removeWorksheet(w.id)); // 往年供參的工作表不帶
     const ps_countCols = [];
     for (let c = 1; c <= cols; c++) for (let r = total; r < notes; r++) {
@@ -130,7 +283,7 @@ async function ps_build() {
 
     let r = total + 1;
     const placed = []; // { r, kind: 'head'|'item', level }
-    ps_files.forEach(f => f.rows.forEach(sr => {
+    ps_files.filter(f => !f.tpl).forEach(f => f.rows.forEach(sr => {
         ps_copyRow(f.ws, sr, ws, r, cols);
         const a = ps_own(ws.getRow(r).getCell(1)), b = ps_own(ws.getRow(r).getCell(2));
         placed.push({ r, kind: b ? 'item' : a ? 'head' : 'item', top: a.endsWith('主管') });
@@ -157,30 +310,44 @@ async function ps_build() {
         const next = placed.slice(i + 1).find(q => q.kind === 'head' && (p.top ? q.top : true));
         fill(p.r, p.r + 1, next ? next.r - 1 : last);
     });
+    ps_checkSheet(wb, ps_stackChecks());
     return wb.xlsx.writeBuffer();
 }
 
 function ps_render(notes = []) {
     const $ = id => document.getElementById(id);
-    const n = ps_files.length;
+    const n = ps_files.length, mode = ps_effMode();
+    const plan = ps_base && mode === 'fill' ? ps_fillPlan() : null;
+    const count = f => plan ? plan.filled.get(f) : f.rows.length;
     const sheets = f => f.wb.worksheets.filter(w => w.state === 'visible' || w === f.ws)
         .map(w => `<option${w === f.ws ? ' selected' : ''}>${ps_esc(w.name)}</option>`).join('');
-    $('ps-list').innerHTML = ps_files.map((f, i) => `<tr><td>${i + 1}</td><td class="text-left">${ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td>
-        <td><select class="ps-sheet text-sm" data-i="${i}" aria-label="${ps_esc(f.org)} 的工作表">${sheets(f)}</select></td><td>${f.rows.length}</td>
+    $('ps-list').innerHTML = ps_files.map((f, i) => `<tr${f.tpl ? ' class="text-slate-500"' : ''}><td>${i + 1}</td>
+        <td><input type="checkbox" class="ps-tpl" data-i="${i}"${f.tpl ? ' checked' : ''} aria-label="以 ${ps_esc(f.file)} 當範本"></td>
+        <td class="text-left">${f.tpl ? '（範本）' : ps_esc(f.org)}</td><td class="text-left">${ps_esc(f.file)}</td>
+        <td><select class="ps-sheet text-sm" data-i="${i}" aria-label="${ps_esc(f.file)} 的工作表">${sheets(f)}</select></td><td>${f.tpl ? '不貼入' : count(f)}</td>
         <td class="whitespace-nowrap"><button class="btn btn-sm" data-move="${i}" data-d="-1" aria-label="上移 ${ps_esc(f.org)}"${i ? '' : ' disabled'}>↑</button>
             <button class="btn btn-sm" data-move="${i}" data-d="1" aria-label="下移 ${ps_esc(f.org)}"${i < n - 1 ? '' : ' disabled'}>↓</button>
             <button class="btn btn-sm btn-danger" data-remove="${i}" aria-label="移除 ${ps_esc(f.org)}">移除</button></td></tr>`).join('');
+    const data = ps_files.filter(f => !f.tpl);
+    // 沒有同名工作表、改讀第一張的檔案提醒一下
+    data.forEach(f => { if (!f.pinned && f.ws.name !== ps_base?.sheet) notes.push(`${f.file}：沒有「${ps_base.sheet}」工作表，改讀「${f.ws.name}」`); });
     $('ps-result').classList.toggle('hidden', !ps_files.length);
-    $('ps-btn-xlsx').disabled = !ps_files.length;
-    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依第一個檔案「${ps_base.name}」` : `範本「${ps_base.name}」`) : '依第一個拖入的檔案（或按「指定範本檔」）';
-    $('ps-msg').textContent = (ps_files.length ? `已讀入 ${ps_files.length} 份，共 ${ps_files.reduce((n, f) => n + f.rows.length, 0)} 列。` : '尚未匯入檔案。') + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
+    $('ps-btn-xlsx').disabled = !data.length;
+    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依第一個檔案「${ps_base.name}」（可在順序表勾選範本）` : `範本「${ps_base.name}」・工作表「${ps_base.sheet}」`) : '拖入檔案後在順序表勾選範本；沒勾選就依第一個檔案';
+    const checks = plan ? plan.checks : ps_stackChecks();
+    $('ps-mode-auto').textContent = ps_autoMode() === 'fill' ? '依項目填入' : '接續貼上';
+    $('ps-count-head').textContent = mode === 'fill' ? '填了幾列' : '貼上列數';
+    $('ps-check').classList.toggle('hidden', !checks.length);
+    $('ps-check-title').textContent = `查對（${checks.length}）`;
+    $('ps-check-list').innerHTML = checks.map(x => `<tr>${x.map((t, i) => `<td class="${i ? 'text-left' : 'text-left whitespace-nowrap'}">${ps_esc(t)}</td>`).join('')}</tr>`).join('');
+    $('ps-msg').textContent = (data.length ? `已讀入 ${data.length} 份，${mode === 'fill' ? `依項目填入 ${plan.fills.length} 個項目` : `共 ${data.reduce((n, f) => n + f.rows.length, 0)} 列`}${checks.length ? `，查對 ${checks.length} 項` : ''}。` : '尚未匯入檔案。') + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     const $ = id => document.getElementById(id);
     const name = new URLSearchParams(location.search).get('form');
     try {
-        if (name) await ps_loadBase(name);
+        if (name) { await ps_loadBase(name); await ps_rebase(); }
         ps_orgs = await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         ps_orgs.sortOrder ||= []; ps_orgs.aliasMap ||= {};
         ps_render();
@@ -191,29 +358,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
     drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); ps_addFiles([...e.dataTransfer.files]); });
-    const tpl = $('ps-tpl-file');
-    $('ps-btn-tpl').onclick = () => tpl.click();
-    tpl.onchange = async () => {
-        const f = tpl.files[0]; tpl.value = '';
-        if (!f) return;
-        try { await ps_setBase(f.name.replace(/\.[^.]+$/, ''), await f.arrayBuffer()); ps_render(); } catch (e) { ps_render([`${f.name}：${e.message}`]); }
-    };
-    $('ps-list').addEventListener('change', e => {
-        if (!e.target.classList.contains('ps-sheet')) return;
+    // 勾範本（只能一個）、改工作表、移動、移除都可能換版面，一律重算
+    $('ps-list').addEventListener('change', async e => {
         const f = ps_files[+e.target.dataset.i];
-        f.pinned = e.target.value;
-        f.ws = f.wb.getWorksheet(f.pinned);
-        f.rows = ps_pickRows(f.ws, ps_base.placeholders);
+        if (e.target.classList.contains('ps-tpl')) { const on = e.target.checked; ps_files.forEach(x => { x.tpl = false; }); f.tpl = on; }
+        else if (e.target.classList.contains('ps-sheet')) f.pinned = e.target.value;
+        else return;
+        await ps_rebase();
         ps_render();
     });
-    $('ps-list').addEventListener('click', e => {
+    $('ps-list').addEventListener('click', async e => {
         const b = e.target.closest('button');
         if (!b) return;
         if (b.dataset.remove) ps_files.splice(+b.dataset.remove, 1);
         else { const i = +b.dataset.move, j = i + +b.dataset.d; [ps_files[i], ps_files[j]] = [ps_files[j], ps_files[i]]; }
+        await ps_rebase();
         ps_render();
     });
-    $('ps-btn-clear').onclick = () => { ps_files = []; if (ps_base?.fromFile) ps_base = null; ps_render(); };
+    document.querySelectorAll('input[name="ps-mode"]').forEach(r => r.addEventListener('change', () => { ps_mode = r.value; ps_render(); }));
+    $('ps-btn-clear').onclick = async () => { ps_files = []; await ps_rebase(); ps_render(); };
     $('ps-btn-xlsx').onclick = async () => {
         const buf = await ps_build();
         const a = document.createElement('a');

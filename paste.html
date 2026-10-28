@@ -25,8 +25,6 @@
             </div>
         </div>
         <div class="app-actions">
-            <button id="ps-btn-tpl" class="btn" title="選一份空白 Excel 當版面（只用來取表頭、說明列與格式，不會貼進去）">指定範本檔</button>
-            <input type="file" id="ps-tpl-file" class="hidden" accept=".xlsx">
             <button id="ps-btn-xlsx" class="btn btn-primary" disabled>下載彙總表</button>
             <button id="ps-btn-clear" class="btn btn-danger">清空</button>
         </div>
@@ -36,18 +34,32 @@
 <div class="max-w-[98%] mx-auto p-4">
     <div id="ps-drop" class="drop-zone rounded-md px-6 py-8 cursor-pointer mb-4">
         <p class="font-bold text-slate-800 mb-1">把各機關寄回的 Excel 一次拖到這裡，或點此選擇（可多選）</p>
-        <p class="text-slate-500 text-sm">不需要先上傳範本：版面依第一個拖入的檔案，或按「指定範本檔」選空白 Excel。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式，並重算合計、主管、基金列的案數與勾選數；同一機關重複拖入以後者為準</p>
-        <input type="file" id="ps-file" class="hidden" accept=".xlsx" multiple>
+        <p class="text-slate-500 text-sm">不需要先上傳範本：可把空白 Excel 一起拖入，在順序表勾選為範本（檔名有「空白」「範本」會自動勾）；沒勾選就依第一個檔案的版面。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式，並重算合計、主管、基金列的案數與勾選數；同一機關重複拖入以後者為準</p>
+        <input type="file" id="ps-file" class="hidden" accept=".xlsx,.xls,.ods" multiple>
     </div>
 
     <div id="ps-msg" class="text-sm text-slate-500 mb-4">載入範本中…</div>
 
     <div id="ps-result" class="hidden section-card">
+        <fieldset class="mb-4 text-sm text-slate-700"><legend class="font-bold text-slate-800 mb-1">貼法</legend>
+            <label class="mr-4"><input type="radio" name="ps-mode" value="auto" checked> 自動（目前判斷：<span id="ps-mode-auto"></span>）</label>
+            <label class="mr-4"><input type="radio" name="ps-mode" value="stack"> 接續貼上：各檔的列一列接一列（例：協商提案表）</label>
+            <label><input type="radio" name="ps-mode" value="fill"> 依項目填入：每份都有全部基金、各填自己那一列（例：決算執行情形）</label>
+        </fieldset>
         <h2 class="text-lg font-bold text-slate-800 mb-1">貼表順序</h2>
-        <p class="text-sm text-slate-500 mb-3">預設依標準機關順序；可用 ↑ ↓ 調整，下載的彙總表照這個順序貼。工作表預設取與範本同名的那張（沒有就取第一張），可逐檔改選。</p>
+        <p class="text-sm text-slate-500 mb-3">勾選的範本只提供版面（表頭、說明列、格式），不貼入。其餘預設依標準機關順序；可用 ↑ ↓ 調整，下載的彙總表照這個順序貼。工作表預設取與範本同名的那張（沒有就取第一張），可逐檔改選。</p>
         <div class="overflow-x-auto"><table class="budget-table w-full">
-            <thead><tr><th>順序</th><th>機關</th><th>檔名</th><th>工作表</th><th>貼上列數</th><th>調整</th></tr></thead>
+            <thead><tr><th>順序</th><th>範本</th><th>機關</th><th>檔名</th><th>工作表</th><th id="ps-count-head">貼上列數</th><th>調整</th></tr></thead>
             <tbody id="ps-list"></tbody>
+        </table></div>
+    </div>
+
+    <div id="ps-check" class="hidden section-card">
+        <h2 id="ps-check-title" class="text-lg font-bold text-slate-800 mb-1">查對</h2>
+        <p class="text-sm text-slate-500 mb-3">請彙整的人逐項確認；下載的檔案也會多一張「查對」工作表。淺橘色的格子是由別的機關的檔案填入的（滑過看得到來源檔案）。</p>
+        <div class="overflow-x-auto"><table class="budget-table w-full">
+            <thead><tr><th>類別</th><th>項目</th><th>檔案</th><th>說明</th></tr></thead>
+            <tbody id="ps-check-list"></tbody>
         </table></div>
     </div>
 </div>

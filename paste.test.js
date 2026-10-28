@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_base=null;if(b)await ps_setBase(b.name,b.buf)}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_build,ps_effMode,ps_fillPlan,files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_stored=b;await ps_rebase()}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
@@ -56,5 +56,50 @@ async function filled(rows) {
     const out3 = new ExcelJS.Workbook();
     await out3.xlsx.load(await ps_t.ps_build());
     assert.strictEqual(String(out3.worksheets[0].getCell('A8').text).trim(), '通傳會主管');
+
+    // 空白範本跟回傳檔一起拖入：檔名有「空白」自動勾成範本，不貼入
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([await file('通訊傳播監督管理基金.xlsx', [11, 12, 13, 14, 15]), { name: name + '.xlsx', arrayBuffer: async () => buf }, await file('法務部矯正機關作業基金.xlsx', [8, 9, 10])]);
+    assert.deepStrictEqual(ps_t.files().map(f => f.tpl), [true, false, false]);
+    const out4 = new ExcelJS.Workbook();
+    await out4.xlsx.load(await ps_t.ps_build());
+    const w4 = out4.worksheets[0], a4 = r => String(w4.getRow(r).getCell(1).text).trim();
+    assert.strictEqual(w4.getCell('F7').value, '共4案');
+    assert.deepStrictEqual([8, 11].map(a4), ['法務部主管', '通傳會主管']);
+    assert.ok(a4(16).startsWith('註'), '範本的說明列接在最後');
+
+    // 依項目填入：每份都有全部基金、各填自己那一列
+    const F = orgs.sortOrder.slice(0, 6);
+    const book = async (cols, rows) => {
+        const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('表');
+        ws.addRow(['測試表']); ws.addRow(cols);
+        F.forEach((n, i) => { const row = ws.addRow([n, ...(rows[i] || [])]); const last = cols.length; row.getCell(last).value = { formula: `${ws.getColumn(last - 1).letter}${row.number}/B${row.number}` }; });
+        const b = await wb.xlsx.writeBuffer(); return b;
+    };
+    const head = ['基金名稱', '預算數', '決算數', '執行率'];
+    const asFile = (name, b) => ({ name, arrayBuffer: async () => b });
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([
+        asFile('空白範本.xlsx', await book(head, [])),
+        asFile(F[0] + '.xlsx', await book(head, [[100, 90]])),
+        // 自己插了「調整數」欄，決算數 777 往下拖到別的基金
+        asFile(F[1] + '.xlsx', await book(['基金名稱', '預算數', '調整數', '決算數', '執行率'], [[], [200, 5, 777], [null, null, 777], [null, null, 777]])),
+        // 順手填了別的基金（F[4]）
+        asFile(F[2] + '.xlsx', await book(head, [[], [], [300, 280], [], [50]])),
+    ]);
+    assert.strictEqual(ps_t.ps_effMode(), 'fill');
+    const plan = ps_t.ps_fillPlan(), cat = k => plan.checks.filter(c => c[0] === k).map(c => c[1]);
+    assert.deepStrictEqual(cat('沒有對應到的基金'), [F[3], F[5]].map(n => n.replace(/\s/g, '')));
+    assert.deepStrictEqual(cat('由別的機關的檔案填入'), [F[4]].map(n => n.replace(/\s/g, '')));
+    assert.deepStrictEqual(cat('範本沒有的欄'), ['調整數']);
+    assert.strictEqual(cat('重複數字（疑似往下拖曳）').length, 1);
+    const o5 = new ExcelJS.Workbook();
+    await o5.xlsx.load(await ps_t.ps_build());
+    const w5 = o5.worksheets[0], v = (r, c) => w5.getRow(r).getCell(c).value;
+    assert.deepStrictEqual([v(3, 2), v(3, 3), v(4, 2), v(4, 3), v(5, 3), v(6, 3)], [100, 90, 200, 777, 280, null], '欄依表頭對位、拖曳只留最上面一格');
+    assert.strictEqual(v(7, 2), 50);
+    assert.strictEqual(w5.getRow(7).getCell(2).fill?.fgColor?.argb, 'FFF8CBAD', '別的機關填的標橘');
+    assert.notStrictEqual(w5.getRow(3).getCell(2).fill?.fgColor?.argb, 'FFF8CBAD', '其他格不能跟著變色');
+    assert.deepStrictEqual(o5.worksheets.map(w => w.name), ['表', '查對']);
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });
