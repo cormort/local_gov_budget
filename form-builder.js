@@ -983,7 +983,7 @@ function fb_renderLibrary() {
             <a href="?form=${encodeURIComponent(e.name)}" class="btn btn-sm" title="開啟這份範本的表單（沒有專案資訊）">預覽</a>
             ${e.file ? `<a href="forms/${encodeURIComponent(e.file)}" download class="btn btn-sm" title="下載後可修改再上傳成新範本">範本檔（${fb_esc(e.file.split('.').pop())}）</a>` : ''}
             ${e.xlsx ? `<a href="forms/${encodeURIComponent(e.xlsx)}" download class="btn btn-sm" title="寄給填報人的空白 Excel">空白 Excel</a>
-            <a href="paste.html?form=${encodeURIComponent(e.name)}" class="btn btn-sm" title="拖入各機關寄回的 Excel，依原格式一列接一列貼成彙總表">貼表</a>` : ''}
+            <a href="./?tpl=${encodeURIComponent(e.name)}" class="btn btn-sm" title="拖入各機關寄回的 Excel，依原格式一列接一列貼成彙總表">貼表</a>` : ''}
         </li>`).join('')).join('') : (fb_libAll.length ? '<li class="py-2 text-slate-500">沒有符合的範本。</li>' : (fb_libErr ? '' : '<li class="py-2 text-slate-500">forms/ 裡還沒有範本。</li>')));
 }
 

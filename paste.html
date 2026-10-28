@@ -2,81 +2,12 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com;">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <title>Excel 貼表</title>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap">
-    <link rel="stylesheet" href="budget-style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-    <script src="form-builder.js"></script>
-    <script src="paste.js"></script>
+    <!-- 舊網址：貼表已移到首頁；?form=範本 改成 ?tpl=範本，replace 不留歷史紀錄 -->
+    <script>const f = new URLSearchParams(location.search).get('form'); location.replace('./' + (f ? '?tpl=' + encodeURIComponent(f) : '') + location.hash);</script>
 </head>
 <body>
-
-<nav class="app-header md:sticky top-0 z-50">
-    <div class="app-header-inner">
-        <div class="flex items-center gap-2">
-            <a href="./" class="app-back" title="回首頁" aria-label="回首頁">←</a>
-            <div>
-                <h1 class="app-title">Excel 貼表</h1>
-                <p class="app-sub">版面：<span id="ps-form"></span></p>
-            </div>
-        </div>
-        <div class="app-actions">
-            <button id="ps-btn-xlsx" class="btn btn-primary" disabled>下載彙總表</button>
-            <button id="ps-btn-clear" class="btn btn-danger">清空</button>
-        </div>
-    </div>
-</nav>
-
-<div class="max-w-[98%] mx-auto p-4">
-    <div id="ps-drop" class="drop-zone rounded-md px-6 py-8 cursor-pointer mb-4">
-        <p class="font-bold text-slate-800 mb-1">把各機關寄回的 Excel 一次拖到這裡，或點此選擇（可多選）</p>
-        <p class="text-slate-500 text-sm">不需要先上傳範本：可把空白 Excel 一起拖入，在順序表勾選為範本（檔名有「空白」「範本」會自動勾）；沒勾選就依第一個檔案的版面。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式，並重算合計、主管、基金列的案數與勾選數；同一機關重複拖入以後者為準</p>
-        <input type="file" id="ps-file" class="hidden" accept=".xlsx,.xls,.ods" multiple>
-    </div>
-
-    <details id="ps-order-box" class="section-card">
-        <summary class="cursor-pointer font-bold text-slate-800">自訂順序清單（選用）<span id="ps-order-state" class="ml-2 text-sm font-normal text-slate-500">目前：標準基金清單</span></summary>
-        <p class="text-sm text-slate-500 mt-2 mb-2">每行一個基金或機關名稱（可用簡稱），貼表依這個順序排；清單外的排最後。查對會列出清單上沒有檔案的（可能未繳）。清單只存在這個瀏覽器。</p>
-        <textarea id="ps-order" rows="6" class="w-full text-sm" aria-label="自訂順序清單" placeholder="行政院國家發展基金&#10;國土永續發展基金&#10;…"></textarea>
-        <div class="flex flex-wrap gap-2 mt-2">
-            <button id="ps-btn-order" class="btn btn-sm btn-primary">套用清單</button>
-            <button id="ps-btn-order-clear" class="btn btn-sm">改回標準基金清單</button>
-        </div>
-    </details>
-
-    <progress id="ps-progress" class="hidden w-full h-2 mb-1" max="1" value="0" aria-label="讀檔進度"></progress>
-    <div id="ps-msg" class="text-sm text-slate-500 mb-4" aria-live="polite">載入範本中…</div>
-
-    <div id="ps-result" class="hidden section-card">
-        <fieldset class="mb-4 text-sm text-slate-700"><legend class="font-bold text-slate-800 mb-1">貼法</legend>
-            <label class="mr-4"><input type="radio" name="ps-mode" value="auto" checked> 自動（目前判斷：<span id="ps-mode-auto"></span>）</label>
-            <label class="mr-4"><input type="radio" name="ps-mode" value="stack"> 接續貼上：各檔的列一列接一列（例：協商提案表）</label>
-            <label><input type="radio" name="ps-mode" value="fill"> 依項目填入：每份都有全部基金、各填自己那一列（例：決算執行情形）</label>
-        </fieldset>
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
-            <h2 class="text-lg font-bold text-slate-800">貼表順序</h2>
-            <button id="ps-btn-resort" class="btn btn-sm" title="手動調過的順序回到清單順序（有套用自訂清單就照自訂清單）">依清單重排</button>
-        </div>
-        <p class="text-sm text-slate-500 mb-3">勾選的範本只提供版面（表頭、說明列、格式），不貼入。其餘預設依標準基金清單（或自訂順序清單）；可用 ↑ ↓ 調整，下載的彙總表照這個順序貼。工作表預設取與範本同名的那張（沒有就取第一張），可逐檔改選。</p>
-        <div class="overflow-x-auto"><table class="budget-table w-full">
-            <thead><tr><th>順序</th><th>範本</th><th>機關</th><th>檔名</th><th>工作表</th><th id="ps-count-head">貼上列數</th><th>調整</th></tr></thead>
-            <tbody id="ps-list"></tbody>
-        </table></div>
-    </div>
-
-    <div id="ps-check" class="hidden section-card">
-        <h2 id="ps-check-title" class="text-lg font-bold text-slate-800 mb-1">查對</h2>
-        <p class="text-sm text-slate-500 mb-3">請彙整的人逐項確認；下載的檔案也會多一張「查對」工作表。淺橘色的格子是由別的機關的檔案填入的（滑過看得到來源檔案）。</p>
-        <div class="overflow-x-auto"><table class="budget-table w-full">
-            <thead><tr><th>類別</th><th>項目</th><th>檔案</th><th>說明</th></tr></thead>
-            <tbody id="ps-check-list"></tbody>
-        </table></div>
-    </div>
-</div>
-
+    <p><a href="./">前往 Excel 貼表</a></p>
 </body>
 </html>
