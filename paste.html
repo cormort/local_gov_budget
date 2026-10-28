@@ -38,7 +38,8 @@
         <input type="file" id="ps-file" class="hidden" accept=".xlsx,.xls,.ods" multiple>
     </div>
 
-    <div id="ps-msg" class="text-sm text-slate-500 mb-4">載入範本中…</div>
+    <progress id="ps-progress" class="hidden w-full h-2 mb-1" max="1" value="0" aria-label="讀檔進度"></progress>
+    <div id="ps-msg" class="text-sm text-slate-500 mb-4" aria-live="polite">載入範本中…</div>
 
     <div id="ps-result" class="hidden section-card">
         <fieldset class="mb-4 text-sm text-slate-700"><legend class="font-bold text-slate-800 mb-1">貼法</legend>

@@ -264,9 +264,21 @@ function ps_checkSheet(wb, checks) {
     [24, 30, 50, 36].forEach((w, i) => { ck.getColumn(i + 1).width = w; });
 }
 
+// 讀檔進度：一份一份讀，每份之前讓畫面更新一次
+function ps_progress(done, total, text) {
+    const bar = document.getElementById('ps-progress'), msg = document.getElementById('ps-msg');
+    bar.classList.toggle('hidden', done === null);
+    if (done === null) return;
+    bar.max = total; bar.value = done;
+    msg.textContent = text;
+}
+
 async function ps_addFiles(files) {
     const notes = [];
-    for (const file of files) {
+    document.getElementById('ps-btn-xlsx').disabled = true;
+    for (const [i, file] of files.entries()) {
+        ps_progress(i, files.length, `讀取中 ${i + 1}／${files.length}：${file.name}`);
+        await new Promise(r => setTimeout(r)); // 讓瀏覽器先畫出進度
         if (!/\.(xlsx|xls|ods)$/i.test(file.name)) { notes.push(`${file.name}：不是 Excel／ODS 檔，略過`); continue; }
         try {
             let buf = await file.arrayBuffer();
@@ -299,7 +311,10 @@ async function ps_addFiles(files) {
             else { const at = ps_files.findIndex(f => f.rank > entry.rank); ps_files.splice(at < 0 ? ps_files.length : at, 0, entry); }
         } catch (e) { notes.push(`${file.name}：${e.message}`); }
     }
+    ps_progress(files.length, files.length, `已讀取 ${files.length} 份，整理版面中…`);
+    await new Promise(r => setTimeout(r));
     await ps_rebase();
+    ps_progress(null);
     ps_render(notes);
 }
 
