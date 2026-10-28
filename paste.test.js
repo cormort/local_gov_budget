@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_resort,ps_setOrder,ps_build,ps_effMode,ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_stored=b;await ps_rebase()}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_resort,ps_setOrder,ps_build,ps_effMode,ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];await ps_rebase();if(b)await ps_addFiles([{name:b.name+".xlsx",arrayBuffer:async()=>b.buf}])}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
