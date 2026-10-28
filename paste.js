@@ -1,5 +1,5 @@
 // 貼表：把各機關寄回的 Excel（照空白範本填寫）依標準機關順序一列接一列貼到範本下方，保留原格式，匯出一份彙總表
-// 版面：順序表勾選的範本檔（不貼入）＞ ?form=名稱 的 forms/名稱.xlsx ＞ 第一個檔案；取第一個沒隱藏的工作表（範本檔可改選），表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
+// 版面：在順序表勾選的範本檔（不貼入），沒勾選就取最多檔案共用的版面；取第一個沒隱藏的工作表（範本檔可改選），表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
 // 小計：範本「合計」列有 COUNTIF 的欄重算勾選數、有「共…案」的欄重算案數；主管列算到下一個主管，基金列算到下一個標題列
 // ponytail: 提案列＝第 2 欄（提案序號）有填、標題列＝第 1 欄有填且第 2 欄空白，是照協商彙總表的版面寫的；別的版面要另訂規則
 // 兩種貼法：接續貼上（協商表：各檔的列接在一起）、依項目填入（決算表：每份都有全部基金，各填自己那一列 → 依第一欄名稱對位填進範本）
@@ -10,7 +10,6 @@
 if (typeof location !== 'undefined' && /[?&](form|survey)=/.test(location.search)) location.replace('advanced.html' + location.search + location.hash);
 
 let ps_base = null;   // { name, buf, fromFile, sheet, placeholders }：fromFile = 版面取自第一個回傳檔（沒有範本）
-let ps_stored = null; // ?form= 的範本 { name, buf }
 let ps_files = [];    // [{ file, org, rank, buf, wb, ws, rows, pinned, tpl }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表；tpl = 勾選為範本（不貼入）
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
@@ -77,13 +76,6 @@ function ps_copyRow(src, sr, dst, dr, cols, map = null) {
     });
 }
 
-async function ps_loadBase(name) {
-    if (/[\\/]|\.\./.test(name)) throw new Error('範本名稱不合法：' + name);
-    const res = await fetch('forms/' + encodeURIComponent(name) + '.xlsx', { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`找不到空白 Excel「forms/${name}.xlsx」`);
-    ps_stored = { name, buf: await res.arrayBuffer() };
-}
-
 // 依目前的勾選決定版面
 async function ps_rebase() {
     // 沒有範本時取最多檔案共用的版面（列數、欄數相同），避開只交自己那幾列的短版、自己插欄的檔案
@@ -91,7 +83,6 @@ async function ps_rebase() {
     const n = {}; data.forEach(f => { n[shape(f)] = (n[shape(f)] || 0) + 1; });
     const t = ps_files.find(f => f.tpl), first = data.reduce((a, f) => (!a || n[shape(f)] > n[shape(a)] ? f : a), null);
     if (t) await ps_setBase(ps_stem(t.file), t.buf, false, t.pinned);
-    else if (ps_stored) await ps_setBase(ps_stored.name, ps_stored.buf);
     else if (first) await ps_setBase(ps_stem(first.file), first.buf, true);
     else ps_base = null;
 }
@@ -432,7 +423,7 @@ function ps_render(notes = []) {
     data.forEach(f => { if (!f.pinned && f.ws.name !== ps_base?.sheet) notes.push(`${f.file}：沒有「${ps_base.sheet}」工作表，改讀「${f.ws.name}」`); });
     $('ps-result').classList.toggle('hidden', !ps_files.length);
     $('ps-btn-xlsx').disabled = !data.length;
-    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依第一個檔案「${ps_base.name}」（可在順序表勾選範本）` : `範本「${ps_base.name}」・工作表「${ps_base.sheet}」`) : '拖入檔案後在順序表勾選範本；沒勾選就依第一個檔案';
+    $('ps-form').textContent = ps_base ? (ps_base.fromFile ? `依多數檔案共用的版面（「${ps_base.name}」），可在順序表勾選範本` : `範本「${ps_base.name}」・工作表「${ps_base.sheet}」`) : '拖入檔案後在順序表勾選一份當範本；沒勾選就用多數檔案共用的版面';
     const checks = plan ? plan.checks : ps_stackChecks();
     $('ps-mode-auto').textContent = ps_autoMode() === 'fill' ? '依項目填入' : '接續貼上';
     $('ps-count-head').textContent = mode === 'fill' ? '填了幾列' : '貼上列數';
@@ -444,9 +435,7 @@ function ps_render(notes = []) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     const $ = id => document.getElementById(id);
-    const name = new URLSearchParams(location.search).get('tpl'); // 從範本庫帶入的範本
     try {
-        if (name) { await ps_loadBase(name); await ps_rebase(); }
         ps_orgs = await fetch(FB_ORGS, { cache: 'no-cache' }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         ps_orgs.sortOrder ||= []; ps_orgs.aliasMap ||= {};
         ps_render();

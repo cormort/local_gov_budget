@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <title>Excel 貼表</title>
-    <!-- 舊網址：貼表已移到首頁；?form=範本 改成 ?tpl=範本，replace 不留歷史紀錄 -->
-    <script>const f = new URLSearchParams(location.search).get('form'); location.replace('./' + (f ? '?tpl=' + encodeURIComponent(f) : '') + location.hash);</script>
+    <!-- 舊網址：貼表已移到首頁（範本改在頁面上勾選），replace 不留歷史紀錄 -->
+    <script>location.replace('./');</script>
 </head>
 <body>
     <p><a href="./">前往 Excel 貼表</a></p>
