@@ -11,6 +11,7 @@ let ps_stored = null; // ?form= 的範本 { name, buf }
 let ps_files = [];    // [{ file, org, rank, buf, wb, ws, rows, pinned, tpl }]；順序就是貼上順序，可手動調整；pinned = 手動選的工作表；tpl = 勾選為範本（不貼入）
 let ps_orgs = { sortOrder: [], aliasMap: {} };
 let ps_headEnd = 0;   // 範本表頭最後一列（1 起算），沒有「合計」列時資料從下一列開始
+let ps_order = null;  // 自訂順序清單（每行一個基金或機關名稱，可用簡稱）；null = 標準基金清單
 let ps_mode = 'auto'; // 'auto' | 'stack' 接續貼上 | 'fill' 依項目填入
 
 const ps_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -222,7 +223,8 @@ function ps_fillPlan() {
         if (used.length) checks.push(...ps_hiddenChecks(f, used.map(x => x.r), new Set(used.flatMap(x => x.used))));
     });
     // 依重要性排：沒人填的、別的機關填的、多份不同的先看
-    const order = ['找不到名稱欄', '沒有對應到的基金', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '隱藏欄有資料', '隱藏列有資料', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
+    checks.push(...ps_orderChecks());
+    const order = ['找不到名稱欄', '清單上沒有對應的檔案', '沒有對應到的基金', '不在自訂清單', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '隱藏欄有資料', '隱藏列有資料', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
     checks.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
     return { items, fills, checks, filled };
 }
@@ -248,13 +250,13 @@ async function ps_buildFill() {
 }
 
 // 接續貼上的查對：檔名認不出機關、沒有列可貼
-const ps_stackChecks = () => ps_files.filter(f => !f.tpl).flatMap(f => [
+const ps_stackChecks = () => [...ps_orderChecks(), ...ps_files.filter(f => !f.tpl).flatMap(f => [
     ...(f.cmap.key ? [] : [['找不到名稱欄', ps_keyLabel(), f.file, '這份沒有貼入，請確認表頭']]),
     ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
     ...(f.cmap.key ? ps_hiddenChecks(f, f.rows) : []),
-    ...(f.owners.length === 1 ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
+    ...(f.owners.length === 1 || ps_order ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
     ...(f.rows.length || !f.cmap.key ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
-]);
+])];
 
 function ps_checkSheet(wb, checks) {
     if (!checks.length) return;
@@ -305,7 +307,8 @@ async function ps_addFiles(files) {
             const hits = tpl ? [] : fb_detectOrgs(stem, ps_orgs.sortOrder, ps_orgs.aliasMap);
             // 一份含多個機關（「園區、健保」）：依標準順序裡最前面的那個排；認不出的排最後
             const org = hits.length ? hits.join('、') : stem;
-            const entry = { file: file.name, org, owners: hits, rank: tpl ? -1 : hits.length ? ps_orgs.sortOrder.indexOf(hits[0]) : Infinity, buf, wb, ws: ps_sheet(wb), rows: [], tpl };
+            const entry = { file: file.name, org, owners: hits, buf, wb, ws: ps_sheet(wb), rows: [], tpl };
+            entry.rank = ps_rankOf(entry);
             // 同機關重複：原位置換掉；新的依標準順序插入，不打亂已手動調整的順序
             const dup = hits.length === 1 ? ps_files.findIndex(f => f.org === org) : -1;
             if (dup >= 0) ps_files[dup] = entry;
@@ -318,6 +321,34 @@ async function ps_addFiles(files) {
     ps_progress(null);
     ps_render(notes);
 }
+
+// 排序名次：範本最前；有自訂清單照清單（清單外的排最後），沒有就照標準基金清單（一份含多個機關的依最前面那個）
+// 清單的一行對到檔案：那行認得出標準機關（「大學」→國立大學校院校務基金）就只比機關，免得「大學」也對到「陽明交通大學附設醫院」；
+// 認不出（清單外的名稱）才退一步看那行文字有沒有出現在檔名裡
+const ps_lineHits = (line, f) => {
+    const hits = fb_detectOrgs(line, ps_orgs.sortOrder, ps_orgs.aliasMap);
+    return hits.length ? hits.some(o => f.owners.includes(o)) : ps_key(ps_stem(f.file)).includes(ps_key(line));
+};
+function ps_rankOf(f) {
+    if (f.tpl) return -1;
+    if (!ps_order) return f.owners.length ? ps_orgs.sortOrder.indexOf(f.owners[0]) : Infinity;
+    const i = ps_order.findIndex(line => ps_lineHits(line, f));
+    return i < 0 ? Infinity : i;
+}
+function ps_setOrder(text) {
+    const lines = String(text ?? '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    ps_order = lines.length ? lines : null;
+    ps_files.forEach(f => { f.rank = ps_rankOf(f); });
+    ps_resort();
+}
+// 自訂清單的查對：清單上沒有檔案的（未繳）、檔案不在清單上的
+const ps_orderChecks = () => !ps_order ? [] : [
+    ...ps_order.filter(line => !ps_files.some(f => !f.tpl && ps_lineHits(line, f))).map(line => ['清單上沒有對應的檔案', line, '', '可能未繳或檔名認不出']),
+    ...ps_files.filter(f => !f.tpl && f.rank === Infinity).map(f => ['不在自訂清單', f.org, f.file, '排在最後']),
+];
+
+// 依清單重排：手動調過的順序回到清單順序（範本留在最上面，同名次維持原順序）
+const ps_resort = () => { ps_files.sort((a, b) => a.rank - b.rank); };
 
 const ps_build = () => ps_effMode() === 'fill' ? ps_buildFill() : ps_buildStack();
 
@@ -434,6 +465,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         ps_render();
     });
     document.querySelectorAll('input[name="ps-mode"]').forEach(r => r.addEventListener('change', () => { ps_mode = r.value; ps_render(); }));
+    $('ps-btn-resort').onclick = () => { ps_resort(); ps_render(); };
+    // 自訂順序清單：存在這個瀏覽器（localStorage，讀不到就算了）
+    const box = $('ps-order'), state = () => { $('ps-order-state').textContent = ps_order ? `目前：自訂清單 ${ps_order.length} 項` : '目前：標準基金清單'; };
+    try { box.value = localStorage.getItem('ps-order') || ''; } catch (e) { /* 無痕視窗等讀不到 */ }
+    if (box.value.trim()) { ps_setOrder(box.value); $('ps-order-box').open = true; }
+    state();
+    $('ps-btn-order').onclick = () => { ps_setOrder(box.value); try { localStorage.setItem('ps-order', box.value); } catch (e) { /* 存不了就只用這次 */ } state(); ps_render(); };
+    $('ps-btn-order-clear').onclick = () => { box.value = ''; ps_setOrder(''); try { localStorage.removeItem('ps-order'); } catch (e) { /* 同上 */ } state(); ps_render(); };
     $('ps-btn-clear').onclick = async () => { ps_files = []; await ps_rebase(); ps_render(); };
     $('ps-btn-xlsx').onclick = async () => {
         const buf = await ps_build();
