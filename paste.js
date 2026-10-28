@@ -486,7 +486,15 @@ function ps_render(notes = []) {
     $('ps-check').classList.toggle('hidden', !checks.length);
     $('ps-check-title').textContent = `查對（${checks.length}）`;
     $('ps-check-list').innerHTML = checks.map(x => `<tr>${x.map((t, i) => `<td class="${i ? 'text-left' : 'text-left whitespace-nowrap'}">${ps_esc(t)}</td>`).join('')}</tr>`).join('');
-    $('ps-msg').textContent = (data.length ? `已讀入 ${data.length} 份，${mode === 'fill' ? `依項目填入 ${plan.fills.length} 個項目` : `共 ${data.reduce((n, f) => n + f.rows.length, 0)} 列`}${checks.length ? `，查對 ${checks.length} 項` : ''}。` : '尚未匯入檔案。') + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
+    // 只拖入空白範本時 data 是空的，但那不是「沒匯入檔案」；講清楚還缺資料檔
+    const tpls = ps_files.filter(f => f.tpl).length;
+    const summary = data.length
+        ? `已讀入 ${data.length} 份，${mode === 'fill' ? `依項目填入 ${plan.fills.length} 個項目` : `共 ${data.reduce((n, f) => n + f.rows.length, 0)} 列`}${checks.length ? `，查對 ${checks.length} 項` : ''}。`
+        : tpls ? `已讀入 ${tpls} 份範本（只提供版面，不貼入），還沒有要貼入的資料檔——把各機關寄回的 Excel 也拖進來。`
+        : '尚未匯入檔案。';
+    $('ps-msg').textContent = summary + (notes.length ? ' ⚠️ ' + notes.join('；') : '');
+    // 有資料檔之後就不用再看「怎麼用」的三步驟（只有範本時還留著）
+    $('ps-steps').classList.toggle('hidden', !!data.length);
 }
 
 // 檔案拖到頁面任何地方都收下：不讓瀏覽器把檔案打開或下載（放在最外層，初始化出錯也照樣擋住）
@@ -500,6 +508,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 先綁拖放與選檔，後面讀標準名單出錯也能用
     const drop = $('ps-drop'), input = $('ps-file');
     drop.onclick = () => input.click();
+    // 拖放區是 role="button"：鍵盤也要能開檔（Enter／空白鍵）
+    drop.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        input.click();
+    });
     input.onchange = () => { ps_addFiles([...input.files]); input.value = ''; };
     drop.addEventListener('dragover', () => drop.classList.add('dragover'));
     drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
@@ -547,7 +561,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     state();
     $('ps-btn-order').onclick = () => { ps_setOrder(box.value); try { localStorage.setItem('ps-order', box.value); } catch (e) { /* 存不了就只用這次 */ } state(); ps_render(); };
     $('ps-btn-order-clear').onclick = () => { box.value = ''; ps_setOrder(''); try { localStorage.removeItem('ps-order'); } catch (e) { /* 同上 */ } state(); ps_render(); };
-    $('ps-btn-clear').onclick = async () => { ps_files = []; await ps_rebase(); ps_render(); };
+    $('ps-btn-clear').onclick = async () => {
+        // 清空會連逐列檢查的勾選一起丟掉，先問一聲
+        if (ps_files.length && !confirm(`確定要清空嗎？已讀入的 ${ps_files.length} 份檔案，以及逐列檢查的勾選都會消失。`)) return;
+        ps_files = []; await ps_rebase(); ps_render();
+    };
     $('ps-btn-xlsx').onclick = async () => {
         const buf = await ps_build();
         const a = document.createElement('a');

@@ -153,6 +153,19 @@ input[type='checkbox'] { border-color: rgb(var(--c-slate-400)); background-color
 .btn-danger { color: rgb(var(--c-red-600)); }
 .btn-danger:hover { background: rgb(var(--c-red-50)); border-color: rgb(var(--c-red-600) / 0.4); }
 .btn-sm { min-height: 32px; padding: 4px 10px; font-size: 0.8125rem; }
+/* 停用中的按鈕要看得出來是按不到，不然使用者會一直點「下載彙總表」等不到反應 */
+.btn:disabled, .btn[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: rgb(var(--c-white));
+    border-color: rgb(var(--c-slate-300));
+    color: rgb(var(--c-slate-500));
+}
+.btn-primary:disabled, .btn-primary[aria-disabled="true"] {
+    background: rgb(var(--c-slate-400));
+    border-color: rgb(var(--c-slate-400));
+    color: rgb(var(--c-white));
+}
 /* 文字按鈕（表格內的刪除、改名…） */
 .btn-link {
     display: inline-flex; align-items: center; min-height: 32px; padding: 0 4px;
