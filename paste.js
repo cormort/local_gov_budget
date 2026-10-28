@@ -26,11 +26,11 @@ const ps_key = s => String(s ?? '').replace(/\s/g, '');
 const ps_std = name => { const h = fb_detectOrgs(name, ps_orgs.sortOrder, ps_orgs.aliasMap); return h.length === 1 ? h[0] : null; };
 const ps_value = v => (v && typeof v === 'object' && 'formula' in v) || (v && typeof v === 'object' && 'sharedFormula' in v) ? v.result ?? null : v; // 公式只留值，參照位置貼過來就不對了
 
-// 一個工作表的版面：合計列、說明列起點、欄數
-function ps_layout(ws) {
+// 一個工作表的版面：合計列、說明列起點、欄數；key = 名稱欄（有人在最左邊插欄時不是第 1 欄）
+function ps_layout(ws, key = 1) {
     let total = 0, notes = 0;
     ws.eachRow((row, r) => {
-        const a = ps_text(row.getCell(1));
+        const a = ps_text(row.getCell(key));
         if (!total && a === '合計') total = r;
         else if (total && !notes && a.startsWith('註')) notes = r;
     });
@@ -38,34 +38,38 @@ function ps_layout(ws) {
 }
 
 // 回傳檔要貼的列：合計列以下、說明列以上；空白列與範本原有的佔位列（ＯＯ主管、範例…）略過
-function ps_pickRows(ws, placeholders) {
-    const { total, notes } = ps_layout(ws);
+function ps_pickRows(ws, placeholders, key = 1) {
+    const { total, notes } = ps_layout(ws, key);
     const rows = [];
     for (let r = (total || 0) + 1; r < notes; r++) {
         const row = ws.getRow(r);
         const cells = [];
         row.eachCell(c => cells.push(ps_text(c)));
         if (!cells.some(Boolean)) continue;
-        const a = ps_text(row.getCell(1));
+        const a = ps_text(row.getCell(key));
         if (placeholders.has(a) || ps_filler(a)) continue;
         rows.push(r);
     }
     return rows;
 }
 
-function ps_copyRow(src, sr, dst, dr, cols) {
-    const s = src.getRow(sr), d = dst.getRow(dr);
+// map：範本欄 → 來源欄（來源檔有插欄時），沒給就同一欄
+function ps_copyRow(src, sr, dst, dr, cols, map = null) {
+    const s = src.getRow(sr), d = dst.getRow(dr), at = c => (map ? map[c] : c);
     if (s.height) d.height = s.height;
     for (let c = 1; c <= cols; c++) {
-        const from = s.getCell(c), to = d.getCell(c);
+        const to = d.getCell(c);
+        if (!at(c)) { to.value = null; continue; }
+        const from = s.getCell(at(c));
         to.value = ps_slave(from) ? null : ps_value(from.value);
         to.style = JSON.parse(JSON.stringify(from.style || {}));
     }
-    // 同一列的合併儲存格（標題列的 A:D、F:H）照搬
+    // 同一列的合併儲存格（標題列的 A:D、F:H）照搬，欄位換算成範本的位置
+    const inv = {}; for (let c = 1; c <= cols; c++) if (at(c)) inv[at(c)] = c;
     (src.model.merges || []).forEach(m => {
-        const [a, b] = m.split(':');
-        const ra = +a.replace(/\D/g, ''), rb = +b.replace(/\D/g, '');
-        if (ra === sr && rb === sr) dst.mergeCells(a.replace(/\d+/, dr) + ':' + b.replace(/\d+/, dr));
+        const [a, b] = m.split(':').map(x => src.getCell(x));
+        if (a.row !== sr || b.row !== sr || !inv[a.col] || !inv[b.col] || inv[a.col] >= inv[b.col]) return;
+        dst.mergeCells(dr, inv[a.col], dr, inv[b.col]);
     });
 }
 
@@ -96,22 +100,38 @@ async function ps_setBase(name, buf, fromFile = false, sheet = null) {
     // 空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
     const placeholders = new Set();
     if (!fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
-    ps_base = { name, buf, fromFile, sheet: bws.name, placeholders, ws: bws };
-    ps_files.forEach(f => { f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb); f.rows = ps_pickRows(f.ws, placeholders); });
     // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）
     const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[bws.name];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     const text = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? String(x.w ?? x.v ?? '').trim() : ''; };
     const block = fb_headerBlock(text, ws['!merges'] || [], range.s.r, range.e.r, range.s.c, range.e.c);
     ps_headEnd = (block?.he ?? -1) + 1;
-    ps_base.headRows = block ? Array.from({ length: block.he - block.hr + 1 }, (_, i) => block.hr + 1 + i) : [1];
+    const headRows = block ? Array.from({ length: block.he - block.hr + 1 }, (_, i) => block.hr + 1 + i) : [1];
+    ps_base = { name, buf, fromFile, sheet: bws.name, placeholders, ws: bws, headRows };
+    ps_files.forEach(f => {
+        f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb);
+        f.cmap = ps_colMap(f.ws);
+        f.rows = f.cmap.key ? ps_pickRows(f.ws, placeholders, f.cmap.key) : [];
+    });
 }
+
+// 來源檔的欄怎麼對到範本：欄數相同照位置（.ods 轉檔後表頭文字會錯位，不能靠欄名）；
+// 欄數不同（有人插欄，連最左邊也算）每一欄都依表頭文字對位，名稱欄也是 → { map: {範本欄: 來源欄}, extra: [範本沒有的欄名], key: 名稱欄或 null }
+function ps_colMap(ws) {
+    const bws = ps_base.ws, map = {}, extra = [];
+    if (ws.columnCount === bws.columnCount) { for (let c = 1; c <= bws.columnCount; c++) map[c] = c; return { map, extra, key: 1 }; }
+    const byHead = new Map([...ps_heads(bws)].map(([c, t]) => [t, c]));
+    ps_heads(ws).forEach((t, c) => { const tc = byHead.get(t); if (tc && !map[tc]) map[tc] = c; else extra.push(ps_label(t)); });
+    return { map, extra, key: map[1] || null };
+}
+const ps_label = t => t.replace(/^\/+|\/+$/g, '');
+const ps_keyLabel = () => ps_label(ps_heads(ps_base.ws).get(1) || '第一欄');
 
 // ========== 依項目填入 ==========
 // 表頭文字（多層以 / 串起來）當欄名
 function ps_heads(ws) {
     const m = new Map();
-    for (let c = 2; c <= ws.columnCount; c++) {
+    for (let c = 1; c <= ws.columnCount; c++) {
         const t = ps_base.headRows.map(r => ps_key(ps_cellText(ws.getRow(r).getCell(c)))).join('/');
         if (t.replace(/\//g, '')) m.set(c, t);
     }
@@ -119,10 +139,10 @@ function ps_heads(ws) {
 }
 
 // 項目列：表頭以下、說明列以上，第一欄有名稱、不是佔位列
-function ps_items(ws) {
-    const out = [], { notes } = ps_layout(ws);
+function ps_items(ws, key = 1) {
+    const out = [], { notes } = ps_layout(ws, key);
     for (let r = ps_base.headRows.at(-1) + 1; r < notes; r++) {
-        const a = ps_key(ps_cellText(ws.getRow(r).getCell(1)));
+        const a = ps_key(ps_cellText(ws.getRow(r).getCell(key)));
         if (a && !ps_filler(a)) out.push({ r, a });
     }
     return out;
@@ -134,34 +154,34 @@ function ps_autoMode() {
     if (!ps_base || !data.length) return 'stack';
     const names = new Set(ps_items(ps_base.ws).map(i => i.a));
     if (names.size < 5) return 'stack';
-    const share = data.filter(f => ps_items(f.ws).filter(i => names.has(i.a)).length >= names.size / 2).length;
+    const share = data.filter(f => f.cmap.key && ps_items(f.ws, f.cmap.key).filter(i => names.has(i.a)).length >= names.size / 2).length;
     return share >= data.length / 2 ? 'fill' : 'stack';
 }
 const ps_effMode = () => ps_mode === 'auto' ? ps_autoMode() : ps_mode;
 
 // 各檔要填進範本的值與查對清單：{ items, fills: [{ r, data: {欄: 值}, flag }], checks: [[類別, 項目, 檔案, 說明]], filled: Map(檔案 → 列數) }
 function ps_fillPlan() {
-    const bws = ps_base.ws, heads = ps_heads(bws), byHead = new Map([...heads].map(([c, t]) => [t, c]));
-    const items = ps_items(bws).map(i => ({ ...i, std: ps_std(i.a), inputs: [...heads.keys()].filter(c => !ps_isFormula(bws.getRow(i.r).getCell(c).value)), cands: [] }));
+    const bws = ps_base.ws, heads = ps_heads(bws);
+    const items = ps_items(bws).map(i => ({ ...i, std: ps_std(i.a), inputs: [...heads.keys()].filter(c => c > 1 && !ps_isFormula(bws.getRow(i.r).getCell(c).value)), cands: [] }));
     const find = a => items.find(x => x.a === a) || (ps_std(a) && items.find(x => x.std === ps_std(a)));
     const checks = [], filled = new Map();
     const plain = v => { if (v == null || ps_isFormula(v)) return null; if (v.richText) v = v.richText.map(t => t.text).join(''); return typeof v === 'string' && !v.trim() ? null : v; };
     for (const f of ps_files.filter(f => !f.tpl)) {
-        const fh = ps_heads(f.ws), colMap = {}, rows = ps_items(f.ws);
-        // 欄數跟範本一樣就照位置對（.ods 轉檔後表頭文字會錯位，不能靠欄名）；欄數不同（有人插欄）才依表頭文字對位
-        if (f.ws.columnCount === bws.columnCount) heads.forEach((_, c) => { colMap[c] = c; });
-        else fh.forEach((t, c) => { if (byHead.has(t)) colMap[byHead.get(t)] = c; else checks.push(['範本沒有的欄', t.replace(/^\/+|\/+$/g, ''), f.file, '未採用']); });
+        const { map: colMap, extra, key } = f.cmap;
+        extra.forEach(t => checks.push(['範本沒有的欄', t, f.file, '未採用']));
+        if (!key) { checks.push(['找不到名稱欄', ps_keyLabel(), f.file, '這份沒有讀入，請確認表頭']); filled.set(f, 0); continue; }
+        const rows = ps_items(f.ws, key), cols = Object.keys(colMap).map(Number).filter(c => c > 1);
         // 往下拖曳是從最上面那格複製下去：最上面那格保留，下面重複的不採用
         const count = {}, top = {};
-        rows.forEach(i => fh.forEach((_, c) => { const v = f.ws.getRow(i.r).getCell(c).value; if (typeof v === 'number' && v) { const k = c + ':' + v; count[k] = (count[k] || 0) + 1; top[k] ??= i.r; } }));
-        const noise = (c, v, r) => typeof v === 'number' && count[c + ':' + v] >= 3 && top[c + ':' + v] !== r;
-        Object.entries(count).filter(([, n]) => n >= 3).forEach(([k, n]) => checks.push(['重複數字（疑似往下拖曳）', fh.get(+k.split(':')[0]).replace(/^\/+|\/+$/g, ''), f.file, `${Number(k.split(':')[1]).toLocaleString()} 出現在 ${n} 列，只採用最上面一列`]));
+        rows.forEach(i => cols.forEach(tc => { const v = f.ws.getRow(i.r).getCell(colMap[tc]).value; if (typeof v === 'number' && v) { const k = tc + ':' + v; count[k] = (count[k] || 0) + 1; top[k] ??= i.r; } }));
+        const noise = (tc, v, r) => typeof v === 'number' && count[tc + ':' + v] >= 3 && top[tc + ':' + v] !== r;
+        Object.entries(count).filter(([, n]) => n >= 3).forEach(([k, n]) => checks.push(['重複數字（疑似往下拖曳）', ps_label(heads.get(+k.split(':')[0]) || ''), f.file, `${Number(k.split(':')[1]).toLocaleString()} 出現在 ${n} 列，只採用最上面一列`]));
         let n = 0;
         rows.forEach(i => {
             const it = find(i.a), data = {};
-            (it ? it.inputs.filter(c => colMap[c]).map(c => [c, colMap[c]]) : [...fh.keys()].map(c => [c, c])).forEach(([tc, fc]) => {
+            (it ? it.inputs.filter(c => colMap[c]) : cols).map(c => [c, colMap[c]]).forEach(([tc, fc]) => {
                 const v = plain(f.ws.getRow(i.r).getCell(fc).value);
-                if (v != null && !noise(fc, v, i.r)) data[tc] = v;
+                if (v != null && !noise(tc, v, i.r)) data[tc] = v;
             });
             if (!Object.keys(data).length) return;
             n++;
@@ -183,7 +203,7 @@ function ps_fillPlan() {
         fills.push({ r: it.r, data: pick.data, flag: !own.length && c.map(x => x.f.file).join('、') });
     });
     // 依重要性排：沒人填的、別的機關填的、多份不同的先看
-    const order = ['沒有對應到的基金', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
+    const order = ['找不到名稱欄', '沒有對應到的基金', '由別的機關的檔案填入', '多份檔案填的不同', '其他檔案也填了這列', '沒有填任何資料', '重複數字（疑似往下拖曳）', '範本沒有的列', '範本沒有的欄'];
     checks.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
     return { items, fills, checks, filled };
 }
@@ -210,8 +230,10 @@ async function ps_buildFill() {
 
 // 接續貼上的查對：檔名認不出機關、沒有列可貼
 const ps_stackChecks = () => ps_files.filter(f => !f.tpl).flatMap(f => [
+    ...(f.cmap.key ? [] : [['找不到名稱欄', ps_keyLabel(), f.file, '這份沒有貼入，請確認表頭']]),
+    ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
     ...(f.owners.length === 1 ? [] : [[f.owners.length ? '檔名含多個機關' : '檔名認不出機關', f.owners.join('、'), f.file, '排在最後，請確認順序']]),
-    ...(f.rows.length ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
+    ...(f.rows.length || !f.cmap.key ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
 ]);
 
 function ps_checkSheet(wb, checks) {
@@ -284,7 +306,7 @@ async function ps_buildStack() {
     let r = total + 1;
     const placed = []; // { r, kind: 'head'|'item', level }
     ps_files.filter(f => !f.tpl).forEach(f => f.rows.forEach(sr => {
-        ps_copyRow(f.ws, sr, ws, r, cols);
+        ps_copyRow(f.ws, sr, ws, r, cols, f.cmap.map);
         const a = ps_own(ws.getRow(r).getCell(1)), b = ps_own(ws.getRow(r).getCell(2));
         placed.push({ r, kind: b ? 'item' : a ? 'head' : 'item', top: a.endsWith('主管') });
         r++;
