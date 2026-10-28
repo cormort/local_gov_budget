@@ -173,5 +173,15 @@ async function filled(rows) {
     await ps_t.set(null, orgs);
     await ps_t.ps_addFiles([asFile(F[0] + '.xlsx', await lead(sh, [['委保1', '王', '甲案']])), asFile(F[1] + '.xlsx', await hid(sh, [['委保1', '李', '乙案']], [3]))]);
     assert.ok(ps_t.stackChecks().some(c => c[0] === '隱藏欄有資料' && c[1] === '內容'), '接續貼上也提醒隱藏欄');
+
+    // 一個基金填好幾列：基金底下的明細列各基金同名，連同所屬基金對位，也算那個基金的（不標橘）
+    const dn = [F[0], '(一)業務計畫', F[1], '(一)業務計畫', F[2], F[3], F[4]];
+    const det = async rows => { const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('表'); ws.addRow(['測試表']); ws.addRow(['名稱', '預算數', '決算數']);
+        dn.forEach((n, i) => ws.addRow([n, ...(rows[i] || [])])); return wb.xlsx.writeBuffer(); };
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([asFile('空白範本.xlsx', await det([])), asFile(F[0] + '.xlsx', await det([[10, 9], [5, 4]])), asFile(F[1] + '.xlsx', await det([[], [], [100, 90], [60, 50]]))]);
+    const p9 = ps_t.ps_fillPlan();
+    assert.deepStrictEqual(p9.fills.map(x => [x.r, x.data[2], !!x.flag]), [[3, 10, false], [4, 5, false], [5, 100, false], [6, 60, false]]);
+    assert.ok(!p9.checks.some(c => c[1] === '(一)業務計畫'));
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });

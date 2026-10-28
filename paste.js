@@ -153,11 +153,16 @@ function ps_heads(ws) {
 }
 
 // 項目列：表頭以下、說明列以上，第一欄有名稱、不是佔位列
+// sec = 上面最近的基金列：基金底下的明細列（「(一)業務計畫」）各基金可能同名，要連同所屬基金一起對位，也算那個基金的
 function ps_items(ws, key = 1) {
     const out = [], { notes } = ps_layout(ws, key);
+    let sec = null;
     for (let r = ps_base.headRows.at(-1) + 1; r < notes; r++) {
         const a = ps_key(ps_cellText(ws.getRow(r).getCell(key)));
-        if (a && !ps_filler(a)) out.push({ r, a });
+        if (!a || ps_filler(a)) continue;
+        const std = ps_std(a);
+        if (std) sec = std;
+        out.push({ r, a, std, sec: std ? null : sec });
     }
     return out;
 }
@@ -176,8 +181,9 @@ const ps_effMode = () => ps_mode === 'auto' ? ps_autoMode() : ps_mode;
 // 各檔要填進範本的值與查對清單：{ items, fills: [{ r, data: {欄: 值}, flag }], checks: [[類別, 項目, 檔案, 說明]], filled: Map(檔案 → 列數) }
 function ps_fillPlan() {
     const bws = ps_base.ws, heads = ps_heads(bws);
-    const items = ps_items(bws).map(i => ({ ...i, std: ps_std(i.a), inputs: [...heads.keys()].filter(c => c > 1 && !ps_isFormula(bws.getRow(i.r).getCell(c).value)), cands: [] }));
-    const find = a => items.find(x => x.a === a) || (ps_std(a) && items.find(x => x.std === ps_std(a)));
+    const items = ps_items(bws).map(i => ({ ...i, inputs: [...heads.keys()].filter(c => c > 1 && !ps_isFormula(bws.getRow(i.r).getCell(c).value)), cands: [] }));
+    // 基金列：名稱相同或對到同一個標準基金；明細列：所屬基金與名稱都相同
+    const find = i => i.std ? items.find(x => x.a === i.a) || items.find(x => x.std === i.std) : items.find(x => !x.std && x.a === i.a && x.sec === i.sec);
     const checks = [], filled = new Map();
     const plain = v => { if (v == null || ps_isFormula(v)) return null; if (v.richText) v = v.richText.map(t => t.text).join(''); return typeof v === 'string' && !v.trim() ? null : v; };
     for (const f of ps_files.filter(f => !f.tpl)) {
@@ -192,7 +198,7 @@ function ps_fillPlan() {
         Object.entries(count).filter(([, n]) => n >= 3).forEach(([k, n]) => checks.push(['重複數字（疑似往下拖曳）', ps_label(heads.get(+k.split(':')[0]) || ''), f.file, `${Number(k.split(':')[1]).toLocaleString()} 出現在 ${n} 列，只採用最上面一列`]));
         let n = 0;
         rows.forEach(i => {
-            const it = find(i.a), data = {};
+            const it = find(i), data = {};
             (it ? it.inputs.filter(c => colMap[c]) : cols).map(c => [c, colMap[c]]).forEach(([tc, fc]) => {
                 const v = plain(f.ws.getRow(i.r).getCell(fc).value);
                 if (v != null && !noise(tc, v, i.r)) data[tc] = v;
@@ -200,7 +206,8 @@ function ps_fillPlan() {
             if (!Object.keys(data).length) return;
             n++;
             if (!it) { checks.push(['範本沒有的列', i.a, f.file, '未填入']); return; }
-            it.cands.push({ f, r: i.r, owner: !!it.std && f.owners.includes(it.std), data, key: JSON.stringify(data) });
+            const fund = it.std || it.sec;
+            it.cands.push({ f, r: i.r, owner: !!fund && f.owners.includes(fund), data, key: JSON.stringify(data) });
         });
         filled.set(f, n);
         if (!n) checks.push(['沒有填任何資料', '', f.file, '請確認是否漏填或填在別的工作表']);
