@@ -4,7 +4,7 @@ global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
 Object.assign(global, require('./form-builder.js'));
 global.document = { getElementById: () => ({ classList: { toggle() {} } }), addEventListener() {} };
-vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,ps_resort,ps_setOrder,ps_build,mode:m=>{ps_mode=m},ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_mode="stack";await ps_rebase();if(b)await ps_addFiles([{name:b.name+".xlsx",arrayBuffer:async()=>b.buf}])}}');
+vm.runInThisContext(fs.readFileSync('./paste.js', 'utf8') + ';global.ps_copyRow=ps_copyRow;global.ps_t={ps_addFiles,applyDel:f=>ps_applyDel(f),ps_resort,ps_setOrder,ps_build,mode:m=>{ps_mode=m},ps_fillPlan,stackChecks:()=>ps_stackChecks(),files:()=>ps_files,set:async(b,o)=>{ps_orgs=o;ps_files=[];ps_mode="stack";await ps_rebase();if(b)await ps_addFiles([{name:b.name+".xlsx",arrayBuffer:async()=>b.buf}])}}');
 
 const name = '(空白)02-非營業-115協商彙總表-委員會審查結果';
 const buf = fs.readFileSync(`forms/${name}.xlsx`);
@@ -194,10 +194,24 @@ async function filled(rows) {
     assert.deepStrictEqual(ps_t.files().map(f => f.rows.length), [2, 2, 0], '只取自己那列與底下明細；沒有自己的列就不貼');
     const c10 = ps_t.stackChecks();
     assert.ok(c10.some(c => c[0] === '找不到自己基金的列' && c[2] === '國軍老舊眷村改建基金.xlsx'));
-    assert.ok(c10.some(c => c[0] === '也填了別的基金（未貼入）' && c[1] === F[4]), '別的基金有填資料的列在查對');
+    assert.ok(c10.some(c => c[0] === '也填了別的基金' && c[1] === F[4]), '別的基金有填資料的列在查對');
     const o10 = new ExcelJS.Workbook();
     await o10.xlsx.load(await ps_t.ps_build());
     const r10 = r => o10.worksheets[0].getRow(r).getCell(1).text;
     assert.deepStrictEqual([3, 4, 5, 6].map(r10), [F[0], '(一)明細', F[2], '(一)明細']);
+    // 逐列檢查：預設勾掉別人的列，可以改；全部檔案的每一列都是候選
+    const fA = ps_t.files()[0];
+    assert.strictEqual(fA.cand.length, F.length + 1);
+    assert.strictEqual(fA.del.size, F.length - 1, '自己那列與明細以外都預設刪除');
+    fA.del.delete(fA.cand.find(r => !fA.rows.includes(r))); ps_t.applyDel(fA);
+    assert.strictEqual(fA.rows.length, 3, '取消勾選的列會貼上');
+    // 自訂清單上沒檔案的，在清單位置插「❌ 未回傳」列
+    fA.del = new Set(fA.del0); ps_t.applyDel(fA);
+    ps_t.ps_setOrder(`${F[0]}\n${F[1]}\n${F[2]}`);
+    const o11 = new ExcelJS.Workbook();
+    await o11.xlsx.load(await ps_t.ps_build());
+    const r11 = r => [1, 2].map(c => o11.worksheets[0].getRow(r).getCell(c).text).join('|');
+    assert.deepStrictEqual([3, 4, 5, 6, 7].map(r11), [`${F[0]}|10`, '(一)明細|5', `${F[1]}|❌ 未回傳／無資料`, `${F[2]}|10`, '(一)明細|5']);
+    ps_t.ps_setOrder('');
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });
