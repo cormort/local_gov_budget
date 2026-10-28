@@ -252,7 +252,7 @@ const ps_stackChecks = () => ps_files.filter(f => !f.tpl).flatMap(f => [
     ...(f.cmap.key ? [] : [['找不到名稱欄', ps_keyLabel(), f.file, '這份沒有貼入，請確認表頭']]),
     ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
     ...(f.cmap.key ? ps_hiddenChecks(f, f.rows) : []),
-    ...(f.owners.length === 1 ? [] : [[f.owners.length ? '檔名含多個機關' : '檔名認不出機關', f.owners.join('、'), f.file, '排在最後，請確認順序']]),
+    ...(f.owners.length === 1 ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
     ...(f.rows.length || !f.cmap.key ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
 ]);
 
@@ -303,8 +303,9 @@ async function ps_addFiles(files) {
             // 檔名有「空白」「範本」的預設勾成範本（還沒有範本時），排在最上面
             const tpl = !ps_files.some(f => f.tpl) && /空白|範本/.test(stem);
             const hits = tpl ? [] : fb_detectOrgs(stem, ps_orgs.sortOrder, ps_orgs.aliasMap);
-            const org = hits.length === 1 ? hits[0] : stem;
-            const entry = { file: file.name, org, owners: hits, rank: tpl ? -1 : hits.length === 1 ? ps_orgs.sortOrder.indexOf(org) : Infinity, buf, wb, ws: ps_sheet(wb), rows: [], tpl };
+            // 一份含多個機關（「園區、健保」）：依標準順序裡最前面的那個排；認不出的排最後
+            const org = hits.length ? hits.join('、') : stem;
+            const entry = { file: file.name, org, owners: hits, rank: tpl ? -1 : hits.length ? ps_orgs.sortOrder.indexOf(hits[0]) : Infinity, buf, wb, ws: ps_sheet(wb), rows: [], tpl };
             // 同機關重複：原位置換掉；新的依標準順序插入，不打亂已手動調整的順序
             const dup = hits.length === 1 ? ps_files.findIndex(f => f.org === org) : -1;
             if (dup >= 0) ps_files[dup] = entry;

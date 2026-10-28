@@ -121,6 +121,15 @@ async function filled(rows) {
     assert.deepStrictEqual(c6('找不到名稱欄').map(c => c[2]), [F[2] + '.xlsx'], '名稱欄改了表頭的那份列在查對');
     assert.deepStrictEqual(c6('範本沒有的欄').map(c => c[1]), ['序號', '序號', '名稱']);
     const sh = ['提案序號', '提案委員', '內容'];
+    // 一份含多個機關：依最前面那個機關排，不是排最後
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([
+        asFile(F[3] + '.xlsx', await lead(sh, [['委保1', '丁', '丁案']])),
+        asFile(`${F[2]}、${F[4]}.xlsx`, await lead(sh, [['委保1', '丙', '丙案'], ['委保2', '戊', '戊案']])),
+        asFile(F[0] + '.xlsx', await lead(sh, [['委保1', '甲', '甲案']])),
+    ]);
+    assert.deepStrictEqual(ps_t.files().map(f => f.org), [F[0], `${F[2]}、${F[4]}`, F[3]]);
+    assert.ok(ps_t.stackChecks().some(c => c[0] === '檔名含多個機關' && c[3].includes(F[2])));
     await ps_t.set(null, orgs);
     await ps_t.ps_addFiles([
         asFile(F[0] + '.xlsx', await lead(sh, [['委保1', '王', '甲案']])),
