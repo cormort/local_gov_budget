@@ -116,26 +116,27 @@ async function ps_setBase(name, buf, fromFile = false, sheet = null) {
 
 // 接續貼上的候選列與預設刪除（像 excel_merge：每一列都列出來，可疑的預先勾刪除，彙整的人可以改）
 // 預設保留自己那一段：從檔名認出的基金那列（比對欄位）到下一個別的基金、「主管」、「一、」大標題或合計為止
-// （底下的明細、提案都算，上面緊接的「主管」列一併）；其他列預設刪除。
+// （底下的明細、提案都算）；其他列預設刪除。
+// 像 excel_merge：主管列與合計、小計、總計列（範本前三欄有這些字）一律預設刪除，合計、小計不由程式產生
 // all：表頭以下所有的列（自己的基金列可能在檔案自己的合計列上面）；picked：合計列以下的列
-// 完全沒有基金列的一般調查表、檔名認不出機關：picked 整份保留；檔案裡只有別的基金：全部預設刪除（f.missing）
+// 完全沒有基金列的一般調查表、檔名認不出機關：picked 整份保留（主管、合計列除外）；檔案裡只有別的基金：全部預設刪除（f.missing）
 function ps_candidates(f, all, picked) {
     f.missing = false; f.others = [];
     const col = f.cmap.map[ps_matchCol] || f.cmap.key;
     const name = r => ps_cellText(f.ws.getRow(r).getCell(col)).trim();
-    if (!f.owners.length || !all.some(r => ps_std(name(r)))) return { cand: picked, del: new Set() };
+    const skip = r => [1, 2, 3].some(c => { const t = f.cmap.map[c] ? ps_key(ps_cellText(f.ws.getRow(r).getCell(f.cmap.map[c]))) : ''; return /小計|總計|合計/.test(t) || t.endsWith('主管'); });
+    if (!f.owners.length || !all.some(r => ps_std(name(r)))) return { cand: picked, del: new Set(picked.filter(skip)) };
     // 「一、作業基金」這種大標題才停；「(一)」編號是基金自己的明細
     const stop = a => !a ? false : a.startsWith('合計') || a.endsWith('主管') || fb_level(a) === 1 || !!ps_std(a);
     const keep = new Set();
     all.forEach((r, i) => {
-        if (!f.owners.includes(ps_std(name(r)))) return;
-        if (i > 0 && name(all[i - 1]).endsWith('主管')) keep.add(all[i - 1]);
+        if (!f.owners.includes(ps_std(name(r))) || skip(r)) return; // 「通傳會主管」靠別名也對得到基金，主管列不算
         keep.add(r);
-        for (let j = i + 1; j < all.length && !stop(name(all[j])); j++) keep.add(all[j]);
+        for (let j = i + 1; j < all.length && !stop(name(all[j])); j++) if (!skip(all[j])) keep.add(all[j]);
     });
     // 別的基金的列有填資料（例：檔名只寫「文作、文發」，卻也填了國立文化機構）→ 查對提醒
     const has = r => Object.entries(f.cmap.map).some(([tc, fc]) => +tc !== 1 && fc !== col && (v => v != null && !ps_isFormula(v) && String(v.richText ? 'x' : v).trim() !== '')(f.ws.getRow(r).getCell(fc).value));
-    f.others = all.filter(r => !keep.has(r) && ps_std(name(r)) && !f.owners.includes(ps_std(name(r))) && has(r)).map(r => ps_std(name(r)));
+    f.others = all.filter(r => !keep.has(r) && !skip(r) && ps_std(name(r)) && !f.owners.includes(ps_std(name(r))) && has(r)).map(r => ps_std(name(r)));
     f.missing = !keep.size;
     return { cand: all, del: new Set(all.filter(r => !keep.has(r))) };
 }
