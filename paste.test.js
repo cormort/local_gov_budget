@@ -218,6 +218,15 @@ async function filled(rows) {
     assert.deepStrictEqual([3, 4, 5, 6, 7].map(r11), [`${F[0]}|10`, '(一)明細|5', `${F[1]}|❌ 未回傳／無資料`, `${F[2]}|10`, '(一)明細|5']);
     ps_t.ps_setOrder('');
 
+    // 一份填了兩個基金：各基金貼在自己的標準順序位置，中間夾著別的檔案的基金
+    const two = async rows => { const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('表'); ws.addRow(['測試表']); ws.addRow(['名稱', '預算數', '決算數']); rows.forEach(r => ws.addRow(r)); return wb.xlsx.writeBuffer(); };
+    await ps_t.set(null, orgs);
+    await ps_t.ps_addFiles([asFile(`${F[0]}、${F[2]}.xlsx`, await two([[F[0], 10, 9], ['(一)明細A', 5, 4], [F[2], 30, 29], ['(一)明細C', 3, 2]])), asFile(F[1] + '.xlsx', await two([[F[1], 20, 19], ['(一)明細B', 2, 1]]))]);
+    const o13 = new ExcelJS.Workbook();
+    await o13.xlsx.load(await ps_t.ps_build());
+    const r13 = []; o13.worksheets[0].eachRow((row, i) => { if (i > 2) r13.push(row.getCell(1).text); });
+    assert.deepStrictEqual(r13, [F[0], '(一)明細A', F[1], '(一)明細B', F[2], '(一)明細C'], '一份兩個基金：各自排在自己的位置');
+
     // 沒有合計列的一般調查表：「註」說明列只在最後出現一次（有勾範本、沒勾範本都一樣）
     const plain = async rows => { const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('S'); [['調查表'], ['單位：千元'], ['項目', '金額'], ...rows, ['註：請填千元']].forEach(r => ws.addRow(r)); return wb.xlsx.writeBuffer(); };
     for (const tpl of [true, false]) {

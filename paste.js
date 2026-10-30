@@ -121,7 +121,7 @@ async function ps_setBase(name, buf, fromFile = false, sheet = null) {
 // all：表頭以下所有的列（自己的基金列可能在檔案自己的合計列上面）；picked：合計列以下的列
 // 完全沒有基金列的一般調查表、檔名認不出機關：picked 整份保留（主管、合計列除外）；檔案裡只有別的基金：全部預設刪除（f.missing）
 function ps_candidates(f, all, picked) {
-    f.missing = false; f.others = [];
+    f.missing = false; f.others = []; f.fundOf = new Map();
     const col = f.cmap.map[ps_matchCol] || f.cmap.key;
     const name = r => ps_cellText(f.ws.getRow(r).getCell(col)).trim();
     const skip = r => [1, 2, 3].some(c => { const t = f.cmap.map[c] ? ps_key(ps_cellText(f.ws.getRow(r).getCell(f.cmap.map[c]))) : ''; return /小計|總計|合計/.test(t) || t.endsWith('主管'); });
@@ -138,6 +138,9 @@ function ps_candidates(f, all, picked) {
     const has = r => Object.entries(f.cmap.map).some(([tc, fc]) => +tc !== 1 && fc !== col && (v => v != null && !ps_isFormula(v) && String(v.richText ? 'x' : v).trim() !== '')(f.ws.getRow(r).getCell(fc).value));
     f.others = all.filter(r => !keep.has(r) && !skip(r) && ps_std(name(r)) && !f.owners.includes(ps_std(name(r))) && has(r)).map(r => ps_std(name(r)));
     f.missing = !keep.size;
+    // 一份填了多個基金：每列記下屬於哪個基金（上面最近的自己基金列），貼表時各基金排在自己的位置
+    let cur = null;
+    all.forEach(r => { const s = !skip(r) && ps_std(name(r)); if (s && f.owners.includes(s)) cur = s; if (cur) f.fundOf.set(r, cur); });
     return { cand: all, del: new Set(all.filter(r => !keep.has(r))) };
 }
 const ps_applyDel = f => { f.rows = f.cand.filter(r => !f.del.has(r)); };
@@ -278,7 +281,7 @@ const ps_stackChecks = () => [...ps_orderChecks(), ...ps_files.filter(f => !f.tp
     ...(f.cmap.key ? [] : [['找不到名稱欄', ps_keyLabel(), f.file, '這份沒有貼入，請確認表頭']]),
     ...f.cmap.extra.map(t => ['範本沒有的欄', t, f.file, '未貼入']),
     ...(f.cmap.key ? ps_hiddenChecks(f, f.rows) : []),
-    ...(f.owners.length === 1 || ps_order ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
+    ...(f.owners.length === 1 || ps_order ? [] : [f.owners.length ? ['檔名含多個機關', f.owners.join('、'), f.file, new Set(f.fundOf?.values()).size > 1 ? '各基金分別貼在自己的位置，請確認' : `排在「${f.owners[0]}」的位置，請確認順序`] : ['檔名認不出機關', '', f.file, '排在最後，請確認順序']]),
     ...(f.missing ? [['找不到自己基金的列', f.owners.join('、'), f.file, '檔案裡只有別的基金，預設全部不貼，請在逐列檢查確認']] : []),
     ...(f.others?.length ? [['也填了別的基金', f.others.join('、'), f.file, `${f.others.length} 個，預設不貼，請在逐列檢查確認`]] : []),
     ...(f.rows.length || !f.cmap.key || f.missing ? [] : [['沒有可貼的列', '', f.file, '請確認是否漏填或填在別的工作表']]),
@@ -376,6 +379,20 @@ const ps_orderChecks = () => !ps_order ? [] : [
 // 依清單重排：手動調過的順序回到清單順序（範本留在最上面，同名次維持原順序）
 const ps_resort = () => { ps_files.sort((a, b) => a.rank - b.rank); };
 
+// 貼上的段落：一檔一段照順序表；一份填了多個基金的拆成各基金一段，依各自的名次插到該基金的位置
+// （先排好單一段落，再插入拆開的，免得後面的檔案接在插入段之後）
+function ps_segments() {
+    const segs = [], split = [];
+    ps_files.filter(f => !f.tpl).forEach(f => {
+        const by = new Map();
+        f.rows.forEach(r => { const k = f.fundOf?.get(r) || f.owners[0] || ''; by.has(k) ? by.get(k).push(r) : by.set(k, [r]); });
+        if (by.size <= 1) segs.push({ f, rows: f.rows, rank: f.rank });
+        else by.forEach((rows, fund) => split.push({ f, rows, rank: ps_rankOf({ owners: [fund], file: fund }) }));
+    });
+    split.forEach(s => { const at = segs.findIndex(x => x.rank > s.rank); segs.splice(at < 0 ? segs.length : at, 0, s); });
+    return segs;
+}
+
 const ps_build = () => ps_mode === 'fill' ? ps_buildFill() : ps_buildStack();
 
 async function ps_buildStack() {
@@ -407,7 +424,7 @@ async function ps_buildStack() {
         ws.getRow(r).getCell(nameCol === 1 ? 2 : 1).value = '❌ 未回傳／無資料';
         r++;
     } };
-    ps_files.filter(f => !f.tpl).forEach(f => { putMissing(f.rank); f.rows.forEach(sr => {
+    ps_segments().forEach(({ f, rows, rank }) => { putMissing(rank); rows.forEach(sr => {
         const top = ps_cellText(f.ws.getRow(sr).getCell(f.cmap.key));
         if (top.endsWith('主管') && top === lastTop) return;
         ps_copyRow(f.ws, sr, ws, r, cols, f.cmap.map);
