@@ -6,9 +6,9 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://cdnjs.cloudflare.com;">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <title>Excel 貼表</title>
-    <meta name="description" content="把各機關寄回的 Excel 一次拖進來，依標準基金順序接續貼成一張彙總表：保留原格式、重算合計與案數，並列出查對項目。">
+    <meta name="description" content="把各機關寄回的 Excel 一次拖進來，依標準基金順序接續貼成一張彙總表：保留原格式，並列出查對項目。">
     <meta property="og:title" content="Excel 貼表">
-    <meta property="og:description" content="把各機關寄回的 Excel 一次拖進來，接續貼成一張彙總表；免上傳範本，自動認機關、重算合計、列出查對項目。">
+    <meta property="og:description" content="把各機關寄回的 Excel 一次拖進來，接續貼成一張彙總表；免上傳範本，自動認機關、列出查對項目。">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="zh_TW">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
@@ -21,7 +21,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" defer></script>
     <script src="form-builder.js?v=20261028g" defer></script>
-    <script src="paste.js?v=20261030a" defer></script>
+    <script src="paste.js?v=20261030b" defer></script>
 </head>
 <body>
 
@@ -42,7 +42,7 @@
 <main class="max-w-[98%] mx-auto p-4">
     <div id="ps-drop" class="drop-zone rounded-md px-6 py-8 cursor-pointer mb-4" role="button" tabindex="0" aria-label="選擇要貼上的 Excel 檔，可多選；也可以把檔案拖到頁面任何地方">
         <p class="font-bold text-slate-800 mb-1">把各機關寄回的 Excel 一次拖進來（拖到頁面任何地方都可以），或點此選擇（可多選）</p>
-        <p class="text-slate-500 text-sm">不需要先上傳範本：可把空白 Excel 一起拖入，在順序表勾選為範本（檔名有「空白」「範本」會自動勾）；沒勾選就用多數檔案共用的版面。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式，並重算合計、主管、基金列的案數與勾選數；同一機關重複拖入以後者為準</p>
+        <p class="text-slate-500 text-sm">不需要先上傳範本：可把空白 Excel 一起拖入，在順序表勾選為範本（檔名有「空白」「範本」會自動勾）；沒勾選就用多數檔案共用的版面。依標準機關順序（從檔名辨識）把各檔的列一列接一列貼上，保留原格式（合計、小計不另外產生）；同一機關重複拖入以後者為準</p>
         <input type="file" id="ps-file" class="hidden" accept=".xlsx,.xls,.ods" multiple aria-label="選擇要貼上的 Excel 檔，可多選">
     </div>
 

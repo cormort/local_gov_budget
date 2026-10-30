@@ -1,4 +1,4 @@
-// 貼表自我檢查：用範本裡 114供參 的實際填法做兩份回傳檔，確認順序、合計／主管／基金列與說明列位置
+// 貼表自我檢查：用範本裡 114供參 的實際填法做兩份回傳檔，確認順序、主管／基金列與說明列位置
 const assert = require('assert'), fs = require('fs'), vm = require('vm');
 global.ExcelJS = require('exceljs');
 global.XLSX = require('xlsx');
@@ -30,23 +30,21 @@ async function filled(rows) {
     await out.xlsx.load(await ps_t.ps_build());
     assert.deepStrictEqual(out.worksheets.map(w => w.name), ['115請查填']);
     const ws = out.worksheets[0], a = r => String(ws.getRow(r).getCell(1).text).trim();
-    assert.deepStrictEqual([7, 8, 9, 11, 12].map(a), ['合計', '法務部主管', '法務部矯正機關作業基金', '通傳會主管', '通訊傳播監督管理基金']);
-    assert.strictEqual(ws.getCell('F7').value, '共4案');
-    assert.strictEqual(ws.getCell('F12').value, '共3案');
-    assert.strictEqual(ws.getCell('P7').value.formula, 'COUNTIF(P8:P15,"v")');
-    assert.strictEqual(ws.getCell('P11').value.formula, 'COUNTIF(P12:P15,"v")');
-    assert.strictEqual(ws.getCell('P11').value.result, 2); // 委保1、委保2 打 V
-    assert.ok(a(16).startsWith('註'), '說明列接在最後一列資料後面');
-    assert.ok(ws.model.merges.includes('A8:D8'), '標題列的合併儲存格照搬');
+    // 合計、小計不由程式產生：範本的合計列不帶，資料緊接在表頭下面
+    assert.deepStrictEqual([7, 8, 10, 11].map(a), ['法務部主管', '法務部矯正機關作業基金', '通傳會主管', '通訊傳播監督管理基金']);
+    const formulas = []; ws.eachRow(row => row.eachCell(c => { if (ps_isFormula(c.value)) formulas.push(c.address); }));
+    assert.deepStrictEqual(formulas, [], '不產生 COUNTIF 等小計公式');
+    assert.ok(!ws.getColumn(1).values.some(v => String(v).trim() === '合計'), '沒有合計列');
+    assert.ok(a(15).startsWith('註'), '說明列接在最後一列資料後面');
+    assert.ok(ws.model.merges.includes('A7:D7'), '標題列的合併儲存格照搬');
 
-    // 沒有存好的範本：版面取自第一個拖入的檔案（通傳會），結果一樣依標準順序、合計重算
+    // 沒有存好的範本：版面取自第一個拖入的檔案（通傳會），結果一樣依標準順序
     await ps_t.set(null, orgs);
     await ps_t.ps_addFiles([await file('通訊傳播監督管理基金.xlsx', [11, 12, 13, 14, 15]), await file('法務部矯正機關作業基金.xlsx', [8, 9, 10])]);
     const out2 = new ExcelJS.Workbook();
     await out2.xlsx.load(await ps_t.ps_build());
     const w2 = out2.worksheets[0], a2 = r => String(w2.getRow(r).getCell(1).text).trim();
-    assert.deepStrictEqual([7, 8, 11, 12].map(a2), ['合計', '法務部主管', '通傳會主管', '通訊傳播監督管理基金'], '回傳檔自己的主管、基金列不能被當成佔位列略過');
-    assert.strictEqual(w2.getCell('F7').value, '共4案');
+    assert.deepStrictEqual([7, 10, 11].map(a2), ['法務部主管', '通傳會主管', '通訊傳播監督管理基金'], '回傳檔自己的主管、基金列不能被當成佔位列略過');
 
     // 手動調整順序：通傳會移到前面，之後再拖入的檔案不會把順序排回去
     const fl = ps_t.files();
@@ -55,7 +53,7 @@ async function filled(rows) {
     assert.deepStrictEqual(ps_t.files().map(f => f.org), ['通訊傳播監督管理基金', '法務部矯正機關作業基金']);
     const out3 = new ExcelJS.Workbook();
     await out3.xlsx.load(await ps_t.ps_build());
-    assert.strictEqual(String(out3.worksheets[0].getCell('A8').text).trim(), '通傳會主管');
+    assert.strictEqual(String(out3.worksheets[0].getCell('A7').text).trim(), '通傳會主管');
 
     // 空白範本跟回傳檔一起拖入：檔名有「空白」自動勾成範本，不貼入
     await ps_t.set(null, orgs);
@@ -64,9 +62,8 @@ async function filled(rows) {
     const out4 = new ExcelJS.Workbook();
     await out4.xlsx.load(await ps_t.ps_build());
     const w4 = out4.worksheets[0], a4 = r => String(w4.getRow(r).getCell(1).text).trim();
-    assert.strictEqual(w4.getCell('F7').value, '共4案');
-    assert.deepStrictEqual([8, 11].map(a4), ['法務部主管', '通傳會主管']);
-    assert.ok(a4(16).startsWith('註'), '範本的說明列接在最後');
+    assert.deepStrictEqual([7, 10].map(a4), ['法務部主管', '通傳會主管']);
+    assert.ok(a4(15).startsWith('註'), '範本的說明列接在最後');
 
     // 依項目填入：每份都有全部基金、各填自己那一列
     const F = orgs.sortOrder.slice(0, 6);

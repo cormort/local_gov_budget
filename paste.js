@@ -1,7 +1,6 @@
 // 貼表：把各機關寄回的 Excel（照空白範本填寫）依標準機關順序一列接一列貼到範本下方，保留原格式，匯出一份彙總表
-// 版面：在順序表勾選的範本檔（不貼入），沒勾選就取最多檔案共用的版面；取第一個沒隱藏的工作表（範本檔可改選），表頭到「合計」列（沒有合計列就到表頭最後一列）照抄，「註」以下的說明列移到最後
-// 小計：範本「合計」列有 COUNTIF 的欄重算勾選數、有「共…案」的欄重算案數；主管列算到下一個主管，基金列算到下一個標題列
-// ponytail: 提案列＝第 2 欄（提案序號）有填、標題列＝第 1 欄有填且第 2 欄空白，是照協商彙總表的版面寫的；別的版面要另訂規則
+// 版面：在順序表勾選的範本檔（不貼入），沒勾選就取最多檔案共用的版面；取第一個沒隱藏的工作表（範本檔可改選），表頭照抄，「註」以下的說明列移到最後
+// 合計、小計不由程式產生：範本的合計列不帶，主管、基金列照各檔原樣貼
 // 兩種貼法：接續貼上（協商表：各檔的列接在一起）、依項目填入（決算表：每份都有全部基金，各填自己那一列 → 依第一欄名稱對位填進範本）
 // 依項目填入：欄依表頭文字對位（有人插欄也對得上）；同一欄同一個非零數字出現在 3 列以上視為往下拖曳的錯誤不採用；
 // 一列有多份檔案填時，採檔名認得出是該基金的那份；只有別的機關填的照填但標淺橘色；對不上的、沒人填的都列在「查對」
@@ -20,7 +19,6 @@ let ps_mode = 'stack'; // 'stack' 接續貼上（預設，大多數調查表）|
 const ps_esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const ps_text = c => String(c?.text ?? '').trim();
 const ps_slave = c => c.isMerged && c.master.address !== c.address; // 合併儲存格的非左上格：ExcelJS 會回傳左上格的值
-const ps_own = c => ps_slave(c) ? '' : ps_text(c);
 const ps_sheet = wb => wb.worksheets.find(w => w.state === 'visible') || wb.worksheets[0];
 const ps_filler = a => /ＯＯ|ＸＸ|○○|^【範例/.test(a); // 空白表留下的佔位列（ＯＯ主管、ＸＸ基金、範例）
 const ps_stem = n => n.replace(/\.[^.]+$/, '');
@@ -384,24 +382,20 @@ async function ps_buildStack() {
     await wb.xlsx.load(ps_base.buf);
     const ws = wb.getWorksheet(ps_base.sheet), { total, hasTotal, notes, cols } = ps_layout(ws);
     wb.worksheets.filter(w => w !== ws).forEach(w => wb.removeWorksheet(w.id)); // 往年供參的工作表不帶
-    const ps_countCols = [];
-    for (let c = 1; c <= cols; c++) for (let r = total; r < notes; r++) {
-        const v = ws.getRow(r).getCell(c).value;
-        if (v && typeof v === 'object' && /COUNTIF/i.test(v.formula || v.sharedFormula || '')) { ps_countCols.push(c); break; }
-    }
 
-    // 說明列先存起來（值、格式、列高、合併），清掉合計列以下再貼
+    // 說明列先存起來（值、格式、列高、合併），清掉表頭以下再貼
     const tmp = new ExcelJS.Workbook(), keep = tmp.addWorksheet('n');
     const footer = [];
     for (let r = notes; r <= ws.rowCount; r++) { ps_copyRow(ws, r, keep, footer.length + 1, cols); footer.push(r); }
-    (ws.model.merges || []).forEach(m => { if (+m.split(':')[0].replace(/\D/g, '') > total) ws.unMergeCells(m); });
-    // 刪掉合計列以下的列。ExcelJS 的 spliceRows 在「要刪的範圍剛好到最後一列」時是空操作
+    // 合計、小計不由程式產生：範本的合計列一起刪掉（留著的話公式範圍是舊的），各檔的列照原樣貼
+    const start = hasTotal ? total : total + 1;
+    (ws.model.merges || []).forEach(m => { if (+m.split(':')[0].replace(/\D/g, '') >= start) ws.unMergeCells(m); });
+    // 刪掉表頭以下的列。ExcelJS 的 spliceRows 在「要刪的範圍剛好到最後一列」時是空操作
     // （start + count 超過最後一列就整個 if 不進去），所以從最下面一列一列刪，
     // 原本一次 spliceRows(total+1, rowCount-total) 會留下範本原有的基金列，貼完變成底部重複。
-    for (let r = ws.rowCount; r > total; r--) ws.spliceRows(r, 1);
+    for (let r = ws.rowCount; r >= start; r--) ws.spliceRows(r, 1);
 
-    let r = total + 1;
-    const placed = []; // { r, kind: 'head'|'item', level }
+    let r = start;
     let lastTop = null; // 同一個主管的基金分在不同檔案時，各檔都帶了主管列：連續的同名主管列只留第一個
     // 自訂清單上沒有檔案的，依清單位置插「❌ 未回傳」列（像 excel_merge 的 checklist）
     const missing = (ps_order || []).map((line, i) => ({ line, i })).filter(({ line }) => !ps_files.some(f => !f.tpl && ps_lineHits(line, f)));
@@ -410,39 +404,17 @@ async function ps_buildStack() {
         const { line } = missing.shift();
         ws.getRow(r).getCell(nameCol).value = line;
         ws.getRow(r).getCell(nameCol === 1 ? 2 : 1).value = '❌ 未回傳／無資料';
-        placed.push({ r, kind: 'missing' }); r++;
+        r++;
     } };
     ps_files.filter(f => !f.tpl).forEach(f => { putMissing(f.rank); f.rows.forEach(sr => {
         const top = ps_cellText(f.ws.getRow(sr).getCell(f.cmap.key));
         if (top.endsWith('主管') && top === lastTop) return;
         ps_copyRow(f.ws, sr, ws, r, cols, f.cmap.map);
-        const a = ps_own(ws.getRow(r).getCell(1)), b = ps_own(ws.getRow(r).getCell(2));
-        placed.push({ r, kind: b ? 'item' : a ? 'head' : 'item', top: a.endsWith('主管') });
-        if (a.endsWith('主管')) lastTop = a;
+        if (top.endsWith('主管')) lastTop = top;
         r++;
     }); });
     putMissing(Infinity);
-    const last = r - 1;
     footer.forEach((_, i) => ps_copyRow(keep, i + 1, ws, r + i, cols));
-
-    // 小計：範本合計、小計列有 COUNTIF 的欄、合計列有「共…案」的欄（清掉範本列之前已記下 ps_countCols）
-    const countCols = ps_countCols, caseCols = [];
-    for (let c = 1; c <= cols; c++) if (/^共.*案$/.test(ps_text(ws.getRow(total).getCell(c)))) caseCols.push(c);
-    const fill = (row, from, to) => {
-        const items = placed.filter(p => p.r >= from && p.r <= to && p.kind === 'item');
-        countCols.forEach(c => {
-            const col = ws.getColumn(c).letter;
-            const n = items.filter(p => ps_text(ws.getRow(p.r).getCell(c)).toLowerCase() === 'v').length;
-            ws.getRow(row).getCell(c).value = from > to ? 0 : { formula: `COUNTIF(${col}${from}:${col}${to},"v")`, result: n };
-        });
-        caseCols.forEach(c => { ws.getRow(row).getCell(c).value = `共${items.length}案`; });
-    };
-    if (hasTotal) fill(total, total + 1, last);
-    placed.forEach((p, i) => {
-        if (p.kind !== 'head') return;
-        const next = placed.slice(i + 1).find(q => q.kind === 'head' && (p.top ? q.top : true));
-        fill(p.r, p.r + 1, next ? next.r - 1 : last);
-    });
     ps_checkSheet(wb, ps_stackChecks());
     return wb.xlsx.writeBuffer();
 }
