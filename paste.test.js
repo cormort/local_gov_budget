@@ -213,5 +213,16 @@ async function filled(rows) {
     const r11 = r => [1, 2].map(c => o11.worksheets[0].getRow(r).getCell(c).text).join('|');
     assert.deepStrictEqual([3, 4, 5, 6, 7].map(r11), [`${F[0]}|10`, '(一)明細|5', `${F[1]}|❌ 未回傳／無資料`, `${F[2]}|10`, '(一)明細|5']);
     ps_t.ps_setOrder('');
+
+    // 沒有合計列的一般調查表：「註」說明列只在最後出現一次（有勾範本、沒勾範本都一樣）
+    const plain = async rows => { const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('S'); [['調查表'], ['單位：千元'], ['項目', '金額'], ...rows, ['註：請填千元']].forEach(r => ws.addRow(r)); return wb.xlsx.writeBuffer(); };
+    for (const tpl of [true, false]) {
+        await ps_t.set(null, orgs);
+        await ps_t.ps_addFiles([...(tpl ? [asFile('空白範本.xlsx', await plain([['ＯＯ計畫']]))] : []), asFile(F[0] + '.xlsx', await plain([['甲計畫', 100]])), asFile(F[2] + '.xlsx', await plain([['乙計畫', 200]]))]);
+        const o12 = new ExcelJS.Workbook();
+        await o12.xlsx.load(await ps_t.ps_build());
+        const r12 = []; o12.worksheets[0].eachRow((row, i) => { if (i > 3) r12.push(row.getCell(1).text); });
+        assert.deepStrictEqual(r12, ['甲計畫', '乙計畫', '註：請填千元'], `沒有合計列（${tpl ? '有' : '沒有'}範本）說明列只在最後`);
+    }
     console.log('paste: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });

@@ -36,7 +36,7 @@ function ps_layout(ws, key = 1) {
     ws.eachRow((row, r) => {
         const a = ps_text(row.getCell(key));
         if (!total && a === '合計') total = r;
-        else if (total && !notes && a.startsWith('註')) notes = r;
+        else if ((total || r > ps_headEnd) && !notes && a.startsWith('註')) notes = r; // 沒有合計列時從表頭下面開始找
     });
     return { total: total || ps_headEnd, hasTotal: !!total, notes: notes || ws.rowCount + 1, cols: ws.columnCount };
 }
@@ -93,17 +93,18 @@ async function ps_rebase() {
 async function ps_setBase(name, buf, fromFile = false, sheet = null) {
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(buf);
-    const bws = (sheet && book.getWorksheet(sheet)) || ps_sheet(book), bl = ps_layout(bws);
-    // 空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
-    const placeholders = new Set();
-    if (!fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
-    // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）
+    const bws = (sheet && book.getWorksheet(sheet)) || ps_sheet(book);
+    // 表頭範圍沿用網頁表單的判斷（多層合併表頭、略過表名與單位列）；ps_layout 要用 ps_headEnd，先算
     const wb = XLSX.read(buf, { type: 'array' }), ws = wb.Sheets[bws.name];
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     const text = (r, c) => { const x = ws[XLSX.utils.encode_cell({ r, c })]; return x ? String(x.w ?? x.v ?? '').trim() : ''; };
     const block = fb_headerBlock(text, ws['!merges'] || [], range.s.r, range.e.r, range.s.c, range.e.c);
     ps_headEnd = (block?.he ?? -1) + 1;
     const headRows = block ? Array.from({ length: block.he - block.hr + 1 }, (_, i) => block.hr + 1 + i) : [1];
+    const bl = ps_layout(bws);
+    // 空白範本：合計列以下原有的列（ＯＯ主管、範例、註）都是佔位；版面取自回傳檔時那些是真資料，只認佔位字樣
+    const placeholders = new Set();
+    if (!fromFile) for (let r = bl.total + 1; r <= bws.rowCount; r++) { const a = ps_text(bws.getRow(r).getCell(1)); if (a) placeholders.add(a); }
     ps_base = { name, buf, fromFile, sheet: bws.name, placeholders, ws: bws, headRows };
     ps_files.forEach(f => {
         f.ws = f.wb.getWorksheet(f.pinned || bws.name) || ps_sheet(f.wb);
